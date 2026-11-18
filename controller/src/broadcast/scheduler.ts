@@ -1,3 +1,4 @@
+import { regularStemWorkingMode } from './regular-stem-mode.js';
 import { captureSpeechBudget } from './speech-timing.js';
 import { fitsSpeechBudget } from './speech-budget.js';
 import { spokenWordCount } from '../audio/tts-measurements.js';
@@ -1283,6 +1284,7 @@ export async function stemCacheSweepTick() {
 // cache it cannot see. 04:47 keeps it clear of the hourly cleanup at :02 and the
 // 04:17 doctor.
 export async function stemOrphanPurgeTick() {
+  if (regularStemWorkingMode()) return;
   try {
     await startSubbeatsCleanup(true);
     if (settings.get()?.audio?.stemOrphanPurgeEnabled !== true) return;

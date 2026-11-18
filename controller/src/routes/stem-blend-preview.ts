@@ -1,5 +1,6 @@
 // Isolated upstream regular Stem Blend auditions. No cache admission, stem
 // separation, live-queue mutation or Sub/Beats coverage reuse happens here.
+import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -20,6 +21,7 @@ const querySchema = z.object({ q: z.string().max(200).default(''),
   offset: z.coerce.number().int().min(0).max(1_000_000).default(0) });
 
 router.get('/stems/blend-preview/tracks', requireAdmin, async (req, res) => {
+  if (regularStemWorkingMode()) return res.status(409).json({ error: 'Legacy cached-stem auditions are on hold. Use the live working-cache preview.' });
   const query = querySchema.safeParse(req.query);
   if (!query.success) return res.status(400).json({ error: 'Choose a valid track search and page.' });
   try {
@@ -39,6 +41,7 @@ router.get('/stems/blend-preview/tracks', requireAdmin, async (req, res) => {
 
 let busy = false;
 router.post('/stems/blend-preview', requireAdmin, validateBody(stemBlendPreviewRequestSchema), async (req, res) => {
+  if (regularStemWorkingMode()) return res.status(409).json({ error: 'Legacy cached-stem auditions are on hold. Use the live working-cache preview.' });
   if (busy) return res.status(409).json({ error: 'Another Stem Blend audition is being prepared. Try again shortly.' });
   if (tagger.running && tagger.progress?.waitingForQuiet !== true) return res.status(409).json({ error: 'Pause Library Analysis before preparing an audition.' });
   const abort = new AbortController();

@@ -43,6 +43,14 @@ test('queue snapshots prepare in background, pending work holds only before dead
     q.syncRegularStemPreparation();
     assert.equal(q.history[0].stemBlend.regular.envelopes,undefined,'previous preview retires after the buffer');
     q.history=[];
+    process.env.SUBWAVE_REGULAR_STEMS_ROLLOUT='working';
+    process.env.SUBWAVE_REGULAR_STEM_TEST_PAIRS='[]';
+    q.current=current(180);q.upcoming=[make('a'),make('b')];
+    await queue.drainToLiquidsoap();
+    assert.equal(snapshots.every(item=>item.regularEligible),true,'working mode needs no exact-ID allowlist');
+    assert.equal(q.upcoming[0].sent,false,'all-pair rollout still respects pending preparation');
+    delete process.env.SUBWAVE_REGULAR_STEMS_ROLLOUT;
+    process.env.SUBWAVE_REGULAR_STEM_TEST_PAIRS=JSON.stringify([{out:'a',in:'b'}]);
     q.current=current(180); q.upcoming=[make('a'),make('b')];
     await queue.drainToLiquidsoap();
     assert.equal(q.upcoming[0].sent,false);

@@ -466,3 +466,75 @@ points while preserving Sub/Beats, migrate the Stems controls without discarding
 saved values or old files, and replace the exact-pair gate with shared regular
 admission. Run legacy-setting-combination and Sub/Beats retention tests before
 proposing a station candidate.
+
+### 2026-11-18 — broader migration candidate (internally gated)
+
+Added `SUBWAVE_REGULAR_STEMS_ROLLOUT=working` as an internal development gate for
+exercising the combined migration. The default remains the existing exact-pair
+audition stage. This switch is not a proposed operator cache mode and must be
+removed/promoted before release. It has not been set on the station.
+
+In the broader candidate, the existing Stem Blends opt-in controls queue-time CPU
+preparation without an exact-recording allowlist. Pattern selection is stable
+per ordered recording pair. All existing measured-window, Sub/Beats reservation,
+quiet-only, show/DJ, deadline and rendering checks still apply. Calls without a
+new regular style cannot fall back to the legacy cache renderer. The old Pick
+Time toggle does not enable legacy separation or influence the working set.
+
+Ordinary analysis disables regular cache filling/backfill regardless of its saved
+cache value. An explicit legacy stems facet plan is refused before probing the
+analyzer or altering analysis; other analysis remains available. A stem-only
+Library scan can still authorise selected queued Sub/Beats preparation, without
+creating ordinary stem files. Saved settings are retained across cold loads.
+
+Storage audit found that the old budget sweep, replacement cleanup and automatic
+orphan/selective cleanup operate on entire track folders containing both regular
+windows and Sub/Beats bundles. To honour preservation, the broader candidate
+holds automatic mutation of that old root: no budget eviction, replacement-dir
+removal or automatic quarantine/deletion. Replacement still invalidates Sub/Beats
+source evidence. Both scheduler and deletion-engine guards cover automatic purge.
+Explicit operator-confirmed manual purge APIs retain their existing permission
+checks; no such command was run. The new working root keeps its independent
+nine-track cleanup.
+
+This hold also retains existing Sub/Beats files; their preparation/playback and
+byte-budget admission remain available. The retained old files continue to count
+against the shared budget. New Sub/Beats preparation may wait when it fills;
+the migration does not secretly reclaim old files to make space. This is shown
+in the candidate settings. A later cleanup decision can separate bundle-owned
+retirement from the retained regular files; do not re-enable whole-folder sweeps.
+
+The Stems settings read the actual rollout state, hide held legacy controls and
+automatic orphan controls in the broader candidate, explain CPU/tail-first/eight
+bar preparation, and label the remaining budget for saved Sub/Beats. They retain
+the old saved values and suppress false promises/confirmations about imminent
+automatic deletion. One shared query owns mode/readiness polling. Doctor checks
+require the working-window protocol in the broader candidate and do not suggest
+filling a persistent regular cache based on historical cache coverage.
+
+The advanced Library stems facet choice is still present but returns the explicit
+on-hold explanation in this development candidate. Its presentation, final rollout
+promotion/removal of the internal gate, available-disk admission and bounded
+isolated end-to-end/browser validation remain before proposing station rollout.
+Deploy only after checking the analyzer is idle so old in-flight legacy jobs do
+not overlap the switch. No station/container/config, library or cached audio was
+changed in this pass.
+
+Validation: all 255 stem-related controller tests and 81 analysis tests pass.
+The new migration integration test exercises eight cold-loaded legacy setting
+combinations, confirms no legacy analyzer POSTs, retains regular and Sub/Beats
+files under forced budget/replacement cleanup, refuses automatic purge and
+legacy facet plans, and still releases queued Sub/Beats work from a stem scan.
+The queue test also exercises broader preparation without the exact-ID list.
+All 53 web settings tests, three readiness-panel tests and nine admin-query audit
+tests pass. A stale pre-existing save-payload expectation was updated to include
+the already-supported `subbeatsOnAirCaching` preference; saving held values and
+Sub/Beats preferences is explicitly covered. Controller lint/types pass with
+zero errors and the existing 1,920 warnings; web lint/types pass without warnings.
+Admin-query and UI mechanical audits report no findings. No browser or station
+validation was performed.
+
+Next: add disk-space admission and retirement of obsolete keyed windows within
+an active track's working folder, then test the broader candidate end to end in
+isolation. Keep the rollout gate until these checks and the remaining UI migration
+are complete; do not enable it on the live station from this checkpoint.

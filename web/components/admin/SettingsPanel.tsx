@@ -26,7 +26,7 @@ import { fieldAria } from '../../lib/form';
 import ArchivesPanel from './ArchivesPanel';
 import BackupPanel from './BackupPanel';
 import OrphanStemsPanel from './OrphanStemsPanel';
-import RegularStemStatusPanel from './RegularStemStatusPanel';
+import { RegularStemStatusView, useRegularStemStatus } from './RegularStemStatusPanel';
 import {
   SETTINGS_AAC_BITRATES,
   SETTINGS_MP3_BITRATES,
@@ -150,6 +150,8 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
   const [confirmRestart, setConfirmRestart] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>('station');
+  const regularStemStatus = useRegularStemStatus(activeSection === 'stems');
+  const workingStems = regularStemStatus.data?.workingCache === true;
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const lengthModeAria = fieldAria('max-track-length-mode',
     fieldErrors.maxTrackLengthMode ? { message: fieldErrors.maxTrackLengthMode } : undefined);
@@ -378,7 +380,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
   // makes the next hourly sweep delete the difference, so that save asks
   // first. An unchanged budget (even one already under the cache) and a
   // raised one save straight through.
-  const stemBudgetCut = form
+  const stemBudgetCut = !workingStems && form
     && formBaselineRef.current
     && Number(form.transitions.stemCacheGb) < Number(formBaselineRef.current.transitions.stemCacheGb)
     ? stemBudgetImpact(stemUsage, Number(form.transitions.stemCacheGb))
@@ -744,9 +746,9 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
             <SectionHeader
               eyebrow="stems"
               title="The Demucs side of the station."
-              sub="The stem cache, the rendered-blend seam, and what happens to cached dirs when their track leaves the library. Everything here applies live; no mixer restart."
+              sub={workingStems ? "CPU preparation for regular blends, with separate saved Sub/Beats coverage. Applies to future handoffs; no mixer restart." : "The stem cache, the rendered-blend seam, and what happens to cached dirs when their track leaves the library. Everything here applies live; no mixer restart."}
               metrics={[
-                { n: data?.values?.audio?.stemCache ? 'on' : 'off', l: 'stem cache', accent: data?.values?.audio?.stemCache === true },
+                { n: workingStems ? '9 tracks' : data?.values?.audio?.stemCache ? 'on' : 'off', l: workingStems ? 'working cache' : 'stem cache', accent: workingStems || data?.values?.audio?.stemCache === true },
               ]}
             />
 
@@ -776,7 +778,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                     </div>
                   </div>
 
-                  <div className="field">
+                  {!workingStems && <div className="field">
                     <Label>Stem cache</Label>
                     <div className="flex items-center gap-2">
                       <Seg
@@ -799,10 +801,10 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                       backfills: the analysis pass targets tracks with no cached stems, so an
                       already-scanned library fills in over successive runs.
                     </div>
-                  </div>
+                  </div>}
 
                   <div className="field">
-                    <Label>Stem cache budget</Label>
+                    <Label>{workingStems ? "Saved Sub/Beats cache budget" : "Stem cache budget"}</Label>
                     <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                       <Input
                         className="mono-num w-28"
@@ -821,7 +823,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                         }
                       />
                       <span className="text-sm opacity-70">
-                        GB &middot; holds ~
+                        {workingStems ? 'GB' : <>GB &middot; holds ~
                         {/* Track counts use the controller's 25 MB ceiling and the measured 13 MB average. */}
                         {Math.floor(
                           ((Number(form.transitions.stemCacheGb) || 15) * 1024) / 25,
@@ -830,14 +832,14 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                         {Math.floor(
                           ((Number(form.transitions.stemCacheGb) || 15) * 1024) / 13,
                         ).toLocaleString('en-GB')}{' '}
-                        tracks
+                        tracks</>}
                       </span>
                     </div>
                     {(() => {
                       if (!stemUsage) {
                         return (
                           <div className="field-hint">
-                            Cache used: not measured yet (the hourly sweep records it).
+                            {workingStems ? 'Saved cache usage has not been measured yet. Sub/Beats preparation checks it before adding files.' : 'Cache used: not measured yet (the hourly sweep records it).'}
                           </div>
                         );
                       }
@@ -853,7 +855,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                             {' '}&middot; {stemUsage.dirs.toLocaleString('en-GB')} tracks
                             {at ? ` (measured ${at}${usageCaveat(stemUsage)})` : ''}
                           </div>
-                          {pickTimeOver !== null ? (
+                          {!workingStems && (pickTimeOver !== null ? (
                             <div className="field-hint" role="status">
                               Pick-time stems has taken the cache{' '}
                               <span className="mono-num">{fmtGb(pickTimeOver)}</span> over this budget,
@@ -867,16 +869,17 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                               of ~{impact.deleteTracks.toLocaleString('en-GB')} tracks (lowest
                               stem priority first), keeping ~{impact.keepTracks.toLocaleString('en-GB')}.
                             </div>
-                          )}
+                          ))}
                         </>
                       );
                     })()}
                     <div className="field-hint">
+                      {workingStems ? 'Limits saved Sub/Beats preparation, including retained old files. Regular blends use their own nine-track working cache. Automatic deletion is on hold; new Sub/Beats preparation waits when this budget is full.' : <>
                       How much disk the stem cache may use before the oldest entries are evicted
                       (1&ndash;1,000&nbsp;GB). A blend only fires when BOTH tracks of a pair are
                       cached, so a budget well under your library size means most seams stay
                       plain crossfades. The backfill stops once the budget is full rather than
-                      separating tracks it would immediately evict.
+                      separating tracks it would immediately evict.</>}
                     </div>
                   </div>
 
@@ -897,11 +900,12 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                       />
                     </div>
                     <div className="field-hint">
+                      {workingStems ? 'Prepares CPU stems as qualifying tracks wait in the queue, then renders an eight-bar blend at native tempo. Outgoing tails come first; incoming heads are prepared only for an eligible pair. Needs DJ mode and pair-aware transitions. Falls back to the usual transition when preparation or checks cannot finish in time.' : <>
                       When two tempo-compatible tracks meet and both have cached stems, the seam
                       airs as a rendered blend — the outgoing track&rsquo;s drums carry under the
                       incoming intro until its own beat drops. Falls back to a plain crossfade on
                       any miss. Needs pair-aware transitions + the stem cache; the Doctor flags a
-                      config that can&rsquo;t deliver.
+                      config that can&rsquo;t deliver.</>}
                     </div>
                   </div>
 
@@ -942,7 +946,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                     </div>
                   </div>
 
-                  <div className="field">
+                  {!workingStems && <div className="field">
                     <Label>Separate stems when a track is picked</Label>
                     <div className="flex items-center gap-2">
                       <Seg
@@ -977,15 +981,15 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                         Quiet-only analysis is on (Library), so nothing is separated at pick time.
                       </div>
                     )}
-                  </div>
+                  </div>}
                 </div>
               </Card>
             )}
 
-            <RegularStemStatusPanel />
-            <OrphanStemsPanel />
+            <RegularStemStatusView data={regularStemStatus.data} error={regularStemStatus.isError} />
+            {!workingStems && <OrphanStemsPanel />}
             <SaveBar
-              note="Stem cache, budget and blend settings apply to the next pick — no restart."
+              note={workingStems ? 'Blend settings apply to future handoffs; the saved-cache budget applies to the next Sub/Beats preparation batch.' : 'Stem cache, budget and blend settings apply to the next pick — no restart.'}
               busy={busy}
               onSave={saveStemsGuarded}
               saveLabel="Save stems"

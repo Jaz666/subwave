@@ -1,6 +1,7 @@
 // The analyzer writes cached head/tail stems on the shared volume. The controller manages
 // paths and evicts by the same priority the backfill uses.
 
+import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
 import { access, constants, readdir, stat, lstat, rm, readFile, mkdir, chmod, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -782,6 +783,7 @@ export async function forgetStems(trackIds: readonly string[]): Promise<{ remove
   if (trackIds.length === 0) return { removed: 0, failed: 0 };
   // Invalidate even when the cache is offline or deletion is refused.
   invalidateSubbeatsBundles(config.stateDir, trackIds);
+  if (regularStemWorkingMode()) return { removed: 0, failed: 0 };
   const root = await stemsRootStatus({ readOnly: true });
   if (!root.online) return { removed: 0, failed: 0, offline: root.message };
   let removed = 0;
@@ -833,8 +835,11 @@ export async function sweep(
   offline?: string;
   // Set when no walk was made: the snapshot showed the cache inside its budget
   // ('snapshot'), or an analysis pass is writing and will settle it ('pass-running').
-  skipped?: 'snapshot' | 'pass-running';
+  skipped?: 'snapshot' | 'pass-running' | 'preserved';
 }> {
+  // Legacy windows and Sub/Beats bundles share these directories. Until
+  // retirement can target only owned bundles, preserve the entire old root.
+  if (regularStemWorkingMode()) return { removed: 0, freedBytes: 0, failedDirs: 0, overBudgetBytes: 0, skipped: 'preserved' };
   const root = await stemsRootStatus({ readOnly: true });
   if (!root.online) {
     return { removed: 0, freedBytes: 0, failedDirs: 0, overBudgetBytes: 0, offline: root.message };

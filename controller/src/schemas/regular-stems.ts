@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const regularStemStatusSchema = z.object({
   audition: z.boolean(),
+  workingCache: z.boolean().default(false),
   trackLimit: z.literal(9),
   windows: z.array(z.object({
     trackId: z.string(),

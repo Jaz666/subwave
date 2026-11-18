@@ -3,7 +3,8 @@
 // docs/stem-transitions-research.md.
 
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { regularStemWorkingMode } from './regular-stem-mode.js';
+import { createHash, randomUUID } from 'node:crypto';
 import { readRegularStemPreview, type RegularStemPreview } from './regular-stem-preview.js';
 import { readdir, stat, unlink } from 'node:fs/promises';
 import { config } from '../config.js';
@@ -47,13 +48,14 @@ function regularStemTestPairs(): RegularStemTestPair[] {
   }
 }
 
-export function regularStemTestEnabled(): boolean { return regularStemTestPairs().length > 0; }
+export function regularStemTestEnabled(): boolean { return regularStemWorkingMode() || regularStemTestPairs().length > 0; }
 
 export function regularStemTestTrack(id: string): boolean {
-  return regularStemTestPairs().some(pair => pair.out === id || pair.in === id);
+  return regularStemWorkingMode() || regularStemTestPairs().some(pair => pair.out === id || pair.in === id);
 }
 
 export function regularStemTestStyle(outId: string, inId: string): RegularStemBlendStyle | null {
+  if (regularStemWorkingMode()) return REGULAR_TEST_STYLES[createHash('sha256').update(JSON.stringify([outId,inId])).digest()[0] % REGULAR_TEST_STYLES.length];
   const index = regularStemTestPairs().findIndex((pair) => pair.out === outId && pair.in === inId);
   return index < 0 ? null : REGULAR_TEST_STYLES[index % REGULAR_TEST_STYLES.length];
 }
@@ -254,7 +256,7 @@ export async function maybeRenderBlend(
   out: BlendTrack, incoming: BlendTrack, remaining: number | null,
   opts: Omit<NonNullable<Parameters<typeof renderBlend>[3]>, 'workingSources'> = {},
 ): Promise<BlendPlan | null> {
-  if (!opts.regularStyle) return renderBlend(out, incoming, remaining, opts);
+  if (!opts.regularStyle) return regularStemWorkingMode() ? null : renderBlend(out, incoming, remaining, opts);
   // Run admission before looking at any working files, including when missing.
   if (db.subbeatsEligibleTrack(String(out.id)) || db.subbeatsEligibleTrack(String(incoming.id))) {
     opts.log?.('warn', 'regular stem test: subbeats-reserved');

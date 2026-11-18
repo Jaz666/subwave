@@ -2,6 +2,7 @@
 // lack them, resumably. Shared by the `npm run tag` phase and `npm run analyze`.
 // The DSP lives in music/analyzer.ts; with no backend this is a clean no-op.
 
+import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
 import { readFile, rm } from 'node:fs/promises';
 import { SUBBEATS_SCAN_PREFIX } from '../schemas/subbeats.js';
 import { readSubbeatsQueue } from './subbeats-store.js';
@@ -223,6 +224,10 @@ function lyricTailRanges(id: string, outro: Pick<analyzer.OutroInfo, 'startMs'>,
 }
 
 export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<AnalyzeStats> {
+  const workingStems = regularStemWorkingMode();
+  if (workingStems && opts.plan?.items.some(item => item.request.stems)) {
+    throw new Error('Persistent regular stem caching is on hold. Choose acoustic or vocal analysis; regular stems are prepared from the queue.');
+  }
   if (!(await analyzer.isAvailable())) {
     // The only two things resolveBackend() consults, named by their env vars.
     console.log('[analyze] no analysis backend (ANALYZE_URL sidecar / ANALYZE_PYTHON venv) — skipping');
@@ -246,7 +251,7 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
   // disk, LRU-swept below. Same three-way capability question as audio/vocal.
   const stemDecision = backfillDecision({
     dimension: 'stem',
-    wanted: opts.stemBackfill ?? settings.get()?.audio?.stemCache === true,
+    wanted: !workingStems && (opts.stemBackfill ?? settings.get()?.audio?.stemCache === true),
     capable: analyzer.vocalActivityAvailable(),
     error: analyzer.vocalActivityError(),
     backend,
@@ -339,9 +344,11 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
   // Airplay demand is turned into Sub/Beats work only when a Library pass that
   // can run Demucs is already happening. Reserve those jobs before ordinary
   // stem admission so the pass does not write regular stems it will upgrade.
-  const demucsScan = opts.stemBackfill !== false && (plan
+  const selectedSubbeatsScan = workingStems && (opts.stemOnly || opts.stemBackfill === true)
+    && analyzer.vocalActivityAvailable() !== false;
+  const demucsScan = opts.stemBackfill !== false && (selectedSubbeatsScan || (plan
     ? plan.facets.some(facet => facet === 'stems' || facet === 'vocal') && analyzer.vocalActivityAvailable() !== false
-    : stemCache || vocalBackfill);
+    : stemCache || vocalBackfill));
   if (demucsScan && settings.get()?.transitions?.subbeatsOnAirCaching === true) {
     queueRecentAiredTracks();
   }

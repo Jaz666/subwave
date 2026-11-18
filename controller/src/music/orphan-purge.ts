@@ -62,6 +62,7 @@
 //   to an operator's confirm. It still releases what came back, and it stamps
 //   each quarantine's name like the manual one.
 
+import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
 import { readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { mapPool } from '../util/async-pool.js';
@@ -284,6 +285,8 @@ export async function runOrphanPurge(opts: {
   rowDurationSec?: (id: string) => number | null;
 
 }): Promise<PurgeReport> {
+  if (opts.automatic && regularStemWorkingMode()) return { ...emptyReport(!opts.confirm), refused: true,
+    reason: 'Automatic stem-cache deletion is on hold while existing files are retained' };
   if (!opts.confirm) return purgePass(opts);
   if (confirmedPassRunning) {
     return { ...emptyReport(false), refused: true, reason: 'another purge pass is running' };
