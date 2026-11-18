@@ -559,3 +559,45 @@ For this version, tracks lacking the required verified shared-grid evidence use
 ordinary transitions; existing eligible shared-grid tracks can use the new
 workflow without rescanning the rest of the library. Do not silently refresh
 library analysis or introduce a new bulk scan as part of rollout.
+
+### Working storage safeguards
+
+The working-cache owner now receives the current required window keys as well
+as its nine-track membership. A track remaining in the queue no longer retains
+obsolete windows indefinitely after its grid, duration or incoming partner
+changes. Cleanup removes only hash-named window directories in the dedicated
+working root, never links or miscellaneous files. Process leases and the bounded
+worker/render busy stamps protect the entire track during an operation, including
+across controller restarts; release or a subsequent reconciliation removes stale
+windows after that protection expires. Already rendered seams retain independent
+WAVs and captured preview envelopes. The old persistent cache is untouched.
+
+CPU preparation checks available space before downloading, and checks again
+before separation after the download. It uses the analyzer's actual staging root
+and configured download cap, sums estimates when staging and working output share
+a filesystem, and leaves 256 MiB per volume for station work. Window estimates
+allow uncompressed stereo intermediate copies without relying on FLAC compression.
+Cached-window previews are optional and skip work if space is unavailable. Render
+admission separately allows the single stereo PCM_16 seam WAV. A failed or unknown
+space check releases leases, logs the preparation/render failure and leaves the
+ordinary transition available; it never initiates a library scan or old-cache
+eviction to make room.
+
+These are admission estimates, not reserved disk blocks. Other writers can still
+consume space, and a sidecar's private temporary filesystem is not visible to the
+controller. Existing preparation/render failure fallback remains necessary.
+
+Validation: all 261 stem-related controller tests pass. After the final render
+estimate and failure-path assertions, all 30 focused regular-stem tests pass
+again. Coverage includes same-volume aggregation, separate-volume refusal,
+unknown space, missing-parent discovery without directory creation, refusal
+before download and after download with staged-file cleanup, render refusal and
+lease release, and obsolete-window retirement under both process and restart
+protection. Controller lint and full type-check pass with zero errors and the
+same 1,920 existing warnings. No Docker build, browser test, real CPU benchmark
+or station operation was performed.
+
+Next: complete the remaining advanced Library facet presentation and exercise
+the broader working candidate end to end in isolation. The internal rollout gate
+remains in place; station deployment and incremental grid refresh remain later
+steps.

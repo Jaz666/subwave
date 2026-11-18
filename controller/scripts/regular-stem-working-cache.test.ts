@@ -66,3 +66,42 @@ for (const busyName of ['.regular-busy.json','.regular-render-busy.json']) test(
     await assert.rejects(access(lease.directory));
   } finally { await removeTempDir(root); }
 });
+
+for (const busyName of [null, '.regular-busy.json', '.regular-render-busy.json']) {
+  test(`active tracks retire obsolete windows after ${busyName ?? 'process lease'} settles`, async () => {
+    const root = createTempDir(path.join(tmpdir(), 'regular-working-'));
+    try {
+      const oldKey = 'b'.repeat(64), newKey = 'c'.repeat(64);
+      const cache = new RegularStemWorkingCache(root);
+      await cache.reconcile(null, ['active'], [{ trackId: 'active', key: oldKey }]);
+      const lease = await cache.acquire('active');
+      assert.ok(lease);
+      const oldWindow = path.join(lease.directory, oldKey);
+      const newWindow = path.join(lease.directory, newKey);
+      await mkdir(oldWindow); await mkdir(newWindow);
+      await mkdir(path.join(lease.directory, 'operator-notes'));
+      await symlink(oldWindow, path.join(lease.directory, 'd'.repeat(64)));
+      await writeFile(path.join(lease.directory, 'notes.txt'), 'keep');
+      const windows = [{ trackId: 'active', key: newKey }];
+      if (busyName) {
+        await writeFile(path.join(lease.directory, busyName), JSON.stringify({ until: Date.now()+60_000 }));
+        await lease.release();
+        const restarted = new RegularStemWorkingCache(root);
+        await restarted.reconcile(null, ['active'], windows);
+        await access(oldWindow);
+        await writeFile(path.join(lease.directory, busyName), JSON.stringify({ until: Date.now()-1 }));
+        await restarted.reconcile(null, ['active'], windows);
+      } else {
+        await cache.reconcile(null, ['active'], windows);
+        await access(oldWindow);
+        await lease.release();
+      }
+      await assert.rejects(access(oldWindow));
+      await access(newWindow);
+      const entries = await readdir(lease.directory, { withFileTypes: true });
+      assert.ok(entries.some(entry => entry.name === 'd'.repeat(64) && entry.isSymbolicLink()));
+      await access(path.join(lease.directory, 'notes.txt'));
+      await access(path.join(lease.directory, 'operator-notes'));
+    } finally { await removeTempDir(root); }
+  });
+}

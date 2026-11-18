@@ -3,6 +3,7 @@
  * leases need survive rendering, not subsequent mixer playback of that WAV.
  */
 import path from 'node:path';
+import { requireRegularStemSpace, regularStemWindowBytes } from './regular-stem-space.js';
 import { prepareRegularStemPreview } from './regular-stem-preview.js';
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { config } from '../config.js';
@@ -16,6 +17,7 @@ import { regularStemPairDecision } from './regular-stem-policy.js';
 import { RegularStemWorkingCache } from './regular-stem-working-cache.js';
 
 export class RegularStemRuntime {
+  constructor(private readonly requireSpace = requireRegularStemSpace) {}
   private readonly cache = new RegularStemWorkingCache(path.join(config.stateDir, 'regular-stems-working'));
   private queuedAt = new Map<string, number>();
   private wanted = new Map<string, RegularStemWindowNeed>();
@@ -57,7 +59,7 @@ export class RegularStemRuntime {
     const keys = new Set(needs.map(need => need.key));
     for (const key of this.queuedAt.keys()) if (!keys.has(key)) this.queuedAt.delete(key);
     this.wanted = new Map(needs.map(need => [need.key, need]));
-    this.membership = this.cache.reconcile(currentId, queue.map(item => item.id));
+    this.membership = this.cache.reconcile(currentId, queue.map(item => item.id), needs);
     // Rejection is handled here as well as by the job waiting on membership.
     void this.membership.catch(error => this.log(`Regular stems working cache unavailable: ${String(error)}`));
     this.lane.update(needs);
@@ -119,8 +121,14 @@ export class RegularStemRuntime {
       await release(); return null;
     }
     try {
+      // The regular renderer writes one stereo PCM_16 WAV, with no lead clip.
+      const renderBytes = Math.ceil((pair.tail.endMs-pair.tail.startMs)*44.1*2*2) + 1024*1024;
+      await this.requireSpace([{ directory: path.join(config.stateDir, 'transitions'), bytes: renderBytes }]);
       for (const marker of markers) await writeFile(marker,JSON.stringify({until:Date.now()+Math.max(60000,config.analyzer.renderTimeoutMs+5000)}));
-    } catch { await release(); return null; }
+    } catch (error) {
+      this.log(`Regular stems render skipped: ${String(error)}`);
+      await release(); return null;
+    }
     if (!valid()) { await release(); return null; }
     return { valid, tail: { stemsDir: this.directory(pair.tail), regularKey: pair.tail.key },
       head: { stemsDir: this.directory(pair.head), regularKey: pair.head.key }, release };
@@ -137,15 +145,22 @@ export class RegularStemRuntime {
     let staged: Awaited<ReturnType<typeof analyzer.downloadCapped>> | null = null;
     try {
       if (await this.verified(need)) {
-        await prepareRegularStemPreview(this.directory(need), need).catch(() => {});
+        await this.requireSpace([{ directory: lease.directory, bytes: 1024 * 1024 }])
+          .then(() => prepareRegularStemPreview(this.directory(need), need)).catch(() => {});
         return true;
       }
       if (await this.cache.hasBusyJob()) return 'deferred';
       if (Date.now() >= need.deadlineMs || !this.wanted.has(key)) return false;
+      const windowBytes = regularStemWindowBytes(need.startMs, need.endMs);
+      await this.requireSpace([
+        { directory: analyzer.ANALYZE_TMP_DIR, bytes: analyzer.ANALYZE_MAX_BYTES + 1024 * 1024 },
+        { directory: lease.directory, bytes: windowBytes },
+      ]);
       staged = await analyzer.downloadCapped(need.trackId);
       if (quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)) return false;
       if (bulkPassRunning()) return 'deferred';
       if (!staged.complete || Date.now() >= need.deadlineMs || !this.wanted.has(key)) return false;
+      await this.requireSpace([{ directory: lease.directory, bytes: windowBytes }]);
       await writeFile(path.join(lease.directory, '.subwave-regular-stems'), '1');
       const busy = path.join(lease.directory, '.regular-busy.json');
       await writeFile(busy, JSON.stringify({ until: Date.now()+10*60_000 }));

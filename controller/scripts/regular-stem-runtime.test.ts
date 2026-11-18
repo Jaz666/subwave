@@ -6,12 +6,14 @@ import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FacetRequestOpts } from '../src/music/analyzer.js';
 import { regularStemNeeds, type RegularStemQueueEvidence } from '../src/broadcast/regular-stem-needs.js';
+import { requireRegularStemSpace } from '../src/broadcast/regular-stem-space.js';
 import type { BeatGridProvenance } from '../src/schemas/beat-grid.js';
 
 test('real preparation owner orders tail/head, pauses for render, leases sources and ignores old cache', async () => {
   const audio = Buffer.alloc(2048,1);
   const fingerprint = createHash('sha256').update(audio).digest('hex');
   let hold=false;
+  let downloads=0;
   let held: {directory:string;window:NonNullable<FacetRequestOpts['regular_stem_window']>;response:ServerResponse} | undefined;
   let onHeld=()=>{},onClosed=()=>{};
   const posts: Array<{side:string;start_ms:number;end_ms:number}> = [];
@@ -21,6 +23,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
       res.end(JSON.stringify({ok:true,engines:['analyze'],analyze_regular_stems_version:2})); return;
     }
     if(req.url !== '/analyze') {
+      downloads++;
       res.setHeader('Content-Type','audio/flac'); res.end(audio); return;
     }
     let raw=''; for await(const chunk of req) raw+=chunk;
@@ -57,7 +60,11 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     headGrid:grid(0,40000),tailGrid:grid(190000,240000)});
   const old=path.join(config.stateDir,'stems','a');
   await mkdir(old,{recursive:true});await writeFile(path.join(old,'tail-drums.flac'),'old cache');
-  const runtime=new RegularStemRuntime();
+  let diskFull=false;
+  const runtime=new RegularStemRuntime(async requests=>{
+    if(diskFull) throw new Error('Insufficient free space');
+    await requireRegularStemSpace(requests);
+  });
   let wakes=0,done:()=>void=()=>{};
   const ready=new Promise<void>(resolve=>{done=resolve;});
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -71,7 +78,10 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     assert.ok(windows.some(window=>window.trackId==='b' && window.side==='head' && window.state==='ready'));
     assert.ok(windows.every(window=>Object.keys(window).sort().join(',')==='side,state,trackId'));
 
-    const sources=await runtime.sources('a','b');assert.ok(sources);
+    diskFull=true;
+    assert.equal(await runtime.sources('a','b'),null,'low space refuses render');
+    diskFull=false;
+    const sources=await runtime.sources('a','b');assert.ok(sources,'refused render releases its source leases');
     assert.notEqual(sources.tail.stemsDir,old);
     assert.equal(sources.valid(),true);
     runtime.update(null,[track('a'),track('c'),track('b')],()=>{},()=>{});
@@ -85,6 +95,30 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     await assert.rejects(access(sources.tail.stemsDir));
     assert.equal(await readFile(path.join(old,'tail-drums.flac'),'utf8'),'old cache');
     if(timeout)clearTimeout(timeout);
+
+    // Low-space admission is a real preparation failure before fetching any
+    // recording or submitting a CPU job, and cannot pin the queue as pending.
+    for (const failAt of [1,2]) {
+      let checks=0;
+      const blocked = new RegularStemRuntime(async () => {
+        if(++checks === failAt) throw new Error('Insufficient free space');
+      });
+      const beforeDownloads = downloads, beforePosts = posts.length;
+      const evidence=track(`blocked-${failAt}`);
+      let blockedDone:()=>void=()=>{};
+      const blockedReady = new Promise<void>(resolve=>{blockedDone=resolve;});
+      blocked.update(null,[evidence],()=>blockedDone(),()=>{});
+      const blockedTimer = setTimeout(()=>blockedDone(),2000);
+      await blockedReady;
+      clearTimeout(blockedTimer);
+      const need = regularStemNeeds([evidence],Date.now())[0];
+      assert.equal(blocked.lane.state(need.key),'failed');
+      assert.equal(downloads-beforeDownloads,failAt-1,'only the second check follows a download');
+      assert.equal(posts.length,beforePosts,'neither failure submits a CPU job');
+      await assert.rejects(access(path.join(config.stateDir,'analyze-tmp',`${evidence.id}.audio`)));
+      await assert.rejects(access(path.join(path.dirname(blocked.directory(need)),'.regular-busy.json')));
+      blocked.update(null,[],()=>{},()=>{});
+    }
 
     // Real HTTP timeout: the controller loses the reply while the sidecar may
     // still be working. A fresh runtime must defer, not submit a second job.
