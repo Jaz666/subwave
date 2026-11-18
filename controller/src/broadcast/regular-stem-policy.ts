@@ -34,7 +34,9 @@ export type RegularStemPairDecision =
   | { eligible: false; reason: 'subbeats-reserved' | 'track-ineligible' };
 
 // The caller supplies the authoritative Sub/Beats admission result. Saved
-// coverage is deliberately not an input: unprepared dance tracks stay reserved.
+// coverage is deliberately not an input: admitted Sub/Beats tracks stay reserved
+// while preparation is pending. Regular-stem genre eligibility follows the
+// existing upstream stem behavior; pair suitability is judged separately.
 export function regularStemPairDecision(
   out: { regularEligible: boolean; subbeatsEligible: boolean },
   incoming: { regularEligible: boolean; subbeatsEligible: boolean },

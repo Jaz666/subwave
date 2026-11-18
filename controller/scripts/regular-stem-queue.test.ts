@@ -18,7 +18,12 @@ test('queue snapshots prepare in background, pending work holds only before dead
     transitions:{pairDrain:true,stemBlends:true,pickTimeStems:true} });
   for (const id of ['a','b']) {
     db.upsertTrackMeta(id,{title:id,artist:id,genres:['Rock'],duration:240});
-    db.upsertTrackAnalysis(id,{bpm:80});
+    db.upsertTrackAnalysis(id,{bpm:80,beats:[500,1000],bars:[1000],gridProvenance:{
+      version:1,backend:'beat-this-onnx',model:'small0',modelSha256:'a'.repeat(64),
+      preprocessingVersion:1,windowStartMs:0,windowEndMs:40000,
+      evidence:{medianBpm:80,intervalSupport:1,librosaBeatSupport:null},
+      source:{sha256:'b'.repeat(64),bytes:12345,complete:true},
+    }});
   }
   const q = queue as any;
   let snapshots: readonly RegularStemQueueEvidence[] = [];

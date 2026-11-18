@@ -114,7 +114,6 @@ import { regularStemRuntime } from './regular-stem-runtime.js';
 import type { RegularStemQueueEvidence } from './regular-stem-needs.js';
 import * as regularStemDb from '../music/library-db.js';
 import * as beatGridUpgrade from '../music/beat-grid-upgrade.js';
-import { subbeatsDanceGenres } from '../music/subbeats-eligibility.js';
 import { quietOnlyEnabled } from '../music/analyze-quiet-pure.js';
 import * as subbeats from './subbeats.js';
 import { queueAiredTrack as queueSubbeatsFromAirplay } from '../music/subbeats-airplay.js';
@@ -2268,7 +2267,6 @@ class Queue {
           id: String(item.track.id), occurrence: this.regularStemOccurrences.get(item), sent: !!item.sent,
           remainingSec: this.remainingUntilItemAirs(item),
           regularEligible: enabled && stemBlend.regularStemTestTrack(String(item.track.id))
-            && subbeatsDanceGenres(row?.genres ?? []) === 1
             && beatGridUpgrade.trackGridCurrent(String(item.track.id)),
           subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id))
             && beatGridUpgrade.trackGridCurrent(String(item.track.id)),
