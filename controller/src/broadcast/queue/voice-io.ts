@@ -213,7 +213,10 @@ export async function airVoice(
   };
   _voiceChain = turn.then(hold)
     .then(() => {}, () => {}).finally(() => { _voiceHolders--; });
-  if (!await turn) return null;
+  if (!await turn) {
+    if (skipIfBusy) return null;
+    throw new SpeechPublicationCancelled();
+  }
   return { voiceId, clipMs, aired };
 }
 
@@ -653,7 +656,7 @@ function mp3DurationMs(path: string): number | null {
 // Returns null for non-WAV or anything it can't parse, so the caller tries the
 // mp3 reader and then the word-count estimate. Reads only the first 4KB —
 // headers are tiny.
-function wavDurationMs(path: string): number | null {
+export function wavDurationMs(path: string): number | null {
   let fd: number | null = null;
   try {
     fd = openSync(path, 'r');
