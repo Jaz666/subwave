@@ -11,6 +11,9 @@
 // reported verbatim. requireAdmin, like every operator surface.
 
 import { Router } from 'express';
+import { regularStemRuntime } from '../broadcast/regular-stem-runtime.js';
+import { regularStemTestEnabled } from '../broadcast/stem-blend.js';
+import { regularStemStatusSchema } from '../schemas/regular-stems.js';
 import { router as stemBlendPreviewRouter } from './stem-blend-preview.js';
 import { queue } from '../broadcast/queue.js';
 import { requireAdmin } from '../middleware/auth.js';
@@ -21,6 +24,13 @@ import * as settings from '../settings.js';
 
 export const router = Router();
 router.use(stemBlendPreviewRouter);
+
+router.get('/stems/regular/status', requireAdmin, (_req, res) => {
+  res.json(regularStemStatusSchema.parse({
+    audition: regularStemTestEnabled(), trackLimit: 9,
+    windows: regularStemRuntime.statusWindows(),
+  }));
+});
 
 router.get('/stems/orphans', requireAdmin, async (_req, res) => {
   try {

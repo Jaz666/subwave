@@ -141,3 +141,10 @@ test('a confirmed pass while another runs comes back refused, and that is logged
   const entry = queue.djLog.find((e: { message: string }) => /manual\): refused/.test(e.message));
   assert.ok(entry, 'the refusal is on the booth log');
 });
+
+test('regular preparation status is admin-only and exposes no working paths or keys', async () => {
+  assert.equal((await fetch(`${base}/stems/regular/status`)).status, 401);
+  const response = await fetch(`${base}/stems/regular/status`, { headers: ADMIN });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { audition: false, trackLimit: 9, windows: [] });
+});

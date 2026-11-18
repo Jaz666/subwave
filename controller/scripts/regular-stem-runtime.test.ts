@@ -66,6 +66,11 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     await Promise.race([ready,new Promise<never>((_resolve,reject)=>{timeout=setTimeout(()=>reject(new Error('preparation did not settle')),5000);})]);
     assert.deepEqual(posts.map(p=>p.side),['tail','head']);
     assert.equal(runtime.pending('a','b'),false);
+    const windows=runtime.statusWindows();
+    assert.ok(windows.some(window=>window.trackId==='a' && window.side==='tail' && window.state==='ready'));
+    assert.ok(windows.some(window=>window.trackId==='b' && window.side==='head' && window.state==='ready'));
+    assert.ok(windows.every(window=>Object.keys(window).sort().join(',')==='side,state,trackId'));
+
     const sources=await runtime.sources('a','b');assert.ok(sources);
     assert.notEqual(sources.tail.stemsDir,old);
     assert.equal(sources.valid(),true);

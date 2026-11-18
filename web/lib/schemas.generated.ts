@@ -2231,6 +2231,19 @@ export const OPENAI_COMPATIBLE_GATEWAYS: readonly OpenAICompatibleGateway[] = LL
     return gw ? [gw] : [];
   });
 
+// ─── from controller/src/schemas/regular-stems.ts ────────────────────────
+
+export const regularStemStatusSchema = z.object({
+  audition: z.boolean(),
+  trackLimit: z.literal(9),
+  windows: z.array(z.object({
+    trackId: z.string(),
+    side: z.enum(['head', 'tail']),
+    state: z.enum(['pending', 'running', 'ready', 'failed', 'absent']),
+  })),
+});
+export type RegularStemStatus = z.infer<typeof regularStemStatusSchema>;
+
 // ─── from controller/src/schemas/request.ts ──────────────────────────────
 
 // Shared listener-request schema — POST /request's `{ text, name }`. Run at the
