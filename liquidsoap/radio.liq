@@ -2469,7 +2469,16 @@ music_meta.on_metadata(synchronous=true, fun (m) ->
     stream_clock_track_id := ""
   end
 )
-music_meta.on_metadata(synchronous=false, on_meta)
+music_meta.on_metadata(synchronous=false, fun(m) -> begin
+  if m["subwave_flow"] == "" or int_of_string(default=0, m["subwave_flow_index"]) == 0 then on_meta(m) end
+end)
+flow_output.on_metadata(synchronous=false, fun(m) -> begin
+  token = "#{m[\"subwave_flow\"]}:#{m[\"subwave_flow_index\"]}"
+  if m["subwave_flow"] != "" and int_of_string(default=0, m["subwave_flow_index"]) > 0 and flow_last_event() != token then
+    flow_last_event := token
+    on_meta(m)
+  end
+end)
 
 # OUTPUT — broadcast to Icecast.
 #

@@ -5,7 +5,7 @@
 // librosa / audio), with two exceptions that skip here: vocal_gate_test.py's
 // case 6 needs torch and runs only inside the subwave-analyzer-heavy image,
 // and analyzer_downbeat_test.py's real-model case needs onnxruntime, librosa
-// and the baked Beat This model (the heavy analyzer image). The analyzer-device
+// and the baked Beat This model. The analyzer-device
 // suite also skips its CUDA case here. The numerical suites use NumPy; when it is unavailable,
 // this shim installs the pinned test-only wheel into a temporary directory, so
 // a clean checkout's `npm test` is reproducible without modifying the user's
@@ -42,7 +42,7 @@ const SUITES = [
   'analyzer_noise_test.py', // decode-noise filter + capability loss (#1300)
   'analyzer_silence_test.py', // edge dead-air measurement (silence trim)
   'analyzer_beat_test.py', // main beat tracking is best-effort (#1647)
-  'analyzer_downbeat_test.py', // ANALYZE_DOWNBEATS: off is today's grid, every fallback too; the real-model case skips here
+  'analyzer_downbeat_test.py', // required Beat This grid, provenance, errors and real-model integration
   'analyzer_facets_test.py', // facet functions are pure; path wrappers = decode + facet
   'analyzer_whole_file_test.py', // loudness v2 + edges: one whole-file decode, absolute floor
   'analyzer_tail_placement_test.py', // tail v2: the window ends where the music stops (stored edges)

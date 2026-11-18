@@ -1,35 +1,29 @@
 #!/usr/bin/env python3
-# The bar grid's downbeat tracker (ANALYZE_DOWNBEATS=beat-this). Run:
+# The required shared beat grid (Beat This). Run:
 # `python3 scripts/analyzer_downbeat_test.py` (exit 0 = pass), and via
 # scripts/analyzer-python.test.ts as part of `npm test`.
 #
 # What this pins, in the order it matters:
-#   - off is today's grid: unset, empty, "off" and an UNKNOWN value all mean
-#     librosa's beats with every 4th as a bar, and an unknown one says so;
-#   - a missing onnxruntime, a missing model or a failed inference falls back
-#     to exactly that grid, logged once, never a failed analysis; a missing
-#     runtime or model (every lean image) says the heavy image is needed, and
-#     a model that is there but won't load says that instead;
-#   - with the tracker on, beats and bars both come from it, bars are a
+#   - legacy environment values cannot disable the required grid;
+#   - a missing runtime/model or failed inference makes the grid unavailable,
+#     logged once, never a silent librosa fallback;
+#   - beats and bars both come from the shared tracker, bars are a
 #     subset of beats, and the tail window's offset is applied;
 #   - the chunking and peak picking match upstream's semantics on hand cases
 #     (tools/beat-this/parity.py proves them against upstream itself);
-#   - with onnxruntime, librosa and the model present (the heavy analyzer
-#     image),
+#   - with onnxruntime, librosa and the model present,
 #     a synthetic 4/4 band track whose first downbeat is one beat in gets its
 #     bars on the real downbeats.
 #
-# NumPy is the only hard dependency. The last case skips without the model
-# runtime, like vocal_gate_test.py's torch case.
+# NumPy is the only hard dependency. The real-model case skips without the
+# runtime/model, like vocal_gate_test.py's torch case.
 
 import importlib.util
-import io
 import math
 import os
 import sys
 import tempfile
 import types
-from contextlib import redirect_stderr
 from unittest.mock import patch
 
 try:
@@ -68,11 +62,6 @@ class _FakeLibrosa:
 FRAMES = np.arange(10)  # beats at 0, 0.5, ... 4.5 s
 
 
-def todays_grid(offset_s=0.0):
-    beats = [int(round((offset_s + 0.5 * k) * 1000.0)) for k in range(10)]
-    return beats, beats[::4]
-
-
 def with_state(fn, mode, tracker=None, failed=False, model=None):
     """Run fn with the tracker's module state set, then restore it."""
     saved = {k: getattr(aw, k) for k in (
@@ -95,16 +84,18 @@ def with_state(fn, mode, tracker=None, failed=False, model=None):
             setattr(aw, k, v)
 
 
-def mode_for(value):
+def t_legacy_setting_cannot_disable_grid():
     saved = os.environ.get("ANALYZE_DOWNBEATS")
-    err = io.StringIO()
+    os.environ["ANALYZE_DOWNBEATS"] = "off"
+
+    class Fixed:
+        def track(self, *_a):
+            return np.array([0.12, 0.62, 1.12, 1.62]), np.array([0.62])
+
     try:
-        if value is None:
-            os.environ.pop("ANALYZE_DOWNBEATS", None)
-        else:
-            os.environ["ANALYZE_DOWNBEATS"] = value
-        with redirect_stderr(err):
-            return aw.downbeats_mode(), err.getvalue()
+        with_state(lambda _logs: assert_grid(
+            aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES),
+            ([120, 620, 1120, 1620], [620])), "beat-this", tracker=Fixed())
     finally:
         if saved is None:
             os.environ.pop("ANALYZE_DOWNBEATS", None)
@@ -112,58 +103,28 @@ def mode_for(value):
             os.environ["ANALYZE_DOWNBEATS"] = saved
 
 
-def t_flag_values():
-    for value in (None, "", "   ", "off", "librosa", "0", "false"):
-        mode, err = mode_for(value)
-        assert mode is None, (value, mode)
-        assert err == "", (value, err)
-    for value in ("beat-this", " Beat-This "):
-        mode, err = mode_for(value)
-        assert mode == "beat-this", (value, mode)
-        assert err == "", (value, err)
+def assert_grid(actual, expected):
+    assert actual == expected, (actual, expected)
 
 
-def t_unknown_value_is_off_and_says_so():
-    for value in ("beatthis", "madmom", "1", "true"):
-        mode, err = mode_for(value)
-        assert mode is None, (value, mode)
-        assert "not recognised" in err and "librosa's bar grid" in err, (value, err)
-
-
-def t_off_is_todays_grid_and_loads_nothing():
-    class Exploding:
-        def __init__(self, *_a, **_k):
-            raise AssertionError("tracker constructed with the flag off")
-
-    saved = aw.DownbeatTracker
+def assert_unavailable(call, message="required Beat This beat grid is unavailable"):
     try:
-        aw.DownbeatTracker = Exploding
-
-        def run(logs):
-            assert aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES) == todays_grid()
-            assert aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES, offset_s=91.25) == todays_grid(91.25)
-            assert logs == [], logs
-
-        with_state(run, None)
-    finally:
-        aw.DownbeatTracker = saved
+        call()
+    except RuntimeError as err:
+        assert message in str(err), err
+    else:
+        raise AssertionError("missing shared grid silently produced a fallback")
 
 
-def t_missing_model_falls_back_logged_once():
-    # A stand-in onnxruntime, so the missing FILE is what fails here even on a
-    # host without the runtime (the next case covers a missing runtime).
+def t_missing_model_fails_grid_logged_once():
     saved = sys.modules.get("onnxruntime", "absent")
     sys.modules["onnxruntime"] = types.ModuleType("onnxruntime")
     try:
         def run(logs):
-            assert aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES) == todays_grid()
-            assert aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES, offset_s=3.0) == todays_grid(3.0)
-            assert aw._downbeat_failed is True
-            loads = [m for m in logs if "needs the heavy analyzer image" in m]
-            assert len(loads) == 1 and len(logs) == 1, logs
-            assert "no Beat This model at" in loads[0], loads
-            assert "librosa's bar grid" in loads[0], loads
-
+            assert_unavailable(lambda: aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES))
+            assert_unavailable(lambda: aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES, offset_s=3.0))
+            loads = [m for m in logs if "Required Beat This grid unavailable" in m]
+            assert len(loads) == 1 and "no-such-beat-this.onnx" in loads[0], logs
         with_state(run, "beat-this", model=os.path.join(HERE, "no-such-beat-this.onnx"))
     finally:
         if saved == "absent":
@@ -172,15 +133,13 @@ def t_missing_model_falls_back_logged_once():
             sys.modules["onnxruntime"] = saved
 
 
-def t_missing_onnxruntime_falls_back():
+def t_missing_onnxruntime_fails_grid():
     saved = sys.modules.get("onnxruntime", "absent")
-    sys.modules["onnxruntime"] = None  # makes `import onnxruntime` raise ImportError
+    sys.modules["onnxruntime"] = None
     try:
         def run(logs):
-            assert aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES) == todays_grid()
-            assert aw._downbeat_failed is True
-            assert any("needs the heavy analyzer image" in m and "onnxruntime" in m for m in logs), logs
-
+            assert_unavailable(lambda: aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES))
+            assert any("Required Beat This grid unavailable" in m and "onnxruntime" in m for m in logs), logs
         with_state(run, "beat-this", model=__file__)
     finally:
         if saved == "absent":
@@ -189,7 +148,7 @@ def t_missing_onnxruntime_falls_back():
             sys.modules["onnxruntime"] = saved
 
 
-def t_unloadable_model_is_not_blamed_on_the_image():
+def t_unloadable_model_fails_grid():
     class Unloadable(aw.DownbeatTracker):
         def load(self):
             raise RuntimeError("INVALID_PROTOBUF")
@@ -197,29 +156,25 @@ def t_unloadable_model_is_not_blamed_on_the_image():
     saved = aw.DownbeatTracker
     try:
         aw.DownbeatTracker = Unloadable
-
         def run(logs):
-            assert aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES) == todays_grid()
+            assert_unavailable(lambda: aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES))
             assert aw.get_downbeat_tracker() is None
-            assert len(logs) == 1, logs
-            assert "load failed (INVALID_PROTOBUF)" in logs[0], logs
-            assert "heavy" not in logs[0], logs
-
+            assert len(logs) == 1 and "Required Beat This grid failed to load (INVALID_PROTOBUF)" in logs[0], logs
         with_state(run, "beat-this", model=__file__)
     finally:
         aw.DownbeatTracker = saved
 
 
-def t_inference_failure_falls_back_logged_once():
+def t_inference_failure_fails_grid_logged_once():
     class Broken:
         def track(self, *_a):
             raise RuntimeError("bad chunk")
 
     def run(logs):
         for _ in range(3):
-            assert aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES) == todays_grid()
-        assert len([m for m in logs if "inference failed" in m]) == 1, logs
-        assert aw._downbeat_tracker is not None  # one bad window keeps the model
+            assert_unavailable(lambda: aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES), "bad chunk")
+        assert len([m for m in logs if "Beat This inference failed" in m]) == 1, logs
+        assert aw._downbeat_tracker is not None
 
     with_state(run, "beat-this", tracker=Broken())
 
@@ -330,7 +285,7 @@ def t_real_model_finds_band_downbeats():
     model = os.environ.get("BEAT_THIS_MODEL", "").strip() or "/opt/analyzer/models/beat_this-small0.onnx"
     have = all(importlib.util.find_spec(m) is not None for m in ("onnxruntime", "librosa"))
     if not have or not os.path.isfile(model):
-        print("      (skipped: needs onnxruntime, librosa and the Beat This model — runs in the heavy analyzer image)")
+        print("      (skipped: needs onnxruntime, librosa and the Beat This model)")
         return
     import librosa
 
@@ -377,16 +332,16 @@ def t_tail_grid_survives_librosa_failure():
 
     with_state(run, "beat-this", tracker=Fixed())
 
-    def legacy(_logs):
+    def no_tracker(_logs):
         with patch.object(aw, "measure_loudness", return_value=(None, None)):
             out = aw.facet_tail(np.ones(20000), 1000, 180.0, 200.0, TailLibrosa)
-        assert "beats" not in out and "bars" not in out and "gridProvenance" not in out, out
         assert out["ending"] == "cold", out
+        assert "beats" not in out and "bars" not in out and "gridProvenance" not in out, out
 
-    with_state(legacy, None)
+    with_state(no_tracker, None)
 
 
-def t_evidence_never_vetoes_and_fallback_is_unlabelled():
+def t_evidence_never_vetoes_and_missing_tracker_fails():
     class Fixed:
         model_sha256 = "a" * 64
 
@@ -408,15 +363,10 @@ def t_evidence_never_vetoes_and_fallback_is_unlabelled():
 
     with_state(run, "beat-this", tracker=Fixed())
 
-    def unlabelled(_logs):
-        assert_unlabelled(aw.measure_bar_grid(None, 22050, _FakeLibrosa, FRAMES))
-    with_state(unlabelled, None)
-    with_state(unlabelled, "beat-this", failed=True)
-
-
-def assert_unlabelled(result):
-    assert result[:2] == todays_grid(), result
-    assert result[2] is None, result
+    def missing(_logs):
+        assert_unavailable(lambda: aw.measure_bar_grid(None, 22050, _FakeLibrosa, FRAMES))
+    with_state(missing, None)
+    with_state(missing, "beat-this", failed=True)
 
 
 def t_invalid_output_and_missing_evidence():
@@ -483,19 +433,17 @@ def t_source_fingerprint_survives_owned_cleanup():
 
         with_state(run, "beat-this", tracker=object())
 
-test("flag values: unset/empty/off are off, beat-this is on, silently", t_flag_values)
-test("an unknown ANALYZE_DOWNBEATS value is off and says so", t_unknown_value_is_off_and_says_so)
-test("flag off: today's grid exactly, no tracker constructed", t_off_is_todays_grid_and_loads_nothing)
-test("missing model: today's grid, one line naming the heavy image", t_missing_model_falls_back_logged_once)
-test("missing onnxruntime: today's grid, the heavy image named", t_missing_onnxruntime_falls_back)
-test("a model that won't load is reported as such, not as a lean image", t_unloadable_model_is_not_blamed_on_the_image)
-test("failed inference: today's grid, logged once, model kept", t_inference_failure_falls_back_logged_once)
+test("legacy setting cannot disable the required shared grid", t_legacy_setting_cannot_disable_grid)
+test("missing model fails the grid facet and logs once", t_missing_model_fails_grid_logged_once)
+test("missing onnxruntime fails the grid facet", t_missing_onnxruntime_fails_grid)
+test("a model that will not load fails the grid facet", t_unloadable_model_fails_grid)
+test("failed inference fails the grid facet and logs once", t_inference_failure_fails_grid_logged_once)
 test("tracker on: beats and bars from it, bars ⊂ beats, offset applied", t_tracker_grid_with_offset)
 test("chunk starts and padding follow upstream's split_piece", t_chunk_starts)
 test("aggregation writes every frame from the earliest chunk", t_frame_logits_cover_every_frame_once)
 test("peak picking, plateau dedup and downbeat snapping", t_peaks_and_snapping)
-test("tail learned grid survives librosa tempo failure; legacy tail still degrades", t_tail_grid_survives_librosa_failure)
-test("hybrid evidence never vetoes; legacy/fallback grids have no learned label", t_evidence_never_vetoes_and_fallback_is_unlabelled)
+test("tail learned grid survives librosa tempo failure; missing tracker fails", t_tail_grid_survives_librosa_failure)
+test("grid evidence never vetoes success; missing tracker fails", t_evidence_never_vetoes_and_missing_tracker_fails)
 test("invalid timestamp output is rejected; absent evidence stays unknown", t_invalid_output_and_missing_evidence)
 test("facet windows share one source fingerprint and preserve unknown/capped identity", t_facet_provenance_binds_source_once)
 test("source fingerprint is captured before an owned download is deleted", t_source_fingerprint_survives_owned_cleanup)
@@ -504,4 +452,4 @@ test("real model: bars land on a synthetic band's downbeats", t_real_model_finds
 if failures:
     print(f"\n{failures} failure(s)")
     sys.exit(1)
-print("\nall downbeat tests passed")
+print("\nall shared beat-grid tests passed")

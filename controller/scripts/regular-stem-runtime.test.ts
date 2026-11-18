@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer, type ServerResponse } from 'node:http';
 import { createHash } from 'node:crypto';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FacetRequestOpts } from '../src/music/analyzer.js';
 import { regularStemNeeds, type RegularStemQueueEvidence } from '../src/broadcast/regular-stem-needs.js';
@@ -29,6 +29,8 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     let raw=''; for await(const chunk of req) raw+=chunk;
     const request=JSON.parse(raw), window=request.regular_stem_window;
     assert.equal(request.stems_device,'cpu');
+    assert.equal((await stat(request.stems_dir)).mode & 0o777,0o777,
+      'the window directory must be writable by the analyzer sidecar');
     assert.equal(window.source_sha256,fingerprint);
     assert.equal(window.source_bytes,audio.length);
     posts.push(window);

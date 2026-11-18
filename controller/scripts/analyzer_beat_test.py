@@ -133,10 +133,12 @@ def t_main_beat_success_keeps_numeric_bpm_and_grid():
     result, logs = _analyze(_SuccessfulBeat())
 
     assert result["bpm"] == 123.5, result
-    assert result["beats"] == [0, 500, 1000, 1500, 2000], result
-    assert result["bars"] == [0, 2000], result
+    # Librosa still supplies BPM, but its arbitrary-phase grid must not be
+    # persisted when the required shared model is unavailable.
+    assert "beats" not in result and "bars" not in result, result
+    assert "grid_provenance" not in result, result
     assert result["confidence"] == 0.8, result
-    assert not logs, logs
+    assert any("shared beat grid failed" in line for line in logs), logs
 
 
 def t_baseline_failure_removes_recovered_wav_but_not_caller_input():

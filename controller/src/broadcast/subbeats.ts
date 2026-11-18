@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { parseWav } from '../audio/wav-edges.js';
 import * as settings from '../settings.js';
 import * as analyzer from '../music/analyzer.js';
+import * as beatGridUpgrade from '../music/beat-grid-upgrade.js';
 import * as loudness from '../music/loudness.js';
 import * as stemCache from '../music/stem-cache.js';
 import { subbeatsPairSnapshot } from '../music/subbeats-pair.js';
@@ -60,6 +61,9 @@ export async function maybeRenderSubbeats(
     subbeats:'fallback',reason,outgoingId:outTrack.id,incomingId:inTrack.id,
   }); return null; };
   if (!outTrack.id || !inTrack.id || outTrack.id === inTrack.id) return fallback('The pair needs two library tracks.');
+  if (!beatGridUpgrade.trackGridCurrent(outTrack.id) || !beatGridUpgrade.trackGridCurrent(inTrack.id)) {
+    return fallback('The pair is waiting for the shared beat grid upgrade.');
+  }
   if (settings.get().transitions.pairDrain === false || !settings.getEffectivePersona()?.djMode) return fallback('DJ mode and pair-aware transitions are required.');
   if (opts.outCapped) return fallback('A track-length cap or show boundary owns this transition.');
   if (opts.inHeadTrimmed) return fallback('The incoming track has a silence trim.');

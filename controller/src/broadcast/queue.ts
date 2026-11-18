@@ -113,6 +113,8 @@ import * as stemBlend from './stem-blend.js';
 import { regularStemRuntime } from './regular-stem-runtime.js';
 import type { RegularStemQueueEvidence } from './regular-stem-needs.js';
 import * as regularStemDb from '../music/library-db.js';
+import * as beatGridUpgrade from '../music/beat-grid-upgrade.js';
+import { subbeatsDanceGenres } from '../music/subbeats-eligibility.js';
 import { quietOnlyEnabled } from '../music/analyze-quiet-pure.js';
 import * as subbeats from './subbeats.js';
 import { queueAiredTrack as queueSubbeatsFromAirplay } from '../music/subbeats-airplay.js';
@@ -2241,6 +2243,16 @@ class Queue {
     this.history.forEach((item, index) => {
       if (item.stemBlend?.regular && (index > 0 || !retainPrevious)) delete item.stemBlend.regular.envelopes;
     });
+    try {
+      const gridTargets = [...(this.current ? [this.current] : []), ...this.upcoming]
+        .filter(item => !!regularStemDb.getTrack(String(item.track.id)))
+        .map(item => String(item.track.id));
+      // Gradually upgrade every library track as it enters the working queue.
+      // One CPU refresh at a time avoids a burst of eight analyzer jobs.
+      const gridTarget = gridTargets.find(id => beatGridUpgrade.upgradeDue(id));
+      if (gridTarget) void beatGridUpgrade.ensureCurrent(gridTarget, message => this.log('mix', message))
+        .then(() => { void this.drainToLiquidsoap(); });
+    } catch (error) { this.log('warn',`Pick-time shared beat grid upgrade unavailable: ${String(error)}`); }
     if (!stemBlend.regularStemTestEnabled()) return;
     const enabled = settings.get().transitions.stemBlends === true
       && !quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)
@@ -2255,8 +2267,11 @@ class Queue {
         return {
           id: String(item.track.id), occurrence: this.regularStemOccurrences.get(item), sent: !!item.sent,
           remainingSec: this.remainingUntilItemAirs(item),
-          regularEligible: enabled && stemBlend.regularStemTestTrack(String(item.track.id)),
-          subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id)),
+          regularEligible: enabled && stemBlend.regularStemTestTrack(String(item.track.id))
+            && subbeatsDanceGenres(row?.genres ?? []) === 1
+            && beatGridUpgrade.trackGridCurrent(String(item.track.id)),
+          subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id))
+            && beatGridUpgrade.trackGridCurrent(String(item.track.id)),
           pairToNextAllowed: !!row && !!next && mix.bpmCompat(outro?.bpm ?? row.bpm,next.bpm) >= 0.7
             && !!stemBlend.regularStemTestStyle(String(item.track.id), String(this.upcoming[index+1]?.track.id)),
           durationMs: (row?.durationSec ?? 0)*1000,

@@ -5,7 +5,7 @@
 import path from 'node:path';
 import { requireRegularStemSpace, regularStemWindowBytes } from './regular-stem-space.js';
 import { prepareRegularStemPreview } from './regular-stem-preview.js';
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { config } from '../config.js';
 import * as settings from '../settings.js';
 import { quietOnlyEnabled } from '../music/analyze-quiet-pure.js';
@@ -166,7 +166,11 @@ export class RegularStemRuntime {
       await writeFile(busy, JSON.stringify({ until: Date.now()+10*60_000 }));
       const directory = this.directory(need);
       await rm(directory, { recursive: true, force: true });
-      await mkdir(directory, { recursive: true });
+      await mkdir(directory, { recursive: true, mode: 0o777 });
+      // The controller may run as root while the analyzer sidecar runs as
+      // subwave. Share this leaf before handing it over; the worker cannot
+      // chmod a controller-owned 755 directory after it is created.
+      await chmod(directory, 0o777).catch(() => {});
       this.log(`Regular stems: preparing ${need.trackId} (${need.side}, CPU)`);
       const processingStarted = Date.now();
       const waitedMs = processingStarted - (this.queuedAt.get(key) ?? processingStarted);

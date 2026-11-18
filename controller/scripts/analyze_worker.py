@@ -248,41 +248,20 @@ def _env_int(name, default, minimum=1):
 ANALYZE_MAX_BYTES = _env_int("ANALYZE_MAX_BYTES", 12 * 1024 * 1024)
 
 
-# --- Downbeat tracker (optional, opt-in) -----------------------------------
-# Off unless ANALYZE_DOWNBEATS=beat-this. librosa's beat_track finds beats but
-# no downbeat, so today's bar grid is every 4th beat from the first one: a 4/4
-# guess whose phase is arbitrary, and render_transition cues the incoming
-# track on that grid. With the flag on, the beat and bar grid of BOTH windows
-# (head and tail) comes from Beat This! (CPJKU, ISMIR 2024) instead: a small
-# ONNX export run by onnxruntime on a numpy front end, no torch involved
-# (tools/beat-this/ has the export and the evaluation). Only the heavy images
-# ship onnxruntime and the model: the grid's only consumers are stem blends
-# and the stem cache, which need Demucs stems, so a lean image falls back to
-# today's grid and says why. BPM and key stay librosa's either way. Unset,
-# empty and unrecognised values all mean today's grid, byte for byte; an
-# unrecognised one also says so once here.
-DOWNBEAT_TRACKERS = ("beat-this",)
-_DOWNBEATS_OFF = ("off", "librosa", "0", "false", "no", "none")
-
-
-def downbeats_mode():
-    """The configured downbeat tracker, or None for today's librosa grid."""
-    raw = os.environ.get("ANALYZE_DOWNBEATS", "").strip().lower()
-    if not raw or raw in _DOWNBEATS_OFF:
-        return None
-    if raw in DOWNBEAT_TRACKERS:
-        return raw
-    # Runs at module load, before log() is defined — write stderr directly.
-    sys.stderr.write(
-        f"[analyze-worker] ANALYZE_DOWNBEATS={raw!r} not recognised "
-        f"(known: {', '.join(DOWNBEAT_TRACKERS)}); using librosa's bar grid\n"
-    )
-    return None
-
-
-DOWNBEATS = downbeats_mode()
-# Baked into the heavy (WITH_DEMUCS=1) builds of docker/Dockerfile.analyzer
-# and docker/Dockerfile.aio. A local offline venv points this at its own copy.
+# --- Shared beat grid (required) --------------------------------------------
+# Beat This! (CPJKU, ISMIR 2024) supplies the beat and bar grid for every
+# analysis tier. librosa still supplies tempo and key, but its arbitrary-phase
+# four-beat bar guess is no longer persisted or used for transition cues.
+# The model is a small ONNX export run by onnxruntime on CPU, no torch involved.
+# A missing model or failed inference makes the grid facet fail; it must never
+# silently stamp a legacy librosa grid as current.
+#
+# The beat grid is mandatory and ANALYZE_DOWNBEATS is intentionally ignored.
+# The name remains in old deployment files, but it can no longer opt out.
+# Shared-grid mode is a constant so a stale env file cannot switch it off.
+DOWNBEATS = "beat-this"
+# Baked into every analyzer image by docker/Dockerfile.analyzer and
+# docker/Dockerfile.aio. A local offline venv points this at its own copy.
 BEAT_THIS_MODEL = (
     os.environ.get("BEAT_THIS_MODEL", "").strip() or "/opt/analyzer/models/beat_this-small0.onnx"
 )
@@ -1439,8 +1418,8 @@ def facet_tail(y_src, sr, offset, duration_s, librosa):
     the controller's audible-end cut of a fade; omitted without pyloudnorm.
 
     A track too short for a distinct outro returns only the edge-silence
-    fields. Pure librosa (+ optional pyloudnorm), so this runs on the LEAN tier
-    too."""
+    fields. The shared grid needs Beat This ONNX; optional loudness curves need
+    pyloudnorm."""
     import numpy as np
 
     if y_src is None:
@@ -1516,8 +1495,8 @@ def facet_tail(y_src, sr, offset, duration_s, librosa):
         log(f"outro tempo tracking failed: {e}")
     try:
         beats_ms, bars_ms, provenance = measure_bar_grid(y, sr, librosa, beat_frames, offset_s=offset)
-    except Exception as e:  # noqa: BLE001 — the grid is garnish, never a gate
-        log(f"outro beat grid failed: {e}")
+    except Exception as e:  # noqa: BLE001 — never persist a legacy grid
+        log(f"outro shared beat grid failed: {e}")
 
     out = {"startMs": int(round(wind_start_s * 1000.0)), "ending": ending}
     # Trailing dead air (absolute floor — see SILENCE_DBFS). Rides this decode
@@ -1980,16 +1959,16 @@ def get_vocal_detector(force=False):
 
 
 # ---------------------------------------------------------------------------
-# Downbeat tracker — Beat This! without torch (ANALYZE_DOWNBEATS=beat-this).
+# Shared beat grid — Beat This! without torch.
 # Mirrors beat_this v1.1.0's own inference path (tools/beat-this/ pins it):
 # preprocessing.LogMelSpect, inference.split_piece / aggregate_prediction and
 # model/postprocessor.Postprocessor("minimal"). tools/beat-this/parity.py
 # proves this reproduces upstream's File2Beats(dbn=False) times on real audio,
 # so a change here is a change against that proof: rerun it.
-# Same degrade-never-crash contract as the CLAP embedder: a missing
-# onnxruntime, a missing model or a failed inference is today's grid.
+# A missing model or inference error is contained to the grid facet; there is
+# no librosa-grid fallback because that would make old and new data indistinguishable.
 # ---------------------------------------------------------------------------
-# Lazily loaded, at most once — None means today's grid. A load failure is
+# Lazily loaded, at most once — None means the shared grid is unavailable. A load failure is
 # logged once and never retried (one missing model must not cost every track
 # a load attempt). Its own clock, NOT the heavy one: this runs on every
 # analysis, and stamping _heavy_last_used would keep CLAP/Demucs resident on
@@ -2003,7 +1982,7 @@ _downbeat_release_started = False
 
 def get_downbeat_tracker():
     global _downbeat_tracker, _downbeat_failed, _downbeat_last_used
-    if DOWNBEATS is None or _downbeat_failed:
+    if _downbeat_failed:
         return None
     if _downbeat_tracker is None:
         try:
@@ -2016,16 +1995,11 @@ def get_downbeat_tracker():
             )
             _maybe_start_downbeat_release()
         except (ImportError, FileNotFoundError) as ex:
-            # The lean images ship neither onnxruntime nor the model.
-            log(
-                f"ANALYZE_DOWNBEATS=beat-this needs the heavy analyzer image "
-                f"(ANALYZER_HEAVY=1, or subwave-aio-heavy), which ships onnxruntime "
-                f"and the Beat This model ({ex}); using librosa's bar grid for this run"
-            )
+            log(f"Required Beat This grid unavailable ({ex})")
             _downbeat_failed = True
             return None
         except Exception as ex:  # noqa: BLE001 — degrade, never crash the worker
-            log(f"Beat This load failed ({ex}); using librosa's bar grid for this run")
+            log(f"Required Beat This grid failed to load ({ex})")
             _downbeat_failed = True
             return None
     _downbeat_last_used = time.time()
@@ -2091,44 +2065,39 @@ def measure_bar_grid(y, sr, librosa, beat_frames, offset_s=0.0):
     the tail window alike: `(beats_ms, bars_ms, provenance)`, absolute ms (`offset_s` is
     the window's start in the file).
 
-    With ANALYZE_DOWNBEATS=beat-this and the tracker loaded, both lists come
-    from Beat This, so the bars are real downbeats and a subset of the beats.
-    Its own beats are used rather than librosa's because its downbeats are
-    snapped to them: a librosa beat list beside Beat This bars would carry bars
-    that are not beats. Anything else is today's grid exactly: librosa's beat
-    frames (`beat_frames`, already tracked for the bpm) and every 4th of them,
-    a 4/4 guess with arbitrary phase. A failed inference falls back the same
-    way for that window and is logged once per process."""
+    Both lists come from Beat This, so bars are real downbeats and a subset of
+    the beats. Its beats are used rather than librosa's because a librosa beat
+    list beside Beat This bars could contain bars that are not beats. Failure
+    raises so the facet is not persisted with legacy timing."""
     global _downbeat_infer_logged
     tracker = get_downbeat_tracker()
-    if tracker is not None:
-        try:
-            beats_s, downs_s = tracker.track(y, sr, librosa)
-            beats_ms = [int(round((offset_s + float(t)) * 1000.0)) for t in beats_s]
-            bars_ms = [int(round((offset_s + float(t)) * 1000.0)) for t in downs_s]
-            provenance = None
-            if getattr(tracker, "model_sha256", None):
-                try:
-                    reference = librosa.frames_to_time(beat_frames, sr=sr)
-                except Exception:  # evidence must not veto a successful learned grid
-                    reference = []
-                provenance = {
-                    "version": 1, "backend": "beat-this-onnx",
-                    "model": "small0" if tracker.model_sha256 == SMALL0_SHA256 else "custom",
-                    "modelSha256": tracker.model_sha256,
-                    "preprocessingVersion": PREPROCESSING_VERSION,
-                    "windowStartMs": int(round(offset_s * 1000)),
-                    "windowEndMs": int(round((offset_s + len(y) / sr) * 1000)),
-                    "evidence": grid_evidence(beats_s, reference),
-                }
-            return beats_ms, bars_ms, provenance
-        except Exception as e:  # noqa: BLE001 — the grid is garnish, never a gate
-            if not _downbeat_infer_logged:
-                _downbeat_infer_logged = True
-                log(f"Beat This inference failed ({e}); using librosa's bar grid (logged once)")
-    bt = librosa.frames_to_time(beat_frames, sr=sr)
-    beats_ms = [int(round((offset_s + float(t)) * 1000.0)) for t in bt]
-    return beats_ms, beats_ms[::4], None
+    if tracker is None:
+        raise RuntimeError("required Beat This beat grid is unavailable")
+    try:
+        beats_s, downs_s = tracker.track(y, sr, librosa)
+        beats_ms = [int(round((offset_s + float(t)) * 1000.0)) for t in beats_s]
+        bars_ms = [int(round((offset_s + float(t)) * 1000.0)) for t in downs_s]
+        provenance = None
+        if getattr(tracker, "model_sha256", None):
+            try:
+                reference = librosa.frames_to_time(beat_frames, sr=sr)
+            except Exception:  # evidence must not veto a successful learned grid
+                reference = []
+            provenance = {
+                "version": 1, "backend": "beat-this-onnx",
+                "model": "small0" if tracker.model_sha256 == SMALL0_SHA256 else "custom",
+                "modelSha256": tracker.model_sha256,
+                "preprocessingVersion": PREPROCESSING_VERSION,
+                "windowStartMs": int(round(offset_s * 1000)),
+                "windowEndMs": int(round((offset_s + len(y) / sr) * 1000)),
+                "evidence": grid_evidence(beats_s, reference),
+            }
+        return beats_ms, bars_ms, provenance
+    except Exception as e:  # noqa: BLE001 — never persist the legacy grid
+        if not _downbeat_infer_logged:
+            _downbeat_infer_logged = True
+            log(f"Beat This inference failed; shared beat grid facet unavailable ({e})")
+        raise
 
 
 def bar_grid(y, sr, librosa, beat_frames, offset_s=0.0):
@@ -3319,20 +3288,14 @@ def facet_head(y, sr, librosa):
     except Exception as e:  # noqa: BLE001 — tempo/grid are garnish, never a gate
         log(f"main beat tracking failed: {e}")
 
-    # Per-beat and per-bar timestamps (ms). measure_bar_grid decides where they come
-    # from: by default librosa's beats above and every 4th one as a bar (a 4/4
-    # guess with arbitrary phase: librosa finds no downbeat), or Beat This's
-    # real downbeats with ANALYZE_DOWNBEATS=beat-this. Best-effort: an
-    # empty/odd grid simply yields fewer/no bars.
+    # Per-beat and per-bar timestamps (ms), both from the required shared grid.
     beats_ms = []
     bars_ms = []
     provenance = None
     try:
         beats_ms, bars_ms, provenance = measure_bar_grid(y, sr, librosa, beat_frames)
-    except Exception as e:  # noqa: BLE001 — beat grid is best-effort
-        log(f"beat grid failed: {e}")
-        beats_ms = []
-        bars_ms = []
+    except Exception as e:  # noqa: BLE001 — never persist a legacy grid
+        log(f"shared beat grid failed: {e}")
 
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
     chroma_mean = [float(x) for x in np.mean(chroma, axis=1)]
@@ -4919,11 +4882,10 @@ def main():
         log("ANALYZE_VOCAL_ACTIVITY on — loading Demucs model...")
         get_vocal_detector()
     # Loaded at boot so a missing model or onnxruntime is in the log before
-    # the first track rather than in the middle of a pass. Fractions of a
-    # second; a failure here just means librosa's grid (get_downbeat_tracker).
-    if DOWNBEATS:
-        log(f"ANALYZE_DOWNBEATS={DOWNBEATS} — loading the downbeat model...")
-        get_downbeat_tracker()
+    # the first track rather than in the middle of a pass. A load failure is
+    # logged here and makes only the beat-grid facets unavailable.
+    log("Loading required Beat This shared beat grid...")
+    get_downbeat_tracker()
 
     # Tell the controller whether this worker can actually emit "sounds-like"
     # audio embeddings, so the admin UI can warn *before* a fruitless run rather
@@ -4968,6 +4930,7 @@ def main():
         "loudness_curve_capable": shutil.which("ffmpeg") is not None,
         "regular_stems_version": 2,
         "subbeats_capable": vocal_capable,
+        "shared_beat_grid_capable": _downbeat_tracker is not None and not _downbeat_failed,
         "subbeats_cache_version": 2,
         "subbeats_suitability_version": 1,
         # Version signal: tail answers carry the short-term loudness curve
@@ -4975,9 +4938,8 @@ def main():
         # a placed tail stored without a curve only on `=== true`.
         "tail_loudness_curve_capable": tail_loudness_curve_capable(),
     }
-    # Which tracker draws the bar grid, present only when one is configured
-    # AND loaded, so a default worker's ready line is byte-identical. Nothing
-    # reads it yet; it is the signal an automatic re-grid would key on.
+    # Retained for older diagnostics; the grid is required rather than
+    # operator-configured.
     if _downbeat_tracker is not None:
         ready["downbeats"] = DOWNBEATS
     log("ready")

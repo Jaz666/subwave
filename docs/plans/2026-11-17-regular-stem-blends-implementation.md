@@ -539,26 +539,13 @@ an active track's working folder, then test the broader candidate end to end in
 isolation. Keep the rollout gate until these checks and the remaining UI migration
 are complete; do not enable it on the live station from this checkpoint.
 
-### Follow-up decision: incremental beat-grid upgrades
+### Incremental beat-grid upgrades
 
-Libraries can exceed 200,000 tracks. Do not make a mass library rescan a
-prerequisite for adopting the new regular Stem Blends workflow. Continue the
-current implementation and station-validation plan first.
+Beat This! is now the required source for head/tail beat grids in normal Library Analysis, on every analyzer tier. The CPU ONNX runtime and pinned small0 model are packaged in lean, heavy, CUDA and AIO images. Failed model loads or inference fail the grid facet instead of persisting a Librosa fallback.
 
-After the station is running the new code, revisit a targeted check at the start
-of pick-time preparation. Use stored grid provenance to distinguish verified
-shared-grid evidence from legacy or unverified data; missing provenance alone
-must not be reported as proof that Librosa produced the grid. The proposed
-follow-up would refresh only the selected track's necessary grids/cues, reassess
-suitability, and prepare stems only if the updated evidence qualifies and time
-allows. It must preserve ordinary-transition fallback and avoid blocking the
-queue. Scheduling, CPU cost and retry behaviour need validation before adoption.
+Existing library rows are not mass-rescanned. As any library track enters the queue's working set, Pick Time refreshes its stale or missing head/tail grid in the background, one track at a time. Until fresh shared-grid evidence is available, stem transitions stand down and the normal transition remains available. The refresh changes only beat/bar arrays and their provenance; it leaves unrelated analysis and all old cache files untouched. Failures cool down for five minutes before retry. Tracks that are never queued remain unchanged until a later scan or queue entry.
 
-This incremental refresh is deferred, not part of the current implementation.
-For this version, tracks lacking the required verified shared-grid evidence use
-ordinary transitions; existing eligible shared-grid tracks can use the new
-workflow without rescanning the rest of the library. Do not silently refresh
-library analysis or introduce a new bulk scan as part of rollout.
+The library-facet version is not bumped, so this does not start a library-wide backfill. New/otherwise-analyzed tracks get Beat This grids through the normal scan; queued legacy rows upgrade gradually as tracks are played.
 
 ### Working storage safeguards
 

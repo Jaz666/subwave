@@ -629,37 +629,16 @@ see basic BPM/key working but vocal or "sounds-like" data missing, you're on the
 lean analyzer — enable the heavy tier with `ANALYZER_HEAVY=1`
 ([above](#enabling-sounds-like--vocals-the-heavy-tier)), not by pulling `tts-heavy`.
 
-### Real downbeats (opt-in, heavy tier)
+### Shared beat grid
 
-librosa finds beats but not downbeats, so the bar grid that stem-blend
-transitions cue on is every 4th beat from the first, a guess that lands the
-incoming track's drop mid-bar more often than not. `ANALYZE_DOWNBEATS=beat-this`
-in the root `.env` takes the grid from [Beat This!](https://github.com/CPJKU/beat_this)
-instead. It needs the heavy analyzer image (`ANALYZER_HEAVY=1`, or the AIO's
-`-heavy` and `-cuda` images), the only ones that ship its small model, and it
-changes nothing you can hear unless stem blends are on: they are the grid's
-only consumer, and they need the heavy tier's Demucs stems anyway. On a lean
-image the flag logs one line saying so and keeps the old grid. On GTZAN's
-human labels it put both blend cues on a real
-downbeat for 69% of clips, against 12% for the old grid
-(`tools/beat-this/README.md` has the evaluation). It costs about 3 s per track
-(head and tail windows) on two cores and up to ~225 MB more analyzer memory
-while loaded
-(`ANALYZE_DOWNBEAT_THREADS` sets the cores). BPM and key don't change.
+Every analyzer tier now uses Beat This! for head and tail beat/bar grids. The small0 ONNX model and CPU ONNX Runtime are included in lean, heavy and CUDA images; this grid inference stays on CPU even when Demucs uses a GPU. `ANALYZE_DOWNBEATS` no longer controls the grid. BPM and key continue to come from librosa.
 
-Tracks analysed before you turned it on keep their old grid until they are
-analysed again. To redo just the grids (head and tail windows, no CLAP or
-Demucs):
+New Library Analysis results use the shared grid automatically. Existing rows are not mass-rescanned: Pick Time refreshes every library track's stale or missing head/tail grid in the background as it enters the working queue, one at a time on CPU. Until refresh succeeds, a track cannot use Sub/Beats or Stem Blend transitions and takes the ordinary transition. Tracks that are never queued remain on their previous analysis until a later scan or queue entry.
 
-```bash
-docker compose exec controller npx tsx src/music/analyze-library.ts --facets head,tail --where all
-```
+On GTZAN's held-out human labels, Beat This! raised downbeat F-score from 13.9 to 77.2 and the share of clips with both blend cues on a real downbeat from 11.9% to 69.2% (`tools/beat-this/README.md`). The analyzer uses two CPU threads by default per worker (`ANALYZE_DOWNBEAT_THREADS`); the model adds roughly 225 MB peak memory while loaded.
 
-A local-venv backend needs `onnxruntime==1.27.0` installed and
-`BEAT_THIS_MODEL` pointing at the model file, the one the heavy images bake:
-[`beat_this-small0.onnx`](https://github.com/perminder-klair/subwave/releases/download/beat-this-small0-v1/beat_this-small0.onnx)
-(sha256 `5cff50fb031bc4a4…`; `tools/beat-this/README.md` has the full hash and
-how to rebuild it).
+A local-venv backend needs `onnxruntime==1.27.0` and `BEAT_THIS_MODEL` pointing at the checksum-pinned model:
+[`beat_this-small0.onnx`](https://github.com/perminder-klair/subwave/releases/download/beat-this-small0-v1/beat_this-small0.onnx) (sha256 `5cff50fb031bc4a43b036f0af4835cf60bf8d43e6ccc8a7e676ed89db53f6eaf`).
 
 ### Running analysis without a sidecar (dev / offline)
 

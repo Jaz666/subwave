@@ -19,9 +19,12 @@ const DANCE_GENRES = new Set([
 export function subbeatsDanceGenresFromJson(value: unknown): number {
   if (typeof value !== 'string') return 0;
   try {
-    const genres: unknown = JSON.parse(value);
-    return Number(Array.isArray(genres) && genres.some(genre => typeof genre === 'string'
-      && (['garage', 'electro', 'acid'].includes(normGenre(genre))
-        || genreRuns(genre).some(run => DANCE_GENRES.has(run)))));
+    return subbeatsDanceGenres(JSON.parse(value));
   } catch { return 0; }
+}
+
+export function subbeatsDanceGenres(genres: unknown): number {
+  return Number(Array.isArray(genres) && genres.some(genre => typeof genre === 'string'
+    && (['garage', 'electro', 'acid'].includes(normGenre(genre))
+      || genreRuns(genre).some(run => DANCE_GENRES.has(run)))));
 }

@@ -265,8 +265,7 @@ amd64-only too, and there's no arm64/Jetson build.
 
 > Verify with `docker ps --filter name=sub-wave-analyzer`. Full details, the
 > `ANALYZE_AUDIO_EMBEDDING`/`ANALYZE_VOCAL_ACTIVITY` runtime flags, the
-> `ANALYZE_DOWNBEATS` bar-grid switch (the `-heavy` and `-cuda` images, AIO
-> included), and
+> required shared beat grid (included in every analyzer tier), and
 > troubleshooting are in [`tts-heavy.md`](tts-heavy.md).
 
 **Expressive voices** — Chatterbox / PocketTTS — stay opt-in in the separate

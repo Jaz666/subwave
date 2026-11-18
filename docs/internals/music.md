@@ -907,9 +907,9 @@ curve through `library.get`), `scripts/tail-placement.test.ts` (v3) and
 already stores a 0.5 s short-term series around where the music stops
 (`loudness_curve_json.tail`), so the four LEVEL readings of the tail facet need
 no librosa decode: the fade or cold `ending`, the wind-down `startMs`, the tail
-`lufs` and the `loudnessCurve` the audible-end cut reads. The tempo, beat and
-bar grid stay librosa's (they wait for a whole-track beat grid), and the tail
-vocals stay Demucs'. The window is the facet's own: the 20 s before the music's
+`lufs` and the `loudnessCurve` the audible-end cut reads. The tempo stays
+librosa-based; beat and bar grids use the required shared Beat This model, and
+the tail vocals stay Demucs'. The window is the facet's own: the 20 s before the music's
 end (the edges, as `tailWindowFor`), read as the short-term points stamped from
 17 s before that end to the end, the blocks that lie wholly inside it. A fade is
 an end point 9 dB or more under the window's 95th percentile; the wind-down
