@@ -277,6 +277,60 @@ def t_transition_refused_chmod():
     assert "could not set mode" not in err.getvalue(), err.getvalue()
 
 
+def t_regular_transition_styles():
+    sr = aw.DEMUCS_SR
+    out_stems = os.path.join(root, "stems", "regular-out")
+    in_stems = os.path.join(root, "stems", "regular-in")
+    zeros = np.zeros((4 * sr, 2), dtype=np.float32)
+    aw.write_stems({name: zeros for name in ("drums", "bass", "other", "vocals")}, "tail", out_stems)
+    aw.write_tail_meta(out_stems, 170.0, 200.0)
+    aw.write_stems({name: zeros for name in ("drums", "bass", "other", "vocals")}, "head", in_stems)
+    bars_out = [170100 + 400 * i for i in range(9)]
+    bars_in = [400 * i for i in range(9)]
+    out = os.path.join(root, "regular-transitions")
+    audio = np.ones((4 * sr, 2), dtype=np.float32) * 0.1
+    real_write = sf.write
+    rendered = []
+
+    def capture(path, data, sample_rate, **kwargs):
+        rendered.append(np.array(data, copy=True))
+        real_write(path, data, sample_rate, **kwargs)
+
+    def read(_path, **_kwargs):
+        return audio, sr
+
+    with patch.object(sf, "read", read, create=True), patch.object(sf, "write", capture):
+        for style in ("drums-late", "rhythm-late", "vocals-late"):
+            result = aw.render_transition({
+                "out": {"stems_dir": out_stems, "gain_db": 0.0,
+                        "outro": {"bars": bars_out, "start_ms": 190000}},
+                "in": {"stems_dir": in_stems, "gain_db": 0.0, "bars": bars_in},
+                "out_dir": out, "clip_name": f"{style}.wav", "regular_style": style,
+            })
+            assert result.get("ok"), result
+            assert result.get("regular_style") == style, result
+            assert result.get("clip_sec") == 3.2, result
+        # Last nine markers cross wind-down; an earlier complete span fits.
+        earlier = aw.render_transition({
+            "out": {"stems_dir": out_stems, "gain_db": 0.0,
+                    "outro": {"bars": bars_out + [173700], "start_ms": 173500}},
+            "in": {"stems_dir": in_stems, "gain_db": 0.0, "bars": bars_in},
+            "out_dir": out, "clip_name": "earlier.wav", "regular_style": "drums-late",
+        })
+        assert earlier.get("ok"), earlier
+        assert earlier["blend_start_sec"] == 170.1, earlier
+        assert earlier["clip_sec"] == 3.2, earlier
+        assert not np.array_equal(rendered[0], rendered[1])
+        assert not np.array_equal(rendered[1], rendered[2])
+        rejected = aw.render_transition({
+            "out": {"stems_dir": out_stems, "gain_db": 0.0,
+                    "outro": {"bars": bars_out, "start_ms": 190000}},
+            "in": {"stems_dir": in_stems, "gain_db": 0.0, "bars": bars_in},
+            "out_dir": out, "clip_name": "full.wav", "regular_style": "full",
+        })
+        assert rejected.get("error") == "unknown-regular-style", rejected
+
+
 print("analyzer_shared_modes_test.py")
 test("stems folder 777 and stem files 666 under umask 022", t_stems)
 test("tail-meta.json 666", t_tail_meta)

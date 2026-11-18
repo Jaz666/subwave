@@ -812,6 +812,12 @@ function vecCount(d: Database.Database): number {
 //     (`era_forced_from`: its original year, source and checked stamp, as
 //     JSON), so removing the decision puts exactly that back; NULL means the
 //     decision did not write this track's year (tracks.setDecisionOriginalYear).
+//   - `album_artist_id`: the first album artist's Subsonic id, written by the
+//     walks beside artist_id (#2333, music/artist-credit.ts). It lets the
+//     mirror answer an artist episode's group-credited records. NULL = not
+//     walked since, or a server that reported no album artist id; either way
+//     episode-source cannot judge the row's credit and keeps the pre-column
+//     rule. Its index is a read accelerator (stats.ts STATS_INDEXES).
 //   - `stems_tail_misses`: stem passes in a row whose proven tail did not land
 //     (#2238, music/stem-stamp-policy.ts). Such a pass leaves stems_at unset so
 //     the backfill tries again, up to a bound. NULL = none; reset with stems_at.
@@ -830,13 +836,18 @@ function ensureNamedColumns(d: Database.Database): void {
     // Which window outro_json/tail_silence_ms/tail_start_ms were measured on:
     // NULL = the file's last ANALYZE_OUTRO_SECONDS, 2 = a window ending where
     // the music stops, placed from the stored edges and confirmed by the
-    // analyzer (library-db/facets.ts tailVersionOf).
+    // analyzer, 3 = placed with the loudness curve (library-db/facets.ts
+    // tailVersionOf, placedTailVersion).
     ['tail_version', 'INTEGER'],
     ['file_path', 'TEXT'], ['file_suffix', 'TEXT'], ['file_size', 'INTEGER'], ['bit_rate', 'INTEGER'],
     ['untaggable_key', 'TEXT'], ['tagged_measured', 'INTEGER'],
     ['era_reason', 'TEXT'], ['album_artist', 'TEXT'], ['album_kind', 'TEXT'], ['era_forced_from', 'TEXT'],
     ['stems_tail_misses', 'INTEGER'],
     ['grid_provenance_json', 'TEXT'],
+    // The first album artist's Subsonic id (artist-credit.firstAlbumArtistId),
+    // so a prepared artist episode reads the same set from the mirror as from
+    // the artist's albums (#2333). NULL = not walked since this column arrived.
+    ['album_artist_id', 'TEXT'],
   ];
   const missing = () => {
     const have = new Set((d.pragma('table_info(tracks)') as Array<{ name: string }>).map((c) => c.name));

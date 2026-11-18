@@ -17,6 +17,7 @@ import { envInt } from '../util/env.js';
 import { dirname, join } from 'node:path';
 import { subbeatsLiveRenderRequestSchema, subbeatsLiveRenderResultSchema } from '../schemas/subbeats.js';
 import { stemBlendPreviewReportSchema, type stemBlendPreviewModeSchema } from '../schemas/stem-blend-preview.js';
+import { parseLoudnessCurve, type LoudnessCurve } from './loudness-curve.js';
 import { parseWholeLoudnessCurve, type WholeLoudnessCurve } from './whole-loudness-curve.js';
 import { getDb, trackFileSize } from './library-db.js';
 import { parseBeatGridProvenance, type BeatGridProvenance } from '../schemas/beat-grid.js';
@@ -110,8 +111,22 @@ export interface AnalysisResult {
   edgeTailMs?: number | null;
   decodedDurationMs?: number | null;
   // Tail facet: true when the analyzer placed the tail window from the
-  // `tailWindow` it was sent (it then ends where the music stops: tail v2).
+  // `tailWindow` it was sent (it then ends where the music stops: tail v2, or
+  // v3 when its outro carries the loudness curve — facets.placedTailVersion).
   tailPlaced?: boolean;
+  // Why a placed tail has no loudness curve, when the analyzer could make one
+  // and had none to give: its own reason, or 'rejected' for one this
+  // controller's parser refuses. null for an analyzer that cannot make the
+  // curve (it says nothing): that tail waits for one that can.
+  tailCurveUnavailable?: string | null;
+}
+
+// Settled-without-a-curve reason for a tail answer: the worker's own, or
+// 'rejected' when it sent a curve parseOutro would not keep.
+function tailCurveUnavailableOf(rawOutro: unknown, outro: OutroInfo | null, said: unknown): string | null {
+  if (outro?.loudnessCurve) return null;
+  if ((rawOutro as Record<string, unknown> | null)?.loudnessCurve != null) return 'rejected';
+  return typeof said === 'string' ? said : null;
 }
 
 // The outgoing track's measured ending. Timestamps are absolute ms.
@@ -127,6 +142,9 @@ export interface OutroInfo {
   // (not null) when detection didn't run — outro_json is the JSON.stringify of
   // this object and the vocal backfill probes the raw text for '"vocalRanges"'.
   vocalRanges?: Section[];
+  // Short-term loudness of the tail window (tail v3, music/loudness-curve.ts).
+  // Omitted when not measured (an analyzer without pyloudnorm) or malformed.
+  loudnessCurve?: LoudnessCurve;
 }
 
 function parseFinite(v: unknown): number | null {
@@ -215,6 +233,7 @@ function parseOutro(v: unknown): OutroInfo | null {
   // "vocalRanges" for the backfill probe.
   const vocalRanges = parseVocalRanges(o?.vocalRanges);
   const gridProvenance = parseBeatGridProvenance(o?.gridProvenance);
+  const loudnessCurve = parseLoudnessCurve(o?.loudnessCurve);
   return {
     startMs: Math.round(startMs),
     ending,
@@ -224,6 +243,7 @@ function parseOutro(v: unknown): OutroInfo | null {
     bars: parseMsList(o?.bars),
     ...(vocalRanges !== null ? { vocalRanges } : {}),
     ...(gridProvenance ? { gridProvenance } : {}),
+    ...(loudnessCurve ? { loudnessCurve } : {}),
   };
 }
 
@@ -279,6 +299,9 @@ interface WorkerMessage {
   // Whole-file loudness answers carry `loudness_curve`. Absent on workers
   // that predate it.
   loudness_curve_capable?: boolean;
+  // Tail answers carry the tail's short-term loudness curve (tail v3). Absent
+  // on workers that predate it.
+  tail_loudness_curve_capable?: boolean;
   loudness_curve?: unknown;
   loudness_curve_unavailable?: unknown;
   loudness_version?: unknown;
@@ -289,6 +312,7 @@ interface WorkerMessage {
   decoded_duration_ms?: unknown;
   tail_window?: unknown;
   regular_stems_version?: number;
+  tail_curve_unavailable?: unknown;
   // Facet-shape answer.
   facets?: Record<string, { status?: string; reason?: string; data?: WorkerMessage }>;
   source?: Record<string, unknown>;
@@ -354,6 +378,7 @@ let _localRegularStems = false;
 let _localSubbeatsSuitability = false;
 let _localSubbeatsShared = false;
 let _localSubbeatsCapable: boolean | null = null;
+let _localTailCurveCapable: boolean | null = null;
 let _localTextCapable: boolean | null = null;
 // Local twins of _sidecarAudioError / _sidecarVocalError — see there.
 let _localAudioError: string | null = null;
@@ -420,6 +445,7 @@ function startWorker(): Promise<void> {
           _localSubbeatsShared = msg.subbeats_cache_version === 2;
           _localSubbeatsSuitability = msg.subbeats_suitability_version === 1;
           _localSubbeatsCapable = msg.subbeats_capable === true && _localSubbeatsShared && _localSubbeatsSuitability;
+          _localTailCurveCapable = typeof msg.tail_loudness_curve_capable === 'boolean' ? msg.tail_loudness_curve_capable : null;
         }
         // After the ready assignments, so a reported loss always wins.
         noteLocalCapabilityLoss(msg);
@@ -494,6 +520,7 @@ export function flatTailOpts(songId: string, tw: TailWindow | null): Pick<Analyz
 // an AnalysisResult; absent fields read null.
 function toAnalysisResult(msg: WorkerMessage): AnalysisResult {
   const curve = msg.loudness_curve == null ? null : parseWholeLoudnessCurve(msg.loudness_curve);
+  const outro = parseOutro(msg.outro);
   return {
           bpm: msg.bpm ?? null,
           musicalKey: msg.key ?? null,
@@ -509,7 +536,7 @@ function toAnalysisResult(msg: WorkerMessage): AnalysisResult {
           gridProvenance: parseBeatGridProvenance(msg.grid_provenance),
           keyRanges: parseKeyRanges(msg.key_ranges),
           audioEmbedding: parseAudioEmbedding(msg.audio_embedding),
-          outro: parseOutro(msg.outro),
+          outro,
           leadSilenceMs: parseSilenceMs(msg.lead_silence_ms),
           tailSilenceMs: parseSilenceMs(msg.tail_silence_ms),
           tailStartMs: parseSilenceMs(msg.tail_start_ms),
@@ -526,6 +553,7 @@ function toAnalysisResult(msg: WorkerMessage): AnalysisResult {
           edgeTailMs: parseSilenceMs(msg.edge_tail_ms),
           decodedDurationMs: parseSilenceMs(msg.decoded_duration_ms),
           tailPlaced: msg.tail_window === 'edges',
+          tailCurveUnavailable: tailCurveUnavailableOf(msg.outro, outro, msg.tail_curve_unavailable),
   };
 }
 
@@ -608,6 +636,7 @@ let _sidecarTailVocalCapable: boolean | null = null;
 let _sidecarFacetsCapable: boolean | null = null;
 let _sidecarWholeFileCapable: boolean | null = null;
 let _sidecarLoudnessCurveCapable: boolean | null = null;
+let _sidecarTailCurveCapable: boolean | null = null;
 let _sidecarWholeFileConcurrency: number | null = null;
 let _sidecarRegularStems = false;
 let _sidecarSubbeatsSuitability = false;
@@ -641,6 +670,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       analyze_facets_capable?: boolean | null;
       analyze_whole_file_capable?: boolean | null;
       analyze_loudness_curve_capable?: boolean | null;
+      analyze_tail_loudness_curve_capable?: boolean | null;
       analyze_whole_file_concurrency?: number | null;
       analyze_regular_stems_version?: number | null;
       analyze_subbeats_capable?: boolean | null;
@@ -659,6 +689,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       _sidecarFacetsCapable = typeof body.analyze_facets_capable === 'boolean' ? body.analyze_facets_capable : null;
       _sidecarWholeFileCapable = typeof body.analyze_whole_file_capable === 'boolean' ? body.analyze_whole_file_capable : null;
       _sidecarLoudnessCurveCapable = typeof body.analyze_loudness_curve_capable === 'boolean' ? body.analyze_loudness_curve_capable : null;
+      _sidecarTailCurveCapable = typeof body.analyze_tail_loudness_curve_capable === 'boolean' ? body.analyze_tail_loudness_curve_capable : null;
       _sidecarWholeFileConcurrency = Number.isInteger(body.analyze_whole_file_concurrency) && (body.analyze_whole_file_concurrency as number) > 0
         ? (body.analyze_whole_file_concurrency as number) : null;
       _sidecarRegularStems = body.analyze_regular_stems_version === 2;
@@ -817,6 +848,16 @@ export function wholeFileAvailable(): boolean | null {
 export function loudnessCurveAvailable(): boolean | null {
   if (_backend === 'sidecar') return _sidecarLoudnessCurveCapable;
   if (_backend === 'local') return _localLoudnessCurveCapable;
+  return null;
+}
+
+// Tail answers carry the tail's short-term loudness curve (tail v3,
+// pyloudnorm). A placed tail stored without one is re-planned only on
+// `=== true`: an analyzer that cannot add it would answer without it again,
+// every run (acoustics-plan, `no-curve`).
+export function tailLoudnessCurveAvailable(): boolean | null {
+  if (_backend === 'sidecar') return _sidecarTailCurveCapable;
+  if (_backend === 'local') return _localTailCurveCapable;
   return null;
 }
 

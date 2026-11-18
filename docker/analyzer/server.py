@@ -771,6 +771,11 @@ async def health():
         # Whole-file loudness answers carry the short-term loudness curve
         # (`loudness_curve`). None on older workers, which never emit the key.
         "analyze_loudness_curve_capable": analyzer_pool.capability("loudness_curve_capable", "whole_file"),
+        # Tail answers carry the tail's short-term loudness curve (tail v3).
+        # None on older workers, which never emit the key.
+        "analyze_tail_loudness_curve_capable": analyzer_pool.capability(
+            "tail_loudness_curve_capable", "tail_loudness_curve"
+        ),
         # How many whole-file requests this host runs at once (its own lane).
         "analyze_whole_file_concurrency": WHOLE_FILE_CONCURRENCY,
         "analyze_regular_stems_version": (2 if analyzer_pool.ready_workers and all(w.ready_meta.get("regular_stems_version") == 2 for w in analyzer_pool.ready_workers) else None),
@@ -934,6 +939,7 @@ async def analyze(req: AnalyzeRequest):
         "pace_curve", "beats", "bars", "key_ranges", "outro", "stems_cached",
         "tail_stems_landed",
         "lead_silence_ms", "tail_silence_ms", "tail_start_ms", "tail_window",
+        "tail_curve_unavailable",
     ):
         if k in msg:
             out[k] = msg[k]

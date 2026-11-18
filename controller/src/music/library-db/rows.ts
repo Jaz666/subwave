@@ -5,6 +5,7 @@
 import type { ExplicitStatus, MoodPoolRecord, MoodPoolRow, EnergyPoolRecord, EnergyPoolRow, TrackKeyRange, TrackOutro, TrackPaceSpan, TrackRecord, TrackRow, TrackSection } from './types.js';
 import { parseBeatGridProvenance } from '../../schemas/beat-grid.js';
 import { parseOutroVocalJson, parseTailVocalRangesJson, parseVocalRangesJson } from '../lyric-vocal.js';
+import { parseLoudnessCurve } from '../loudness-curve.js';
 import { storedYearUntrusted } from '../era-suspect.js';
 
 export function rowToTrack(row: TrackRow): TrackRecord {
@@ -95,6 +96,9 @@ export function parseOutroJson(s: string): TrackOutro | null {
       }
     }
     const gridProvenance = parseBeatGridProvenance(v?.gridProvenance);
+    // The tail's loudness curve (tail v3): kept when valid, ABSENT when
+    // missing or malformed (a bad point would shift every later one).
+    const loudnessCurve = parseLoudnessCurve(v?.loudnessCurve);
     return {
       startMs: Math.round(startMs),
       ending,
@@ -104,6 +108,7 @@ export function parseOutroJson(s: string): TrackOutro | null {
       bars: msList(v?.bars),
       vocalRanges,
       ...(gridProvenance ? { gridProvenance } : {}),
+      ...(loudnessCurve ? { loudnessCurve } : {}),
     };
   } catch {
     return null;

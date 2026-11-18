@@ -26,6 +26,7 @@ import os
 import sys
 import tempfile
 import types
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
@@ -632,8 +633,39 @@ test("stems facet, unmarked root: unavailable, nothing written, vocal still ok",
      t_stems_facet_unmarked_root_is_unavailable_and_writes_nothing)
 test("stems facet, share lost mid-pass: unavailable, no further writes", t_stems_facet_mount_lost_mid_pass_is_unavailable)
 
-test("request-scoped CPU stems do not change subsequent analysis", t_cpu_override_does_not_leak)
+def t_cpu_override_does_not_leak():
+    devices = []
 
+    class Tensor:
+        ndim = 2
+        shape = (2, 8)
+        def unsqueeze(self, _axis): return self
+        def __getitem__(self, _index): return self
+        def cpu(self): return self
+        def numpy(self): return np.zeros((2, 8), dtype=np.float32)
+
+    torch = types.ModuleType("torch")
+    torch.from_numpy = lambda _audio: Tensor()
+    torch.no_grad = nullcontext
+    demucs = types.ModuleType("demucs")
+    demucs.__path__ = []
+    apply = types.ModuleType("demucs.apply")
+    def apply_model(_model, _audio, *, device, **_kwargs):
+        devices.append(device)
+        return [Tensor()]
+    apply.apply_model = apply_model
+    detector = aw.VocalActivityDetector.__new__(aw.VocalActivityDetector)
+    detector.model = object()
+    detector.sources = ("drums", "bass", "other", "vocals")
+    with Patched(resolve_device=lambda: "cuda"), patch.dict(sys.modules, {
+        "torch": torch, "demucs": demucs, "demucs.apply": apply,
+    }):
+        detector.separate(np.zeros((2, 8), dtype=np.float32), device="cpu")
+        detector.separate(np.zeros((2, 8), dtype=np.float32))
+    assert devices == ["cpu", "cuda"], devices
+
+
+test("request-scoped CPU stems do not change subsequent analysis", t_cpu_override_does_not_leak)
 
 def t_regular_explicit_window(mono=False):
     import json

@@ -5,8 +5,8 @@
 // librosa / audio), with two exceptions that skip here: vocal_gate_test.py's
 // case 6 needs torch and runs only inside the subwave-analyzer-heavy image,
 // and analyzer_downbeat_test.py's real-model case needs onnxruntime, librosa
-// and the baked Beat This model (the heavy analyzer image). The numerical suites
-// use NumPy; when it is unavailable,
+// and the baked Beat This model (the heavy analyzer image). The analyzer-device
+// suite also skips its CUDA case here. The numerical suites use NumPy; when it is unavailable,
 // this shim installs the pinned test-only wheel into a temporary directory, so
 // a clean checkout's `npm test` is reproducible without modifying the user's
 // Python environment. A box without python3 still skips cleanly (exit 0).
@@ -36,7 +36,7 @@ const SUITES = [
   'analyzer_embedding_test.py', // batched CLAP + embedding-only backfills (#1426)
   'analyzer_decode_test.py', // incomplete FLAC prefix recovery (#1670)
   'idle_release_test.py', // idle model release + heavy clock (#1099/#1204)
-  'vocal_gate_test.py', // vocal-stem gate thresholds (#1125) + DEMUCS_OVERLAP; case 6 needs torch, skips here
+  'vocal_gate_test.py', // vocal-stem gate thresholds (#1125) + DEMUCS_OVERLAP + DEMUCS_MODEL; case 7 needs torch, skips here
   'test_chatterbox_chunk.py', // chatterbox chunk_text (#1130)
   'tts_heavy_idle_test.py', // tts-heavy idle unload + cold-engine health (#1579)
   'analyzer_noise_test.py', // decode-noise filter + capability loss (#1300)
@@ -46,8 +46,10 @@ const SUITES = [
   'analyzer_facets_test.py', // facet functions are pure; path wrappers = decode + facet
   'analyzer_whole_file_test.py', // loudness v2 + edges: one whole-file decode, absolute floor
   'analyzer_tail_placement_test.py', // tail v2: the window ends where the music stops (stored edges)
+  'analyzer_loudness_curve_test.py', // tail v3: short-term loudness curve (vs ffmpeg ebur128 where available)
   'analyzer_stems_marker_test.py', // no stem writes into an unmarked (unmounted) stems root
   'analyzer_shared_modes_test.py', // shared stems/transitions written 777/666 whatever the umask
+  'analyzer_device_test.py', // cuda self-test + cpu fallback (#2280)
   'analyzer_stem_provenance_test.py', // a stem window rewrite never leaves another recording's window (#2238)
 ];
 
