@@ -2247,7 +2247,7 @@ class Queue {
         return {
           id: String(item.track.id), occurrence: this.regularStemOccurrences.get(item), sent: !!item.sent,
           remainingSec: this.remainingUntilItemAirs(item),
-          regularEligible: enabled && !item.flow && stemBlend.regularStemTestTrack(String(item.track.id)),
+          regularEligible: enabled && stemBlend.regularStemTestTrack(String(item.track.id)),
           subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id)),
           pairToNextAllowed: !!row && !!next && mix.bpmCompat(row.outro?.bpm ?? row.bpm,next.bpm) >= 0.7
             && !!stemBlend.regularStemTestStyle(String(item.track.id), String(this.upcoming[index+1]?.track.id)),

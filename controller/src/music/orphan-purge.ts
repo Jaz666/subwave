@@ -451,6 +451,9 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
           if (gone) report.deletedCount += 1;
           else report.failed += 1;
         }
+        // Recheck operator choices after irreversible deletes before moving live
+        // folders. If this refuses, the usage tally is marked stale below.
+        await opts.beforeMutations?.();
         // 3. Orphans: move into quarantine (same-filesystem rename; no merge).
         await mkdirSafe(qu);
         const names = opts.resolveNames && plan.quarantine.length

@@ -476,7 +476,7 @@ export default function NowPlayingWaveform() {
     })()
     : null;
 
-  const onError = useMemo(() => () => setMessage('Could not load one of the current queue recordings.'), []);
+  const onError = useMemo(() => () => setMessage('Could not load one of the current queue recordings.'), [setMessage]);
 
   return <section className="space-y-2" aria-label="Station waveform">
     <div aria-label="Speech, jingle and bed timeline">
