@@ -1025,31 +1025,32 @@ router.post('/dj/queue-track', requireAdmin, async (req, res) => {
       if (!settings.get().djBehaviour.extendedSleeveNotes) return res.status(409).json({error:'Extended Sleeve Notes is disabled'});
       track=selected.track;reason=selected.reason;
     } else {
-    // Library and Observatory share this single-track operator
-    // endpoint. Resolve before push; album blocks and listener requests have
-    // their own ordering policies and must not expand implicitly here. An
-    // explicit Station Brain selection retains its chosen single-track scope.
-    const flow = subFlows.list().find(flow => flow.enabled && flow.tracks.some(member => member.id === track.id));
-    if (flow) {
-      let prepared: Awaited<ReturnType<typeof subFlows.preparePlayback>> | null = null;
-      try {
-        if (queue.current?.flow || queue.upcoming.some(item => item.flow)) throw new Error('A Flow is already queued or playing.');
-        await flowPlaybackStatus();
-        prepared = await subFlows.preparePlayback(flow.id, flow.revision);
-        const queueDepth = await queue.queueFlow(prepared);
-        const first = prepared.members[0]!;
-        return res.json({
-          ok: true,
-          track: { id: first.id, title: first.title, artist: first.artist },
-          flow: { id: flow.id, name: flow.name, size: prepared.members.length },
-          reason: `“${track.title}” is part of Flow “${flow.name}”; queued all ${prepared.members.length} tracks starting with “${first.title}”.`,
-          queuePosition: queueDepth - prepared.members.length + 1,
-          queueDepth,
-        });
-      } catch (error) {
-        if (prepared) await discardFlow(prepared);
-        // Refuse the whole unit; never silently fall back to the clicked member.
-        throw Object.assign(error instanceof Error ? error : new Error(String(error)), { status: 409 });
+      // Library and Observatory share this single-track operator
+      // endpoint. Resolve before push; album blocks and listener requests have
+      // their own ordering policies and must not expand implicitly here. An
+      // explicit Station Brain selection retains its chosen single-track scope.
+      const flow = subFlows.list().find(flow => flow.enabled && flow.tracks.some(member => member.id === track.id));
+      if (flow) {
+        let prepared: Awaited<ReturnType<typeof subFlows.preparePlayback>> | null = null;
+        try {
+          if (queue.current?.flow || queue.upcoming.some(item => item.flow)) throw new Error('A Flow is already queued or playing.');
+          await flowPlaybackStatus();
+          prepared = await subFlows.preparePlayback(flow.id, flow.revision);
+          const queueDepth = await queue.queueFlow(prepared);
+          const first = prepared.members[0]!;
+          return res.json({
+            ok: true,
+            track: { id: first.id, title: first.title, artist: first.artist },
+            flow: { id: flow.id, name: flow.name, size: prepared.members.length },
+            reason: `“${track.title}” is part of Flow “${flow.name}”; queued all ${prepared.members.length} tracks starting with “${first.title}”.`,
+            queuePosition: queueDepth - prepared.members.length + 1,
+            queueDepth,
+          });
+        } catch (error) {
+          if (prepared) await discardFlow(prepared);
+          // Refuse the whole unit; never silently fall back to the clicked member.
+          throw Object.assign(error instanceof Error ? error : new Error(String(error)), { status: 409 });
+        }
       }
     }
     // Explicit operator action — bypass the request/AI dedup guard (#619) so a
@@ -1075,7 +1076,7 @@ router.post('/dj/queue-track', requireAdmin, async (req, res) => {
     });
   } catch (err) {
     queue.log('error', `/dj/queue-track failed: ${err.message}`);
-    res.status(err.status === 409 ? 409 : 500).json({ error: err.message });
+    res.status(err.status ?? 500).json({ error: err.message });
   }
 });
 

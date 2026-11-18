@@ -16,7 +16,9 @@ state
 # .env.example whitelisted so docs/templates still ship.
 **/.env
 **/.env.*
-!**/.env.example
+# Keep this exception at the root: a recursive exception makes Docker walk
+# excluded state folders, including private analyzer preview directories.
+!/.env.example
 
 # tts-bench writes a WAV per render under its reports/ by default (~30 MB a
 # run), and the dev stack bind-mounts controller/scripts, so a run there lands

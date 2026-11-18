@@ -26,7 +26,7 @@ const { config } = await import('../src/config.js');
 const { prepareFlow, discardFlow, flowPlaybackUri, expectFlowPlayback } = await import('../src/music/sub-flow-playback.js');
 const { queue } = await import('../src/broadcast/queue.js');
 const { nextTransitionLabel } = await import('../src/broadcast/queue/pure.js');
-const { airVoice } = await import('../src/broadcast/queue/voice-io.js');
+const { airVoice, SpeechPublicationCancelled } = await import('../src/broadcast/queue/voice-io.js');
 const originalFetch = globalThis.fetch;
 const originalDrain = queue.drainToLiquidsoap;
 
@@ -188,7 +188,7 @@ test('speech waits for the mixer window and is cancelled if its publication beco
   const stale = airVoice(config.liquidsoap.sayFile, path, 'An outdated clip', 0, { beforeWrite: () => wanted });
   await checked;
   wanted = false;
-  assert.equal(await stale, null);
+  await assert.rejects(stale, SpeechPublicationCancelled);
   await assert.rejects(() => stat(config.liquidsoap.sayFile));
   expectFlowPlayback(false);
 });
