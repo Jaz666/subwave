@@ -16,6 +16,10 @@ import { logEvent } from '../../observability/events.js';
 import { standInToken } from '../stand-in-policy.js';
 import { introMsOf } from './runs.js';
 import { releaseExtendedSleeveNoteReservation } from '../../sleeve-notes/link-selection.js';
+import * as subFlows from '../../music/sub-flow.js';
+import { discardFlow } from '../../music/sub-flow-playback.js';
+import { flowForPrompt } from '../../music/sub-flow-selection.js';
+import { flowPlaybackStatus } from '../liquidsoap-control.js';
 import { VOCAL_RUNWAY_FLOOR_MS } from '../vocal-runway.js';
 
 export interface GeneratedHostLink {
@@ -35,10 +39,12 @@ export async function generatePickLink(
   const hostSpeech = session.captureHostSpeech();
   const introPersona = session.onAirPersona();
   const current = args.current as Track | undefined;
+  const flow = flowForPrompt((current as any)?.subFlow);
   const run = async (suppressExtendedSleeveNote = false) => {
     let sleeveClaimUseId: string | null = null;
     const generated = await generate({
       ...args,
+      flow,
       ...(suppressExtendedSleeveNote ? { suppressExtendedSleeveNote: true } : {}),
       persona: introPersona,
       onSleeveNoteUse: (id: string) => { sleeveClaimUseId = id; },
@@ -47,16 +53,12 @@ export async function generatePickLink(
   };
   const initial = await run();
   if (hostSpeech && !session.isHostSpeechCurrent(hostSpeech)) {
-    return {
-      link: null, introPersona, hostSpeech,
-      sleeveClaimUseId: initial.sleeveClaimUseId,
-    };
+    return { link: null, introPersona, hostSpeech, sleeveClaimUseId: initial.sleeveClaimUseId };
   }
   const initialTrimmed = trimLinkToIntro(initial.generated, current, introPersona);
   if (initial.sleeveClaimUseId && !initialTrimmed) {
-    // A measured vocal onset below the safety floor rejects every link, so a
-    // vanilla retry cannot help. Otherwise retry once without the optional
-    // Spark, then pass the fallback through the identical airtime trim.
+    // A short measured vocal runway rejects every link; otherwise retry once
+    // without the optional Spark and apply the same airtime trim.
     const firstVocalMs = dj.firstVocalMsFor(current);
     try { releaseExtendedSleeveNoteReservation(initial.sleeveClaimUseId); } catch {}
     if (firstVocalMs == null || firstVocalMs >= VOCAL_RUNWAY_FLOOR_MS) {
@@ -145,8 +147,11 @@ export function trimLinkToIntro(
     return null;
   }
   const display = normalizeForDisplay(clean);
-  // Non-DJ personas skip the budget but not the cleanup.
-  if (!speaker?.djMode) return display || null;
+  // Flow links may use only the actual entry's safe opening, never a companion's.
+  const flowRunway = song?.subFlow
+    ? Math.max(0, Number(song.duration ?? song.duration_sec) - settings.get().picker.flowProtectBeforeSec - 4) * 1000 : null;
+  if (flowRunway != null && flowRunway < VOCAL_RUNWAY_FLOOR_MS) return null;
+  if (!speaker?.djMode && flowRunway == null) return display || null;
   // A DURATION budget, so it is counted on the words the engine will read.
   // spokenWordScale folds the display/spoken difference into the pace scale, so
   // the ceiling stays a spoken-word ceiling while the trim lands on the display
@@ -154,7 +159,7 @@ export function trimLinkToIntro(
   // vocal entry leaves no runway.
   const spoken = normalizeForSpeech(clean, settings.get().tts?.corrections, String(speaker.language || ''));
   const pace = speechPaceScale('link', speaker) * spokenWordScale(display, spoken);
-  return dj.enforceIntroBudget(display, introMsOf(song), pace, dj.firstVocalMsFor(song)) || null;
+  return dj.enforceIntroBudget(display, flowRunway == null ? introMsOf(song) : Math.min(flowRunway, introMsOf(song) ?? flowRunway), pace, dj.firstVocalMsFor(song)) || null;
 }
 
 // `link` is attached to the queued item so the queue airs it at the transition
@@ -204,7 +209,7 @@ export async function enqueuePick(
   if (dissolve) track.dissolve = true;
   if (chop) track.chop = true;
   if (loop) track.loop = true;
-  const pos = await queue.push({
+  const queueOptions = {
     track,
     requestedBy: null,
     intent: reason || 'ai pick',
@@ -220,11 +225,31 @@ export async function enqueuePick(
     linkPrev,
     linkClockAt,
     selectionShowAt: showAt,
-    // Marks one of a steer's opening tracks (queue/types.ts); private.
-    steer: steerKey,
-    // The operator asked for this line by hand (a steer's introduction).
-    introByOperator: !!introLink && introByOperator,
-  });
+  };
+  let pos: number;
+  if (song.subFlow) {
+    let prepared: Awaited<ReturnType<typeof subFlows.preparePlayback>> | null = null;
+    try {
+      await flowPlaybackStatus();
+      prepared = await subFlows.preparePlayback(song.subFlow.id, song.subFlow.revision);
+      pos = await queue.queueFlow(prepared, {
+        ...queueOptions, automatic: true, steer: steerKey,
+        introByOperator: !!introLink && introByOperator,
+      });
+    } catch (error) {
+      if (prepared) await discardFlow(prepared);
+      queue.log('picker', `Flow “${song.subFlow.name}” refused: ${error instanceof Error ? error.message : String(error)}`);
+      return -1;
+    }
+  } else {
+    pos = await queue.push({
+      ...queueOptions,
+      // Marks one of a steer's opening tracks (queue/types.ts); private.
+      steer: steerKey,
+      // The operator asked for this line by hand (a steer's introduction).
+      introByOperator: !!introLink && introByOperator,
+    });
+  }
   if (pos === -2) {
     if (sleeveClaimUseId) {
       try { releaseExtendedSleeveNoteReservation(sleeveClaimUseId); } catch {}
