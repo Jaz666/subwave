@@ -538,3 +538,24 @@ Next: add disk-space admission and retirement of obsolete keyed windows within
 an active track's working folder, then test the broader candidate end to end in
 isolation. Keep the rollout gate until these checks and the remaining UI migration
 are complete; do not enable it on the live station from this checkpoint.
+
+### Follow-up decision: incremental beat-grid upgrades
+
+Libraries can exceed 200,000 tracks. Do not make a mass library rescan a
+prerequisite for adopting the new regular Stem Blends workflow. Continue the
+current implementation and station-validation plan first.
+
+After the station is running the new code, revisit a targeted check at the start
+of pick-time preparation. Use stored grid provenance to distinguish verified
+shared-grid evidence from legacy or unverified data; missing provenance alone
+must not be reported as proof that Librosa produced the grid. The proposed
+follow-up would refresh only the selected track's necessary grids/cues, reassess
+suitability, and prepare stems only if the updated evidence qualifies and time
+allows. It must preserve ordinary-transition fallback and avoid blocking the
+queue. Scheduling, CPU cost and retry behaviour need validation before adoption.
+
+This incremental refresh is deferred, not part of the current implementation.
+For this version, tracks lacking the required verified shared-grid evidence use
+ordinary transitions; existing eligible shared-grid tracks can use the new
+workflow without rescanning the rest of the library. Do not silently refresh
+library analysis or introduce a new bulk scan as part of rollout.
