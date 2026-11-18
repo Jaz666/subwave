@@ -124,7 +124,7 @@ Release gates: successful cold-cache on-air pairs across varied material and slo
 
 CPU processing remains mandatory for new regular-blend jobs in this version. These decisions settle the previously listed cache-mode and retention questions. Supported slow-window bounds and CPU thread limits still need measurement during implementation; they do not change the nine-track retention rule.
 
-Implementation order is 1 → 2 → 3 → 4 → 5 → 6, with tests added alongside each change. Keep the regular Stem Blends change reviewable separately from the existing Sub/Beats draft PR, while sharing the agreed grid and analyzer contracts.
+Implementation order is 1 → 2 → 3 → 4 → 5 → 6, with tests added alongside each change. The agreed delivery is one combined draft PR with Sub/Beats, Mixing Desk and regular Stem Blend work, sharing the beat-grid and analyzer contracts.
 
 ## Implementation progress — first development pass
 
@@ -654,3 +654,37 @@ attention to eight-bar timing, the selected stem order, CPU preparation time,
 and ordinary-transition fallback when preparation or pairing is unsuitable.
 The working-mode gate is enabled only on this test station. Do not require a bulk
 grid refresh or delete retained cache files as part of the audition.
+
+### Combined PR #10 update — 18 November 2026
+
+The Sub/Beats draft now carries the regular Stem Blend working-cache implementation
+on the same shared-grid baseline, as requested, rather than splitting the work
+into a second PR. The existing test-station selection gate remains in place while
+the wider implementation is reviewed and auditioned.
+
+- Sub/Beats cue preparation consumes the shared, provenance-stamped beat grid;
+  its existing saved-stem preparation, cue safeguards and beat-matched renderer
+  remain intact.
+- Mixing Desk and on-air waveform views use playback-clock/source-cue alignment,
+  and stem previews wait for confirmed mixer start before presenting an audible
+  mix position. Prepared waveform peaks are reusable and source-stamped.
+- Regular blends use measured native-tempo eight-bar windows and CPU-only
+  pick-time extraction. A qualifying outgoing track gets a tail first; an
+  incoming head is requested only for an eligible regular pair. The working
+  cache retains the current track plus up to eight queued tracks.
+- Sub/Beats-admitted tracks stay reserved for Sub/Beats regardless of saved
+  coverage. Crossovers use an ordinary transition. Legacy regular cache filling
+  and upgrades are on hold; old files remain untouched. Unsupported or late
+  preparation falls back to an ordinary transition.
+- The operator status and Library scan controls describe the working mode and
+  keep saved Sub/Beats preparation separate. The internal regular-pair audition
+  gate is not yet removed.
+
+Final focused verification on the combined branch: controller regular-stem tests
+(30), Sub/Beats tests (92), now-playing/waveform tests (25), controller lint and
+TypeScript, web waveform tests (10), regular-stem status tests (3), and web lint
+and TypeScript all pass. The cleanup regression now matches the cache invariant:
+deleting quarantine-only data does not mark the live-cache usage snapshot stale.
+The branch has not been newly deployed or broadly enabled by this PR update;
+real queued-pair listening and CPU timing remain rollout evidence, not inferred
+from these automated checks.
