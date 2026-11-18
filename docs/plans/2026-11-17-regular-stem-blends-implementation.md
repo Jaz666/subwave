@@ -601,3 +601,47 @@ Next: complete the remaining advanced Library facet presentation and exercise
 the broader working candidate end to end in isolation. The internal rollout gate
 remains in place; station deployment and incremental grid refresh remain later
 steps.
+
+### Library scan presentation and isolated browser validation
+
+The manual Library scan dialog now reads the same authenticated preparation
+status as Settings, only while the dialog is open. In the working candidate its
+stem choice is labelled "Prepare saved Sub/Beats stems": it processes queued
+Sub/Beats selections under their saved budget. The explanatory text makes clear
+that regular Stem Blends are prepared from the queue and existing files remain
+retained. The original combined-cache wording remains for the audition stage.
+No saved setting or scan command contract changes.
+
+Loading or failed status reads disable only the stem choice and remove it from
+the effective submitted steps. A failed refetch does this even when the query
+retains earlier successful mode data and the operator had already selected
+stems. Other scan steps remain available. Recovery restores the selected choice.
+Explicit persistent-regular-stem facet plans remain refused by the controller;
+ordinary acoustic/vocal analysis and queued Sub/Beats preparation remain separate.
+
+`web/scripts/verify-regular-stem-migration.py` exercises the actual working-mode
+status endpoint, then controlled audition/loading/error responses in the browser.
+It checks stem-only selection and payloads, a failed/refreshed read after selection,
+unchanged settings, and desktop/mobile presentation. It intercepts the scan-start
+command: it does not start analysis. Screenshots were inspected at 1200px and
+390px; the existing scrollable dialog retains its layout without horizontal
+page overflow. The fake Navidrome's expected error notifications are not evidence
+of a working-stem failure.
+
+The isolated controller used a fresh temporary state directory with three
+synthetic library/history rows, a loopback stub analyzer reporting capabilities,
+and unreachable fake Navidrome/mixer/stream endpoints. No station data or files
+were copied. The new browser checks pass; the existing Library search verification
+and all six query-cache verification checks pass. All nine admin-query audit tests
+and the static query audit pass; the UI detector reports no findings. Temporary
+services have been stopped and their generated web config changes reverted.
+This validates the operator UI and its command boundary, not real Demucs timing,
+rendered audio or a live mixer handoff. The wider candidate's audio path is still
+covered by the existing controller/worker integration tests; a full real-audio
+candidate audition remains before broad station rollout.
+
+Final web lint and full type-check pass without warnings. The branch's next
+acceptance gate is a real-audio audition of the complete working candidate,
+including queue-order changes and ordinary-transition fallback, before proposing
+station deployment. Keep the internal rollout gate until that evidence is
+recorded; do not require bulk grid refresh or delete retained cache files.
