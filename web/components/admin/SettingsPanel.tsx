@@ -26,6 +26,7 @@ import { fieldAria } from '../../lib/form';
 import ArchivesPanel from './ArchivesPanel';
 import BackupPanel from './BackupPanel';
 import OrphanStemsPanel from './OrphanStemsPanel';
+import RegularStemStatusPanel from './RegularStemStatusPanel';
 import {
   SETTINGS_AAC_BITRATES,
   SETTINGS_MP3_BITRATES,
@@ -923,8 +924,9 @@ export default function SettingsPanel({ djBrainEnabled = false, hosted = false }
                     <div className="field-hint">
                       Tries a beat-matched transition when both selected tracks have completed
                       Sub/Beats preparation. Needs DJ mode and pair-aware transitions. If preparation,
-                      timing or the render budget is insufficient, uses Stem-blend seams when enabled,
-                      then the usual crossfade. Applies to future handoffs as they are prepared.
+                      timing or the render budget is insufficient, uses the usual transition.
+                      Tracks eligible for Sub/Beats are reserved for it, including mixed pairs; they
+                      do not use regular Stem Blends. Applies to future handoffs as they are prepared.
                     </div>
                   </div>
 
@@ -986,6 +988,7 @@ export default function SettingsPanel({ djBrainEnabled = false, hosted = false }
               </Card>
             )}
 
+            <RegularStemStatusPanel />
             <OrphanStemsPanel />
             <SaveBar
               note="Stem cache, budget and blend settings apply to the next pick — no restart."

@@ -62,6 +62,13 @@ export class RegularStemRuntime {
     this.lane.update(needs);
   }
 
+  /** In-memory operator diagnostics only: no disk walk or preparation on read. */
+  statusWindows() {
+    return [...this.wanted.values()].map(need => ({
+      trackId: need.trackId, side: need.side, state: this.lane.state(need.key),
+    }));
+  }
+
   pair(outId: string, inId: string): { tail: RegularStemWindowNeed; head: RegularStemWindowNeed } | null {
     if (!this.pairRevisions.has(JSON.stringify([outId,inId]))) return null;
     const tail = [...this.wanted.values()].find(n => n.trackId === outId && n.side === 'tail');

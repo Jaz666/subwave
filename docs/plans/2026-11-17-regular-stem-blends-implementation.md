@@ -380,3 +380,31 @@ Controller lint/type checks pass with no errors (1,920 warnings). Python and web
 unchanged in this pass; no Docker rebuild, live station request, deployment or
 library/cache migration was performed. Continue with the remaining settings,
 status/preview and broad-activation work before proposing station rollout.
+
+### 2026-11-18 — operator preparation status
+
+Added an admin-only `/stems/regular/status` read and a Stems settings panel. The
+read projects only recording ID, head/tail and lane state from existing memory;
+it does not scan caches, call the analyzer, start work, or publish paths/window
+keys through the public queue. A shared Zod schema defines the response and its
+web mirror. The panel polls only while mounted/authenticated and counts current
+queue requests as waiting, processing, prepared, unavailable or past deadline.
+A failed read hides stale counts and reports unknown readiness. An empty desired
+set does not claim an older worker has stopped or that tracks are unsuitable.
+
+The panel explicitly describes the current exact-pair audition scope: CPU,
+tail-first, conditional heads and nine-track working retention. Prepared windows
+are not presented as armed transitions. Non-audition tracks still use existing
+settings, so those controls have not been disabled or described as globally
+paused. Corrected the Sub/Beats fallback help to reflect reservation of eligible
+tracks even for mixed pairs. Broad activation/settings retirement and waveform
+preview migration remain outstanding before station rollout.
+
+Validation: the 11 stem-route tests, real runtime integration test and two new
+web rendering tests pass. These cover admin access, response projection, actual
+ready head/tail states, loading/read failure/empty/inactive mode and the distinction
+between preparation and arming. The UI mechanical detector reports no findings.
+Controller lint/types pass with zero errors and the existing 1,920 warnings;
+web lint/types pass without warnings.
+No browser visual check, live station request, deployment, cache removal or
+library migration was performed in this pass.
