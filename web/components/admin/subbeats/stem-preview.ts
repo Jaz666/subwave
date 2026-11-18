@@ -5,6 +5,7 @@ export const STEM_NAMES = ['vocals', 'drums', 'bass', 'other'] as const;
 export type StemName = typeof STEM_NAMES[number];
 export type StemLanes = Record<StemName, { outgoing: number[]; incoming: number[] }>;
 export type StemTransition = {
+  regular?: { id: string; gainsDb: [number, number]; style: 'drums-late' | 'rhythm-late' | 'vocals-late'; outgoingStartSec: number; incomingStartSec: number };
   kind: 'stem-blend' | 'subbeats'; durationSec: number; incomingAtSec: number;
   incomingAiredAt?: string; outgoingUntilSec: number; outgoingId?: string; incomingId?: string;
   mixStyle?: 'long-blend' | 'short-exchange' | 'bass-swap' | 'drums-first';
@@ -30,11 +31,11 @@ export const MIX_STYLE = {
 export const waveformKeys = {
   events: (id: string | undefined) => ['now-playing', 'visual-events', id] as const,
   stems: (transition: StemTransition) => ['now-playing', 'stem-detail', transition.outgoingId, transition.incomingId,
-    transition.kind, transition.timing, transition.sources, transition.durationSec] as const,
+    transition.kind, transition.regular, transition.timing, transition.sources, transition.durationSec] as const,
 };
 
 export function stemPairKey(transition: StemTransition): string {
-  return `${transition.outgoingId}/${transition.incomingId}/${transition.timing?.outgoingStartSample ?? transition.durationSec}`;
+  return `${transition.outgoingId}/${transition.incomingId}/${transition.regular?.id ?? transition.timing?.outgoingStartSample ?? transition.durationSec}`;
 }
 
 export function stemStyle(transition: StemTransition): string {
@@ -44,7 +45,11 @@ export function stemStyle(transition: StemTransition): string {
 export function stemStages(transition: StemTransition) {
   const timing = transition.timing;
   const stages = [{at:0,label:'Outgoing lead'}, {at:transition.incomingAtSec,label:'Incoming opening enters'}];
-  if (timing) {
+  if (transition.regular) {
+    const delay = transition.regular.style === 'vocals-late' ? .75 : .5;
+    stages.push({at:delay*transition.durationSec,label:transition.regular.style === 'vocals-late'
+      ? 'Incoming vocals enter' : transition.regular.style === 'rhythm-late' ? 'Incoming rhythm enters' : 'Incoming drums enter'});
+  } else if (timing) {
     const sr = timing.sampleRate;
     if (timing.loop) stages.push({at:transition.incomingAtSec + timing.loop.startSample / sr / timing.incomingRate,
       label:'Incoming drum loop'});
@@ -70,7 +75,16 @@ export function stemVolumes(transition: StemTransition, stem: StemName, seconds:
   let outgoing = 0, incoming = 0;
   if (seconds >= 0 && seconds < transition.durationSec) {
     const timing = transition.timing;
-    if (timing) {
+    if (transition.regular) {
+      const position = clamp(seconds/transition.durationSec);
+      const style = transition.regular.style;
+      const delay = style === 'vocals-late' && stem === 'vocals' ? .75
+        : (style === 'drums-late' || style === 'rhythm-late') && stem === 'drums' ? .5
+          : style === 'rhythm-late' && stem === 'bass' ? .5 : 0;
+      const edge = Math.min(1,seconds/.01,(transition.durationSec-seconds)/.01);
+      outgoing = Math.cos(position*Math.PI/2)*edge;
+      incoming = Math.sin(clamp((position-delay)/(1-delay))*Math.PI/2)*edge;
+    } else if (timing) {
       const sr = timing.sampleRate;
       const arrival = timing.handoverFrame/sr;
       // The handoff has an eight-beat release, or (at native tempo) a final
@@ -127,6 +141,7 @@ export function stemSourceSeconds(transition: StemTransition, side: 'outgoing' |
   if (side === 'incoming' && transition.timing && seconds < transition.incomingAtSec) return null;
   const timing = transition.timing;
   const region = transition.sources?.[side];
+  if (transition.regular) return (side === 'outgoing' ? transition.regular.outgoingStartSec : transition.regular.incomingStartSec)+seconds;
   if (!timing) {
     const start = side === 'outgoing' ? (region?.endSec ?? transition.durationSec) - transition.durationSec : 0;
     return start + seconds;

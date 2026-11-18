@@ -34,6 +34,15 @@ test('queue snapshots prepare in background, pending work holds only before dead
   const current = (remaining: number) => ({track:{id:'live',duration:300},startedAt:new Date(Date.now()-(300-remaining)*1000).toISOString()});
   const consumer = setInterval(()=>{void rm(config.liquidsoap.queueFile,{force:true});},20);
   try {
+    const previewItem=()=>({track:{id:'previous'},stemBlend:{regular:{envelopes:{outgoing:null,incoming:null}}}});
+    q.current={...current(290),stemSeam:true};q.upcoming=[];q.history=[previewItem(),previewItem()];
+    q.syncRegularStemPreparation();
+    assert.ok(q.history[0].stemBlend.regular.envelopes,'previous preview survives the listener buffer');
+    assert.equal(q.history[1].stemBlend.regular.envelopes,undefined,'older previews do not become a historical cache');
+    q.current.startedAt=new Date(Date.now()-61000).toISOString();
+    q.syncRegularStemPreparation();
+    assert.equal(q.history[0].stemBlend.regular.envelopes,undefined,'previous preview retires after the buffer');
+    q.history=[];
     q.current=current(180); q.upcoming=[make('a'),make('b')];
     await queue.drainToLiquidsoap();
     assert.equal(q.upcoming[0].sent,false);

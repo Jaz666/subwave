@@ -21,6 +21,7 @@
 // Dash's title. A jingle, bed or pause-talk break never writes that file, so
 // while one airs the answer is still the song before it, as the title is.
 
+import { REGULAR_STEM_PREVIEW_RETAIN_MS, type RegularStemPreview } from '../broadcast/regular-stem-preview.js';
 import { Router } from 'express';
 import { spawn } from 'node:child_process';
 import { createReadStream, lstatSync, readFileSync } from 'node:fs';
@@ -44,6 +45,7 @@ type VisualStem = typeof VISUAL_STEMS[number];
 type VisualStemSide = 'outgoing' | 'incoming';
 type StemSource = { path: string; startSec: number; endSec: number | null; storageGain: number; peaksCachePath?: string };
 type VisualTransition = {
+  regular?: Omit<RegularStemPreview, 'envelopes'>;
   kind: 'stem-blend' | 'subbeats'; durationSec: number; incomingAtSec: number; outgoingUntilSec: number;
   /** Present only after incoming playback is observed; forecasts come from /state. */
   incomingAiredAt?: string;
@@ -213,6 +215,7 @@ export function createNowPlayingFileRouter(deps: {
   stemSource?: (id: string, side: VisualStemSide, stem: VisualStem, subbeats: boolean) => StemSource | null | Promise<StemSource | null>;
   waveformPeaks?: (id: string, signal: AbortSignal) => Promise<WaveformPeaks>;
   waveformPlayback?: (id: string) => WaveformPlayback | null;
+  regularStemPeaks?: (transition: VisualTransition, side: VisualStemSide, stem: VisualStem) => WaveformPeaks | null;
   stemWaveformPeaks?: (source: StemSource, signal: AbortSignal) => Promise<WaveformPeaks>;
   crossfadeSeconds?: () => number;
 }): Router {
@@ -343,6 +346,10 @@ export function createNowPlayingFileRouter(deps: {
       res.status(409).json({ error: 'The stem transition is no longer current.' });
       return;
     }
+    if (transition.regular) {
+      res.status(404).json({ error: 'Working stems are represented by their prepared waveform envelopes.' });
+      return;
+    }
     const source = await (deps.stemSource ?? stemSource)(expectedId, side, stem as VisualStem, transition.kind === 'subbeats');
     if (!source) {
       res.status(404).json({ error: 'The prepared stem waveform is unavailable.' });
@@ -387,6 +394,16 @@ export function createNowPlayingFileRouter(deps: {
       res.status(409).json({ error: 'The stem transition is no longer current.' });
       return;
     }
+    if (transition.regular) {
+      const peaks = deps.regularStemPeaks?.(transition, side, stem as VisualStem);
+      if (!peaks) res.status(404).json({ error: 'The prepared stem waveform is unavailable.' });
+      else {
+        const startSec = side === 'outgoing' ? transition.regular.outgoingStartSec : transition.regular.incomingStartSec;
+        res.set('Cache-Control', 'no-store').json({ ...peaks, startSec,
+          endSec: startSec+peaks.durationSec, storageGain: 1 });
+      }
+      return;
+    }
     const source = await (deps.stemSource ?? stemSource)(expectedId, side, stem as VisualStem, transition.kind === 'subbeats');
     if (!source) {
       res.status(404).json({ error: 'The prepared stem waveform is unavailable.' });
@@ -429,7 +446,7 @@ export function createNowPlayingFileRouter(deps: {
     let stemTransition: VisualTransition | null = null;
     try { if (asked) stemTransition = await deps.stemTransition?.(asked) ?? null; }
     catch { /* no usable transition */ }
-    const bufferedPair = stemTransition?.kind === 'subbeats'
+    const bufferedPair = !!stemTransition
       && stemTransition.outgoingId === asked && stemTransition.incomingId === id;
     if (!id || (asked !== id && !bufferedPair)) {
       res.status(id ? 409 : 404).json({ jingle: null });
@@ -491,7 +508,7 @@ export async function nowPlayingStemTransition(currentId: string): Promise<Visua
   // track may retain it, for the same bounded listener-buffer window. Reads
   // of the current track must still discover its next planned transition.
   const retainedRegular = !active && currentId === previous?.track?.id && !!previous?.stemBlend
-    && !!queue.current?.stemSeam && Date.now() < entryMs + 60_000;
+    && !!queue.current?.stemSeam && Date.now() < entryMs + REGULAR_STEM_PREVIEW_RETAIN_MS;
   if ((retainedSubbeats || retainedRegular) && queue.current) {
     outgoing = previous;
     incoming = queue.current;
@@ -504,6 +521,18 @@ export async function nowPlayingStemTransition(currentId: string): Promise<Visua
   const durationSec = Number(blend.clipSec) || (timing ? timing.clipFrames / timing.sampleRate : 0);
   if (!(durationSec > 0)) return null;
   const ids = { outgoingId: outgoing.track.id, incomingId: incoming.track.id };
+  if (blend.regular) {
+    const { id, gainsDb, style, outgoingStartSec, incomingStartSec } = blend.regular;
+    const regular = { id, gainsDb, style, outgoingStartSec, incomingStartSec };
+    return { kind: 'stem-blend', regular, durationSec, incomingAtSec: 0, outgoingUntilSec: durationSec,
+      ...ids, gainsDb,
+      ...(Number.isFinite(incomingAtMs) ? { incomingAiredAt: new Date(incomingAtMs).toISOString() } : {}),
+      sources: {
+        outgoing: { startSec: regular.outgoingStartSec, endSec: regular.outgoingStartSec+durationSec, storageGain: 1 },
+        incoming: { startSec: regular.incomingStartSec, endSec: regular.incomingStartSec+durationSec, storageGain: 1 },
+      },
+    };
+  }
   const sourceInfo = async (side: VisualStemSide) => {
     const id = side === 'outgoing' ? ids.outgoingId : ids.incomingId;
     const source = await stemSource(id, side, 'drums', !!timing);
@@ -576,5 +605,11 @@ export const router = createNowPlayingFileRouter({
     catch { return null; }
   },
   stemTransition: nowPlayingStemTransition,
+  regularStemPeaks: (transition, side, stem) => {
+    const items = [queue.current, ...queue.upcoming, ...queue.history];
+    const outgoing = items.find(item => item?.track.id === transition.outgoingId
+      && item?.stemBlend?.regular?.id === transition.regular?.id);
+    return outgoing?.stemBlend?.regular?.envelopes?.[side]?.[stem] ?? null;
+  },
   crossfadeSeconds: () => Number(settings.get()?.crossfadeDuration) || 10,
 });

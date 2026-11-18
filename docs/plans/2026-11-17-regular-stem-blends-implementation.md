@@ -408,3 +408,61 @@ Controller lint/types pass with zero errors and the existing 1,920 warnings;
 web lint/types pass without warnings.
 No browser visual check, live station request, deployment, cache removal or
 library migration was performed in this pass.
+
+### 2026-11-18 — working-window live waveform previews
+
+The existing live waveform endpoints still resolved regular sources through the
+persistent cache. New regular renders now carry their own native source offsets,
+style, actual renderer gains and unique render identity. Their small, prepared
+100 ms waveform envelopes travel with the rendered seam. Old persistent sources
+are never substituted when a new preview is missing, including the legacy raw
+stem-audio endpoint. Sub/Beats keeps its existing preview path.
+
+Envelope generation uses the existing ffmpeg/binary waveform implementation in
+the CPU preparation lane, within a shared twelve-second deadline (shorter when
+preparation time is nearly spent, reserving five seconds to settle audio readiness).
+It does not start decoding in the sender or
+on a new regular preview read. Failure leaves the verified audio usable and the
+preview unavailable. Reuse validates source size/mtime, window key, bounds and
+finite normalized peaks. Corrupt binary envelopes are rejected and regenerated.
+No extra model or package is needed. These checks do not constitute a real
+Demucs CPU workload benchmark.
+
+Rendering snapshots already prepared envelopes under its source leases; the
+existing queue/library validity checks still run after those reads. New regular
+clips have unique filenames so another occurrence of the same recording pair
+cannot overwrite the prior clip or reuse its browser peak cache. The operator
+metadata poll carries only small timing/style information, not eight arrays.
+The per-stem endpoint serves the matching saved render's arrays after checking
+the current/retained pair. Source stems can retire normally. History keeps only
+the immediately preceding seam's envelope snapshot through the existing bounded
+sixty-second listener-buffer window, then drops it on a queue preparation tick.
+
+The UI now predicts the actual equal-power outgoing fade and incoming delayed
+fade for drums-late, rhythm-late and vocals-late, at native tempo and from the
+saved absolute source offsets. It no longer labels these new patterns as an
+estimated legacy drum handover. These remain predicted source contributions;
+the final summed limiter is not a live meter.
+
+Broad activation, retirement of legacy regular cache filling/settings and removal
+or replacement of the old cache-based manual audition tool remain before rollout.
+The live station, old cache files and library have not been changed. Browser
+visual verification and an on-station trial have not been performed in this pass.
+
+Validation: all 254 stem-related controller tests and all 23 now-playing-file
+tests pass. The new real-ffmpeg fixture covers source/window identity, decoder-free
+reads, preservation of the readiness margin, invalid-envelope regeneration,
+source replacement and snapshots surviving source retirement. Queue tests cover
+preview expiry. Route/projection tests cover native source offsets and gains,
+no envelope arrays in metadata polls, no old-cache fallback, retained reads after
+incoming entry and rejection of unrelated pairs. All 14 web stem-preview tests
+and nine admin-query audit tests pass; the admin-query and UI mechanical audits
+report no findings. Controller lint/types pass with zero errors and the existing
+1,920 warnings; web lint/types pass without warnings. No browser, Docker build,
+real Demucs run or live station request was made.
+
+Next implementation gate: retire legacy regular filling/upgrade/sweep entry
+points while preserving Sub/Beats, migrate the Stems controls without discarding
+saved values or old files, and replace the exact-pair gate with shared regular
+admission. Run legacy-setting-combination and Sub/Beats retention tests before
+proposing a station candidate.

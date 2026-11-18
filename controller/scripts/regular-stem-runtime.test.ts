@@ -63,7 +63,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     runtime.update(null,[track('a'),track('b')],()=>{if(++wakes===2)done();},()=>{});
-    await Promise.race([ready,new Promise<never>((_resolve,reject)=>{timeout=setTimeout(()=>reject(new Error('preparation did not settle')),5000);})]);
+    await Promise.race([ready,new Promise<never>((_resolve,reject)=>{timeout=setTimeout(()=>reject(new Error('preparation did not settle')),10000);})]);
     assert.deepEqual(posts.map(p=>p.side),['tail','head']);
     assert.equal(runtime.pending('a','b'),false);
     const windows=runtime.statusWindows();
