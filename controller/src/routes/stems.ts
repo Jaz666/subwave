@@ -10,6 +10,7 @@
 // dry run here too, and the empty-id-set / offline refusals are the module's,
 // reported verbatim. requireAdmin, like every operator surface.
 
+import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
 import { Router } from 'express';
 import { regularStemRuntime } from '../broadcast/regular-stem-runtime.js';
 import { regularStemTestEnabled } from '../broadcast/stem-blend.js';
@@ -27,7 +28,7 @@ router.use(stemBlendPreviewRouter);
 
 router.get('/stems/regular/status', requireAdmin, (_req, res) => {
   res.json(regularStemStatusSchema.parse({
-    audition: regularStemTestEnabled(), trackLimit: 9,
+    audition: regularStemTestEnabled(), workingCache: regularStemWorkingMode(), trackLimit: 9,
     windows: regularStemRuntime.statusWindows(),
   }));
 });

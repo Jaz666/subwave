@@ -1,3 +1,4 @@
+import { regularStemWorkingMode } from './regular-stem-mode.js';
 import { prepareEpisodeContext, showPreparation, onPreparationChange, preparationIdentity, preparationSkillAt } from './show-preparation.js';
 import { autoPlaylistShowKey } from './auto-playlist-show.js';
 // Scheduler: the auto-playlist refresh, the per-minute talk tick over
@@ -1330,6 +1331,7 @@ export async function stemCacheSweepTick() {
 // cache it cannot see. 04:47 keeps it clear of the hourly cleanup at :02 and the
 // 04:17 doctor.
 export async function stemOrphanPurgeTick() {
+  if (regularStemWorkingMode()) return;
   try {
     await startSubbeatsCleanup(true);
     if (settings.get()?.audio?.stemOrphanPurgeEnabled !== true) return;

@@ -2,6 +2,7 @@
 // lack them, resumably. Shared by the `npm run tag` phase and `npm run analyze`.
 // The DSP lives in music/analyzer.ts; with no backend this is a clean no-op.
 
+import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
 import { readFile, rm } from 'node:fs/promises';
 import * as db from './library-db.js';
 import * as analyzer from './analyzer.js';
@@ -264,6 +265,10 @@ function hasMeasuredTail(t: { outro?: unknown; tailSilenceMs?: number | null } |
 }
 
 export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<AnalyzeStats> {
+  const workingStems = regularStemWorkingMode();
+  if (workingStems && opts.plan?.items.some(item => item.request.stems)) {
+    throw new Error('Persistent regular stem caching is on hold. Choose acoustic or vocal analysis; regular stems are prepared from the queue.');
+  }
   if (opts.plan) return runAnalysisPassOnce(opts);
   // The whole-file facets ride a regular run only when the operator opted in,
   // as facet plans (same quiet gate, same failure rules). The regular pass
@@ -327,6 +332,7 @@ async function runWholeFileBackfill({ limit, ids, label: what, noticeSkip }: {
 }
 
 async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeStats> {
+  const workingStems = regularStemWorkingMode();
   if (!(await analyzer.isAvailable())) {
     // The only two things resolveBackend() consults, named by their env vars.
     console.log('[analyze] no analysis backend (ANALYZE_URL sidecar / ANALYZE_PYTHON venv) — skipping');
@@ -355,7 +361,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   // disk, LRU-swept below. Same three-way capability question as audio/vocal.
   const stemDecision = backfillDecision({
     dimension: 'stem',
-    wanted: opts.stemBackfill ?? settings.get()?.audio?.stemCache === true,
+    wanted: !workingStems && (opts.stemBackfill ?? settings.get()?.audio?.stemCache === true),
     capable: analyzer.vocalActivityAvailable(),
     error: analyzer.vocalActivityError(),
     backend,
@@ -394,9 +400,11 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   }
 
   const cap = opts.limit && opts.limit > 0 ? opts.limit : undefined;
-  const demucsScan = plan
-    ? plan.facets.some(facet => facet === 'stems' || facet === 'vocal')
-    : stemCache || vocalBackfill;
+  const selectedSubbeatsScan = workingStems && (opts.stemOnly || opts.stemBackfill === true)
+    && analyzer.vocalActivityAvailable() !== false;
+  const demucsScan = opts.stemBackfill !== false && (selectedSubbeatsScan || (plan
+    ? plan.facets.some(facet => facet === 'stems' || facet === 'vocal') && analyzer.vocalActivityAvailable() !== false
+    : stemCache || vocalBackfill));
   // Make the opt-in's existing six-month airplay history eligible in this
   // scan, before the queued set also suppresses regular-stem duplication.
   if (demucsScan && settings.get()?.transitions?.subbeatsOnAirCaching === true) {

@@ -3,6 +3,7 @@
 //
 // Part of the doctor/ split - see ../doctor.ts for the section runner.
 
+import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
 import { recentCalls } from '../llm/log.js';
 import { searchKeyProblem, searchReady, searchWeb } from '../skills/web-search.js';
 import * as system from '../system.js';
@@ -267,7 +268,12 @@ export async function checkTuning(s: StationSettings | null): Promise<Finding[]>
       }
     }
     // Stem cache / stem blends need the same Demucs stack.
-    const wantStems = !!s?.audio?.stemCache || !!s?.transitions?.stemBlends;
+    const workingStems = regularStemWorkingMode();
+    const wantStems = (!workingStems && !!s?.audio?.stemCache) || !!s?.transitions?.stemBlends;
+    if (workingStems && s?.transitions?.stemBlends && !await analyzer.regularStemsAvailable()) {
+      out.push({ label: 'stem transitions', status: 'warn', detail: 'the analyzer does not support CPU working-window preparation',
+        hint: 'Update the analyzer alongside the controller. Regular blends use ordinary transitions until the required window protocol is available.' });
+    }
     if (wantStems && analyzer.vocalActivityAvailable() === false) {
       const upgradeHint = analyzer.backendLabel() === 'local'
         ? 'On the all-in-one image, switch to ghcr.io/perminder-klair/subwave-aio-heavy; on a dev venv, install the heavy Python deps.'
@@ -301,7 +307,7 @@ export async function checkTuning(s: StationSettings | null): Promise<Finding[]>
     // (stem-cache.ts stemsRootStatus) is what tells the two apart. Read-only
     // here: the doctor never creates or adopts the marker.
     let stemsOffline = false;
-    if (wantStems) {
+    if (wantStems && !workingStems) {
       const root = await stemCache.stemsRootStatus({ readOnly: true });
       if (root.action === 'offline') {
         stemsOffline = true;
@@ -313,7 +319,7 @@ export async function checkTuning(s: StationSettings | null): Promise<Finding[]>
         });
       }
     }
-    if (wantStems && !stemsOffline && analyzer.vocalActivityAvailable() !== false && db.isOpen()) {
+    if (wantStems && !workingStems && !stemsOffline && analyzer.vocalActivityAvailable() !== false && db.isOpen()) {
       const use = await stemCache.usage();
       const cached = use.dirs;
       const attempted = db.stemsCachedCount();

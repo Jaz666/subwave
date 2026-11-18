@@ -262,3 +262,16 @@ test('pick-time stems (#2197) hydrates off unless saved true, and saves from the
   assert.deepEqual(ownedFieldErrors({ 'transitions.pickTimeStems': 'bad' }, STEM_FORM_KEYS).map(([path]) => path),
     ['transitions.pickTimeStems']);
 });
+
+
+test('saving regular blend changes retains held legacy cache values and Sub/Beats preferences', () => {
+  const form=settingsForm({audio:{stemCache:true,stemCacheGb:42},
+    transitions:{pickTimeStems:true,subbeatsLive:true,subbeatsOnAirCaching:true}});
+  form.transitions.stemBlends=true;
+  const patch=stemsSavePayload(form).patch;
+  assert.equal(patch.audio.stemCache,true);
+  assert.equal(patch.audio.stemCacheGb,42);
+  assert.equal(patch.transitions.pickTimeStems,true);
+  assert.equal(patch.transitions.subbeatsLive,true);
+  assert.equal(patch.transitions.subbeatsOnAirCaching,true);
+});

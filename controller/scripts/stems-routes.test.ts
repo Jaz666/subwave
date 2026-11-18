@@ -146,5 +146,5 @@ test('regular preparation status is admin-only and exposes no working paths or k
   assert.equal((await fetch(`${base}/stems/regular/status`)).status, 401);
   const response = await fetch(`${base}/stems/regular/status`, { headers: ADMIN });
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { audition: false, trackLimit: 9, windows: [] });
+  assert.deepEqual(await response.json(), { audition: false, workingCache: false, trackLimit: 9, windows: [] });
 });
