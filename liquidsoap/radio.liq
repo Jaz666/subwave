@@ -2239,25 +2239,31 @@ radio = compress(
 # public player applies its listener buffer to this anchor; the Admin applies
 # that buffer plus its saved manual correction.
 #
-# Capture the wall time synchronously at the actual final-mix track boundary,
-# then write the marker from the asynchronous track callback so disk I/O never
-# blocks the streaming thread. These hooks must remain above metadata.map:
-# below it, the original track marks are gone and `on_track` never fires.
-radio.on_metadata(synchronous=true, fun (_) ->
-  if stream_clock_track_id() != "" then stream_clock_started_at := time() end
-)
-radio.on_track(synchronous=false, fun (_) -> begin
-  track_id = stream_clock_track_id()
+# Capture the wall time synchronously at the final-mix metadata boundary, then
+# write from its asynchronous metadata callback so disk I/O never blocks the
+# streaming thread. The callback uses the metadata it received and verifies it
+# against the current music candidate: cross can re-emit the outgoing song's
+# metadata after the incoming song has already been selected.
+radio.on_metadata(synchronous=true, fun (m) -> begin
+  track_id = m["subsonic_id"]
+  if track_id != "" and track_id == stream_clock_track_id() then
+    stream_clock_started_at := time()
+  end
+end)
+radio.on_metadata(synchronous=false, fun (m) -> begin
+  track_id = m["subsonic_id"]
   if track_id != "" then
-    file.write(
-      data=json.stringify(compact=true, {
-        subsonic_id = track_id,
-        startedAtMs = int_of_float(stream_clock_started_at() * 1000.)
-      }),
-      atomic=true,
-      temp_dir=stream_clock_tmp_dir,
-      "#{state_dir}/stream-clock.json"
-    )
+    if track_id == stream_clock_track_id() and stream_clock_started_at() > 0. then
+      file.write(
+        data=json.stringify(compact=true, {
+          subsonic_id = track_id,
+          startedAtMs = int_of_float(stream_clock_started_at() * 1000.)
+        }),
+        atomic=true,
+        temp_dir=stream_clock_tmp_dir,
+        "#{state_dir}/stream-clock.json"
+      )
+    end
   end
 end)
 
