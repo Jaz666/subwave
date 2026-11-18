@@ -640,8 +640,17 @@ rendered audio or a live mixer handoff. The wider candidate's audio path is stil
 covered by the existing controller/worker integration tests; a full real-audio
 candidate audition remains before broad station rollout.
 
-Final web lint and full type-check pass without warnings. The branch's next
-acceptance gate is a real-audio audition of the complete working candidate,
-including queue-order changes and ordinary-transition fallback, before proposing
-station deployment. Keep the internal rollout gate until that evidence is
-recorded; do not require bulk grid refresh or delete retained cache files.
+Final web lint and full type-check pass without warnings. On 2026-11-18 the
+candidate was deployed to the proper test station from this branch. Controller,
+analyzer and web were rebuilt; the existing broadcast container was left running.
+The controller is healthy with `SUBWAVE_REGULAR_STEMS_ROLLOUT=working`, and the
+analyzer reports regular-stem contract version 2. The existing `/media/ssd/stems`
+mount remains attached; no old cache files were removed and no library scan was
+started. Previous controller, analyzer and web images were retained under
+`pre-regular-stems-20261118` tags for rollback.
+
+The remaining acceptance gate is operator listening on real queued pairs, with
+attention to eight-bar timing, the selected stem order, CPU preparation time,
+and ordinary-transition fallback when preparation or pairing is unsuitable.
+The working-mode gate is enabled only on this test station. Do not require a bulk
+grid refresh or delete retained cache files as part of the audition.
