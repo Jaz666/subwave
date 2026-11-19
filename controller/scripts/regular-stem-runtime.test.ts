@@ -58,6 +58,9 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     subbeatsEligible:false,durationMs:240000,windDownMs:235000,
     bars:Array.from({length:12},(_,i)=>1000+i*2000),tailBars:Array.from({length:12},(_,i)=>200000+i*3000),
     headGrid:grid(0,40000),tailGrid:grid(190000,240000)});
+  const only=(id:string,side:'head'|'tail'):RegularStemQueueEvidence=>({
+    ...track(id),...(side==='head'?{tailGrid:null}:{headGrid:null}),
+  });
   const old=path.join(config.stateDir,'stems','a');
   await mkdir(old,{recursive:true});await writeFile(path.join(old,'tail-drums.flac'),'old cache');
   let diskFull=false;
@@ -69,7 +72,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
   const ready=new Promise<void>(resolve=>{done=resolve;});
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    runtime.update(null,[track('a'),track('b')],()=>{if(++wakes===2)done();},()=>{});
+    runtime.update(null,[only('a','tail'),only('b','head')],()=>{if(++wakes===2)done();},()=>{});
     await Promise.race([ready,new Promise<never>((_resolve,reject)=>{timeout=setTimeout(()=>reject(new Error('preparation did not settle')),10000);})]);
     assert.deepEqual(posts.map(p=>p.side),['tail','head']);
     assert.equal(runtime.pending('a','b'),false);
@@ -84,10 +87,12 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     const sources=await runtime.sources('a','b');assert.ok(sources,'refused render releases its source leases');
     assert.notEqual(sources.tail.stemsDir,old);
     assert.equal(sources.valid(),true);
-    runtime.update(null,[track('a'),track('c'),track('b')],()=>{},()=>{});
+    runtime.update(null,[{...only('a','tail'),regularEligible:false},
+      {...only('c','tail'),regularEligible:false},{...only('b','head'),regularEligible:false}],()=>{},()=>{});
     assert.equal(runtime.pair('a','b'),null,'matching reusable windows are not permission for a non-adjacent pair');
     assert.equal(sources.valid(),false,'reordering invalidates an in-flight render');
-    runtime.update(null,[{...track('a'),occurrence:'new-a'},{...track('b'),occurrence:'new-b'}],()=>{},()=>{});
+    runtime.update(null,[{...only('a','tail'),regularEligible:false,occurrence:'new-a'},
+      {...only('b','head'),regularEligible:false,occurrence:'new-b'}],()=>{},()=>{});
     assert.equal(sources.valid(),false,'readding the same recordings does not revive the old seam');
     runtime.update(null,[],()=>{},()=>{});
     await access(sources.tail.stemsDir);
@@ -104,7 +109,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
         if(++checks === failAt) throw new Error('Insufficient free space');
       });
       const beforeDownloads = downloads, beforePosts = posts.length;
-      const evidence=track(`blocked-${failAt}`);
+      const evidence=only(`blocked-${failAt}`,'tail');
       let blockedDone:()=>void=()=>{};
       const blockedReady = new Promise<void>(resolve=>{blockedDone=resolve;});
       blocked.update(null,[evidence],()=>blockedDone(),()=>{});
@@ -127,7 +132,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     const closed=new Promise<void>(resolve=>{onClosed=resolve;});
     const slow=new RegularStemRuntime();
     let oldWakes=0;
-    slow.update(null,[{...track('slow'),remainingSec:56}],()=>{oldWakes++;},()=>{});
+    slow.update(null,[{...only('slow','tail'),remainingSec:56}],()=>{oldWakes++;},()=>{});
     const limit=new Promise<never>((_resolve,reject)=>{timeout=setTimeout(()=>reject(new Error('timeout recovery did not settle')),5000);});
     await Promise.race([submitted,limit]);
     await Promise.race([closed,limit]);
@@ -135,7 +140,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     const busy=path.join(path.dirname(held.directory),'.regular-busy.json');
     assert.ok(JSON.parse(await readFile(busy,'utf8')).until>Date.now());
     const restarted=new RegularStemRuntime();
-    const evidence=track('slow');
+    const evidence=only('slow','tail');
     const key=regularStemNeeds([evidence],Date.now())[0].key;
     let recovered:()=>void=()=>{};
     const recoveryReady=new Promise<void>(resolve=>{recovered=resolve;});
