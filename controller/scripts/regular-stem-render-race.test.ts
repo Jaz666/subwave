@@ -34,13 +34,16 @@ test('finished renders are rejected and removed if queue occurrence or library e
   await library.load();await settings.load();
   await settings.update({personas:settings.get().personas.map(p=>({...p,djMode:true})),
     transitions:{stemBlends:true,pairDrain:true},loudness:{source:'measured'}});
+  const grid={version:1 as const,backend:'beat-this-onnx' as const,model:'small0' as const,
+    modelSha256:'a'.repeat(64),preprocessingVersion:1 as const,windowStartMs:0,windowEndMs:40000,
+    evidence:{medianBpm:80,intervalSupport:1,librosaBeatSupport:null}};
   for(const id of ['out','in']) {
     db.upsertTrackMeta(id,{title:id,artist:id,duration:240,genres:['Rock']});
-    db.upsertTrackAnalysis(id,{bpm:80,bars:Array.from({length:12},(_,i)=>1000+i*2000),
+    db.upsertTrackAnalysis(id,{bpm:80,gridProvenance:grid,bars:Array.from({length:12},(_,i)=>1000+i*2000),
       loudnessLufs:-14,peakDb:-2});
   }
   db.getDb()!.prepare('UPDATE tracks SET outro_json=? WHERE id=?')
-    .run(JSON.stringify({startMs:235000,ending:'cold',bars:Array.from({length:12},(_,i)=>200000+i*3000)}),'out');
+    .run(JSON.stringify({startMs:235000,ending:'cold',gridProvenance:{...grid,windowStartMs:180000,windowEndMs:240000},bars:Array.from({length:12},(_,i)=>200000+i*3000)}),'out');
   let pairValid=true;
   const releases:boolean[]=[];
   const original=runtime.sources;
@@ -48,13 +51,14 @@ test('finished renders are rejected and removed if queue occurrence or library e
     tail:{stemsDir:'/test/working/out',regularKey:'tail-proof'},head:{stemsDir:'/test/working/in',regularKey:'head-proof'},
     release:async(completed=true)=>{releases.push(completed);}});
   try {
-    for(const scenario of ['unchanged','queue','analysis','admission']) {
+    for(const scenario of ['unchanged','queue','analysis','grid','admission']) {
       pairValid=true;
       db.upsertTrackMeta('in',{genres:['Rock']});
-      db.upsertTrackAnalysis('in',{bpm:80,bars:Array.from({length:12},(_,i)=>1000+i*2000),loudnessLufs:-14,peakDb:-2});
+      db.upsertTrackAnalysis('in',{bpm:80,gridProvenance:grid,bars:Array.from({length:12},(_,i)=>1000+i*2000),loudnessLufs:-14,peakDb:-2});
       change=()=>{
         if(scenario==='queue')pairValid=false;
         if(scenario==='analysis')db.upsertTrackAnalysis('in',{bpm:81});
+        if(scenario==='grid')db.upsertTrackAnalysis('in',{bpm:80,gridProvenance:{...grid,evidence:{...grid.evidence,medianBpm:81}}});
         if(scenario==='admission') {
           db.upsertTrackMeta('in',{genres:['House']});db.upsertTrackAnalysis('in',{bpm:120});
         }
@@ -67,7 +71,7 @@ test('finished renders are rejected and removed if queue occurrence or library e
       else {assert.equal(result,null);await assert.rejects(access(clipPath));assert.match(messages.join('\n'),/changed during render/);}
     }
     db.upsertTrackMeta('in',{genres:['Rock']});
-    db.upsertTrackAnalysis('in',{bpm:80,bars:Array.from({length:12},(_,i)=>1000+i*2000),loudnessLufs:-14,peakDb:-2});
+    db.upsertTrackAnalysis('in',{bpm:80,gridProvenance:grid,bars:Array.from({length:12},(_,i)=>1000+i*2000),loudnessLufs:-14,peakDb:-2});
     pairValid=true; change=()=>{};
     renderError='no-usable-out-eight-bar-window';
     const messages:string[]=[];
@@ -76,10 +80,24 @@ test('finished renders are rejected and removed if queue occurrence or library e
     assert.match(messages.join('\n'),/Regular stems fallback: no-usable-out-eight-bar-window/,
       'the worker rejection must reach the station instead of disappearing into an ordinary transition');
     messages.length=0;
-    db.upsertTrackAnalysis('in',{bars:[1000,3000,5000]});
+    db.upsertTrackAnalysis('in',{gridProvenance:grid,bars:[1000,3000,5000]});
     assert.equal(await maybeRenderBlend({id:'out',gainDb:0},{id:'in'},180,
       {regularStyle:'drums-late',log:(_kind,message)=>messages.push(message)}),null);
     assert.match(messages.join('\n'),/eight bars need nine markers \(outgoing 12, incoming 3\)/);
+    const beforeTempoVeto=releases.length;
+    messages.length=0;
+    db.upsertTrackAnalysis('in',{bpm:80,gridProvenance:{...grid,evidence:{...grid.evidence,medianBpm:120}}});
+    assert.equal(await maybeRenderBlend({id:'out',title:'Outgoing'},{id:'in',title:'Incoming'},180,
+      {regularStyle:'drums-late',log:(_kind,message)=>messages.push(message)}),null);
+    assert.equal(releases.length,beforeTempoVeto,'tempo veto happens before acquiring working windows');
+    assert.match(messages.join('\n'),/Outgoing → Incoming: shared grid tempo incompatible.*80 BPM.*120 BPM/);
+    messages.length=0;
+    db.upsertTrackAnalysis('in',{bpm:80,gridProvenance:{...grid,evidence:{...grid.evidence,medianBpm:null}}});
+    assert.equal(await maybeRenderBlend({id:'out'},{id:'in'},180,
+      {regularStyle:'drums-late',log:(_kind,message)=>messages.push(message)}),null);
+    assert.equal(releases.length,beforeTempoVeto);
+    assert.match(messages.join('\n'),/shared beat grid BPM missing/);
+
   } finally {
     runtime.sources=original;analyzer.shutdown();db.close();server.closeAllConnections();
     await new Promise<void>(resolve=>server.close(()=>resolve()));

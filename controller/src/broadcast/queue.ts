@@ -114,6 +114,7 @@ import { regularStemRuntime } from './regular-stem-runtime.js';
 import type { RegularStemQueueEvidence } from './regular-stem-needs.js';
 import * as regularStemDb from '../music/library-db.js';
 import * as beatGridUpgrade from '../music/beat-grid-upgrade.js';
+import { regularStemTempoDecision } from './regular-stem-policy.js';
 import * as regularTailGrid from '../music/regular-tail-grid.js';
 import { quietOnlyEnabled } from '../music/analyze-quiet-pure.js';
 import * as subbeats from './subbeats.js';
@@ -2269,6 +2270,7 @@ class Queue {
       }
       const evidence: RegularStemQueueEvidence[] = this.upcoming.map((item, index) => {
         const row = rows[index], next = rows[index+1], outro = outros[index];
+        const tailGridPending = regularTailGrid.regularTailGridPending(String(item.track.id));
         if (!this.regularStemOccurrences.has(item)) this.regularStemOccurrences.set(item,randomBytes(8).toString('hex'));
         return {
           id: String(item.track.id),
@@ -2278,13 +2280,14 @@ class Queue {
           regularEligible: enabled && beatGridUpgrade.trackGridCurrent(String(item.track.id)),
           subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id))
             && beatGridUpgrade.trackGridCurrent(String(item.track.id)),
-          pairToNextAllowed: !!row && !!next && mix.bpmCompat(outro?.bpm ?? row.bpm,next.bpm) >= 0.7
+          // A wider tail measurement must finish before judging its new BPM.
+          pairToNextAllowed: !!row && !!next && (tailGridPending || regularStemTempoDecision(outro?.gridProvenance,next.gridProvenance).eligible)
             && !!stemBlend.regularStemTestStyle(String(item.track.id), String(this.upcoming[index+1]?.track.id)),
           durationMs: (row?.durationSec ?? 0)*1000,
           bars: row?.bars ?? [], tailBars: outro?.bars ?? [],
           windDownMs: outro?.startMs ?? (row?.durationSec ?? 0)*1000,
           headGrid: row?.gridProvenance ?? null, tailGrid: outro?.gridProvenance ?? null,
-          tailGridPending: regularTailGrid.regularTailGridPending(String(item.track.id)),
+          tailGridPending,
         };
       });
       regularStemRuntime.update(this.current?.track.id ? String(this.current.track.id) : null, evidence,

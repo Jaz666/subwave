@@ -18,12 +18,17 @@ test('queue snapshots prepare in background, pending work holds only before dead
     transitions:{pairDrain:true,stemBlends:true,pickTimeStems:true} });
   for (const id of ['a','b']) {
     db.upsertTrackMeta(id,{title:id,artist:id,genres:['Rock'],duration:240});
-    db.upsertTrackAnalysis(id,{bpm:80,beats:[500,1000],bars:[1000],gridProvenance:{
+    db.upsertTrackAnalysis(id,{bpm:id==='a'?63:143.6,beats:[500,1000],bars:[1000],gridProvenance:{
       version:1,backend:'beat-this-onnx',model:'small0',modelSha256:'a'.repeat(64),
       preprocessingVersion:1,windowStartMs:0,windowEndMs:40000,
       evidence:{medianBpm:80,intervalSupport:1,librosaBeatSupport:null},
       source:{sha256:'b'.repeat(64),bytes:12345,complete:true},
     }});
+    const grid=db.getTrack(id)!.gridProvenance!;
+    db.getDb()!.prepare('UPDATE tracks SET outro_json=? WHERE id=?').run(JSON.stringify({
+      startMs:235000,ending:'cold',bpm:id==='a'?63:143.6,
+      bars:[200000,203000,206000],gridProvenance:{...grid,windowStartMs:180000,windowEndMs:240000},
+    }),id);
   }
   const q = queue as any;
   let snapshots: readonly RegularStemQueueEvidence[] = [];
@@ -67,6 +72,13 @@ test('queue snapshots prepare in background, pending work holds only before dead
     assert.equal(renders,0);
     assert.deepEqual(snapshots.map(item=>[item.id,item.sent,item.regularEligible]),[['a',false,true],['b',false,true]]);
     assert.equal(snapshots[0].label,'a — a','preparation logs receive the queued title and artist');
+    assert.equal(snapshots[0].pairToNextAllowed,true,'shared-grid BPM admits this pair despite incompatible legacy tempos');
+    const originalGrid=db.getTrack('b')!.gridProvenance!;
+    db.upsertTrackAnalysis('b',{bpm:143.6,beats:[500,1000],bars:[1000],gridProvenance:{...originalGrid,evidence:{...originalGrid.evidence,medianBpm:120}}});
+    q.syncRegularStemPreparation();
+    assert.equal(snapshots[0].pairToNextAllowed,false,'incompatible shared grids veto admission');
+    assert.equal(snapshots.every(item=>item.regularEligible),true,'tempo veto does not stop independent extraction');
+    db.upsertTrackAnalysis('b',{bpm:143.6,beats:[500,1000],bars:[1000],gridProvenance:originalGrid});
     pending=false;
     await queue.drainToLiquidsoap();
     assert.equal(q.upcoming[0].sent,true);
@@ -85,6 +97,22 @@ test('queue snapshots prepare in background, pending work holds only before dead
     q.current=current(180);q.upcoming=[make('a'),make('b')];
     await queue.drainToLiquidsoap();
     assert.equal(snapshots.every(item=>!item.regularEligible),true,'quiet-only analysis disables live preparation');
+    await settings.update({audio:{analyzeQuietOnly:false}});
+    pending=true;q.current=current(180);q.upcoming=[make('a'),make('b')];
+    db.getDb()!.prepare('UPDATE tracks SET outro_json=NULL WHERE id=?').run('a');
+    const originalDrain=q.drainToLiquidsoap;
+    let settled=()=>{};
+    const gridSettled=new Promise<void>(resolve=>{settled=resolve;});
+    q.drainToLiquidsoap=async()=>{settled();};
+    let gridTimer:ReturnType<typeof setTimeout> | undefined;
+    try {
+      q.syncRegularStemPreparation();
+      assert.equal(snapshots[0].tailGridPending,true);
+      assert.equal(snapshots[0].pairToNextAllowed,true,'missing old tail BPM waits for the wider measurement before pair judgement');
+      await Promise.race([gridSettled,new Promise<never>((_resolve,reject)=>{
+        gridTimer=setTimeout(()=>reject(new Error('background grid measurement did not settle')),10000);
+      })]);
+    } finally {clearTimeout(gridTimer);q.drainToLiquidsoap=originalDrain;}
   } finally {
     runtime.update=originalUpdate; runtime.pending=originalPending;
     clearInterval(consumer);
