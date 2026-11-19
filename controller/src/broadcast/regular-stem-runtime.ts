@@ -75,8 +75,7 @@ export class RegularStemRuntime {
   pair(outId: string, inId: string): { tail: RegularStemWindowNeed; head: RegularStemWindowNeed } | null {
     if (!this.pairRevisions.has(JSON.stringify([outId,inId]))) return null;
     const tail = [...this.wanted.values()].find(n => n.trackId === outId && n.side === 'tail');
-    const head = [...this.wanted.values()].find(n => n.trackId === inId && n.side === 'head'
-      && tail && n.endMs-n.startMs === tail.endMs-tail.startMs);
+    const head = [...this.wanted.values()].find(n => n.trackId === inId && n.side === 'head' && tail);
     return tail && head ? { tail, head } : null;
   }
   pending(outId: string, inId: string): boolean {
