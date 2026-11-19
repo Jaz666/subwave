@@ -1,31 +1,8 @@
 // Regular blends use measured eight-bar spans at native tempo. This policy
 // never infers bars from BPM, and keeps queue retention separate from jobs.
-import type { BeatGridProvenance } from '../schemas/beat-grid.js';
-import { bpmCompat } from '../music/mix.js';
-
 export const REGULAR_STEM_WORKING_TRACKS = 9;
 export type RegularStemStyle = 'drums-late' | 'rhythm-late' | 'vocals-late';
 export const REGULAR_STEM_STYLES: readonly RegularStemStyle[] = ['drums-late', 'rhythm-late', 'vocals-late'];
-
-// Judge the same measured windows that supply the renderer's bars. Legacy
-// librosa BPM and the opposite end of a recording are not substitutes.
-export function regularStemTempoDecision(
-  tail: BeatGridProvenance | null | undefined,
-  head: BeatGridProvenance | null | undefined,
-) {
-  const bpm = (grid: BeatGridProvenance | null | undefined): number | null => {
-    const value = grid?.evidence.medianBpm;
-    return grid?.backend === 'beat-this-onnx' && grid.model === 'small0' && grid.preprocessingVersion === 1
-      && typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
-  };
-  const outBpm = bpm(tail), inBpm = bpm(head);
-  const reason = outBpm == null || inBpm == null
-    ? `shared beat grid BPM missing (outgoing tail ${outBpm ?? 'unknown'}, incoming head ${inBpm ?? 'unknown'})`
-    : bpmCompat(outBpm, inBpm) < 0.7
-      ? `shared grid tempo incompatible (outgoing tail ${outBpm} BPM, incoming head ${inBpm} BPM; half/double checked)`
-      : null;
-  return { eligible: reason === null, reason, outBpm, inBpm };
-}
 
 export interface RegularStemWindow {
   startMs: number;

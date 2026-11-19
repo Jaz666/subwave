@@ -72,12 +72,12 @@ test('queue snapshots prepare in background, pending work holds only before dead
     assert.equal(renders,0);
     assert.deepEqual(snapshots.map(item=>[item.id,item.sent,item.regularEligible]),[['a',false,true],['b',false,true]]);
     assert.equal(snapshots[0].label,'a — a','preparation logs receive the queued title and artist');
-    assert.equal(snapshots[0].pairToNextAllowed,true,'shared-grid BPM admits this pair despite incompatible legacy tempos');
+    assert.equal(snapshots[0].pairToNextAllowed,true,'legacy BPM differences do not affect regular blend admission');
     const originalGrid=db.getTrack('b')!.gridProvenance!;
     db.upsertTrackAnalysis('b',{bpm:143.6,beats:[500,1000],bars:[1000],gridProvenance:{...originalGrid,evidence:{...originalGrid.evidence,medianBpm:120}}});
     q.syncRegularStemPreparation();
-    assert.equal(snapshots[0].pairToNextAllowed,false,'incompatible shared grids veto admission');
-    assert.equal(snapshots.every(item=>item.regularEligible),true,'tempo veto does not stop independent extraction');
+    assert.equal(snapshots[0].pairToNextAllowed,true,'BPM differences do not veto regular blends');
+    assert.equal(snapshots.every(item=>item.regularEligible),true,'pair admission remains separate from independent extraction');
     db.upsertTrackAnalysis('b',{bpm:143.6,beats:[500,1000],bars:[1000],gridProvenance:originalGrid});
     pending=false;
     await queue.drainToLiquidsoap();
@@ -117,7 +117,7 @@ test('queue snapshots prepare in background, pending work holds only before dead
     db.getDb()!.prepare('UPDATE tracks SET grid_provenance_json=NULL WHERE id=?').run('b');
     q.current=current(180);q.upcoming=[make('a'),make('b')];
     q.syncRegularStemPreparation();
-    assert.equal(snapshots[1].headGridPending,true,'incoming head upgrade is provisional, not a BPM veto');
+    assert.equal(snapshots[1].headGridPending,true,'incoming head upgrade remains pending before extraction');
     assert.equal(snapshots[0].pairToNextAllowed,true);
     const probe=new RegularStemRuntime();probe.lane.update=()=>{};
     probe.update(null,snapshots,()=>{},()=>{});

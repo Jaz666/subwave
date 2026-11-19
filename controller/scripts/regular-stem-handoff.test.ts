@@ -41,9 +41,10 @@ test('the real queue arms a working stem blend and forwards its selected style t
     evidence: { medianBpm: 80, intervalSupport: 1, librosaBeatSupport: null },
     source: { sha256: 'b'.repeat(64), bytes: 12345, complete: true } };
   for (const id of ['out', 'in']) {
+    const trackGrid = id === 'in' ? { ...grid, evidence: { ...grid.evidence, medianBpm: 136.364 } } : grid;
     db.upsertTrackMeta(id, { title: id, artist: id, duration: 240, genres: ['Rock'] });
     db.upsertTrackAnalysis(id, { bpm: id === 'out' ? 63 : 143.6, bars: Array.from({ length: 12 }, (_, i) => 1000 + i * 2000),
-      beats: [500, 1000], gridProvenance: grid, loudnessLufs: -14, peakDb: -2 });
+      beats: [500, 1000], gridProvenance: trackGrid, loudnessLufs: -14, peakDb: -2 });
     db.getDb()!.prepare('UPDATE tracks SET outro_json=? WHERE id=?').run(JSON.stringify({
       startMs: 235000, ending: 'cold', bars: Array.from({ length: 12 }, (_, i) => 200000 + i * 3000),
       gridProvenance: { ...grid, windowStartMs: 180000, windowEndMs: 240000 },
@@ -64,7 +65,7 @@ test('the real queue arms a working stem blend and forwards its selected style t
   const consumer = setInterval(() => { void rm(config.liquidsoap.queueFile, { force: true }); }, 20);
   try {
     await queue.drainToLiquidsoap();
-    assert.equal(requests.length, 1, 'matching shared-grid tempos reach the analyzer despite incompatible legacy BPM');
+    assert.equal(requests.length, 1, 'a large shared-grid tempo difference still reaches the analyzer');
     assert.equal(q.upcoming[0].sent, true);
     assert.equal(q.upcoming[0].stemBlend.regular.style, requests[0].regular_style);
     assert.equal(q.upcoming[1].stemSeam, true);

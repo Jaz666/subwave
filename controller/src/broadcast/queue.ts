@@ -121,7 +121,6 @@ import * as stemBlend from './stem-blend.js';
 import { regularStemRuntime } from './regular-stem-runtime.js';
 import type { RegularStemQueueEvidence } from './regular-stem-needs.js';
 import * as regularStemDb from '../music/library-db.js';
-import { regularStemTempoDecision } from './regular-stem-policy.js';
 import * as regularTailGrid from '../music/regular-tail-grid.js';
 import * as beatGridUpgrade from '../music/beat-grid-upgrade.js';
 import { quietOnlyEnabled } from '../music/analyze-quiet-pure.js';
@@ -2430,8 +2429,6 @@ class Queue {
       const evidence: RegularStemQueueEvidence[] = this.upcoming.map((item, index) => {
         const row = rows[index], next = rows[index+1], outro = outros[index];
         const tailGridPending = enabled && !item.sent && regularTailGrid.regularGridAwaiting(String(item.track.id));
-        const nextGridPending = enabled && !!next && !this.upcoming[index+1]?.sent
-          && regularTailGrid.regularHeadGridAwaiting(String(next.id));
         if (!this.regularStemOccurrences.has(item)) this.regularStemOccurrences.set(item,randomBytes(8).toString('hex'));
         return {
           id: String(item.track.id),
@@ -2442,8 +2439,9 @@ class Queue {
           // dance tracks from this path. Pair eligibility does not gate prep.
           regularEligible: enabled,
           subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id)),
-          // A wider tail measurement must finish before judging its new BPM.
-          pairToNextAllowed: !!row && !!next && (tailGridPending || nextGridPending || regularStemTempoDecision(outro?.gridProvenance,next.gridProvenance).eligible)
+          // The measured windows determine placement; BPM compatibility is
+          // not a regular-blend admission rule.
+          pairToNextAllowed: !!row && !!next
             && !!stemBlend.regularStemTestStyle(String(item.track.id), String(this.upcoming[index+1]?.track.id)),
           durationMs: (row?.durationSec ?? 0)*1000,
           bars: row?.bars ?? [], tailBars: outro?.bars ?? [],
