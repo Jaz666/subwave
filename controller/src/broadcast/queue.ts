@@ -2230,9 +2230,9 @@ class Queue {
     return true;
   }
 
-  // Staged rollout uses the existing exact-pair audition allowlist. Preparation
-  // is never awaited by the sender. The ordinary watcher updates deadlines and
-  // membership after skips/removals as well as additions.
+  // Regular windows are prepared per track before pair suitability is judged.
+  // Preparation is never awaited by the sender. The ordinary watcher updates
+  // deadlines and membership after skips/removals as well as additions.
   private regularStemOccurrences = new WeakMap<QueueItem,string>();
   private syncRegularStemPreparation(): void {
     // Source stems retire with queue membership. Keep only the immediately
@@ -2252,7 +2252,6 @@ class Queue {
       if (gridTarget) void beatGridUpgrade.ensureCurrent(gridTarget, message => this.log('mix', message))
         .then(() => { void this.drainToLiquidsoap(); });
     } catch (error) { this.log('warn',`Pick-time shared beat grid upgrade unavailable: ${String(error)}`); }
-    if (!stemBlend.regularStemTestEnabled()) return;
     const enabled = settings.get().transitions.stemBlends === true
       && !quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)
       && this.pairDrainActive() && !!settings.getEffectivePersona()?.djMode;
@@ -2266,8 +2265,7 @@ class Queue {
         return {
           id: String(item.track.id), occurrence: this.regularStemOccurrences.get(item), sent: !!item.sent,
           remainingSec: this.remainingUntilItemAirs(item),
-          regularEligible: enabled && stemBlend.regularStemTestTrack(String(item.track.id))
-            && beatGridUpgrade.trackGridCurrent(String(item.track.id)),
+          regularEligible: enabled && beatGridUpgrade.trackGridCurrent(String(item.track.id)),
           subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id))
             && beatGridUpgrade.trackGridCurrent(String(item.track.id)),
           pairToNextAllowed: !!row && !!next && mix.bpmCompat(outro?.bpm ?? row.bpm,next.bpm) >= 0.7

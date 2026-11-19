@@ -1,10 +1,10 @@
 /** Queue snapshot -> exact CPU windows. No cache or provider reads here.
- * Head coverage follows the outgoing duration at native tempo; a pair rejected
- * here still leaves the incoming track eligible for its own outgoing tail.
+ * Each eligible recording prepares its own measured head and tail; compatibility
+ * between two recordings is a later decision.
  */
 import { createHash } from 'node:crypto';
 import type { BeatGridProvenance } from '../schemas/beat-grid.js';
-import { eightBarWindow, regularStemPairDecision } from './regular-stem-policy.js';
+import { eightBarWindow } from './regular-stem-policy.js';
 import { HARD_DEADLINE_SEC } from './drain-policy.js';
 import type { RegularStemNeed } from './regular-stem-preparation.js';
 
@@ -30,12 +30,17 @@ export interface RegularStemWindowNeed extends RegularStemNeed {
   sourceBytes: number;
 }
 
+function currentGrid(grid: BeatGridProvenance | null | undefined): grid is BeatGridProvenance {
+  return grid?.backend === 'beat-this-onnx' && grid.model === 'small0'
+    && grid.preprocessingVersion === 1;
+}
+
 export function regularStemNeeds(items: readonly RegularStemQueueEvidence[], now: number): RegularStemWindowNeed[] {
   const needs = new Map<string, RegularStemWindowNeed>();
   const add = (item: RegularStemQueueEvidence, side: 'head' | 'tail', startMs: number,
     endMs: number, deadlineMs: number, grid: BeatGridProvenance | null) => {
     const source = grid?.source;
-    if (!source?.complete || !source.bytes || !/^[a-f0-9]{64}$/.test(source.sha256)
+    if (!currentGrid(grid) || !source?.complete || !source.bytes || !/^[a-f0-9]{64}$/.test(source.sha256)
         || !Number.isFinite(deadlineMs) || deadlineMs <= now
         || startMs < grid!.windowStartMs || endMs > grid!.windowEndMs
         || endMs > item.durationMs || endMs <= startMs || endMs-startMs > 120000) return;
@@ -47,27 +52,21 @@ export function regularStemNeeds(items: readonly RegularStemQueueEvidence[], now
       sourceSha256: source.sha256, sourceBytes: source.bytes,
       deadlineMs: Math.min(existing?.deadlineMs ?? deadlineMs, deadlineMs) });
   };
-  for (let index = 0; index < items.length; index++) {
-    const out = items[index], incoming = items[index + 1];
-    if (out.sent || !out.regularEligible || out.subbeatsEligible
-        || out.remainingSec == null || !Number.isFinite(out.remainingSec)) continue;
+  for (const item of items) {
+    if (item.sent || !item.regularEligible || item.subbeatsEligible
+        || item.remainingSec == null || !Number.isFinite(item.remainingSec)) continue;
     // Leave render + write/probe time inside the existing hard fallback.
-    const deadline = now + (out.remainingSec - HARD_DEADLINE_SEC - 10) * 1000;
-    const tail = eightBarWindow(out.tailBars, {
-      startMs: out.tailGrid?.windowStartMs ?? 0,
-      endMs: Math.min(out.windDownMs, out.durationMs, out.tailGrid?.windowEndMs ?? 0),
+    const deadline = now + (item.remainingSec - HARD_DEADLINE_SEC - 10) * 1000;
+    const tail = eightBarWindow(item.tailBars, {
+      startMs: item.tailGrid?.windowStartMs ?? 0,
+      endMs: Math.min(item.windDownMs, item.durationMs, item.tailGrid?.windowEndMs ?? 0),
     }, 'tail');
-    if (!tail) continue;
-    add(out, 'tail', tail.startMs, tail.endMs, deadline, out.tailGrid);
-    if (!incoming || incoming.sent || out.pairToNextAllowed === false || !regularStemPairDecision(out, incoming).eligible) continue;
-    const head = eightBarWindow(incoming.bars, {
-      startMs: incoming.headGrid?.windowStartMs ?? 0,
-      endMs: Math.min(incoming.durationMs, incoming.headGrid?.windowEndMs ?? 0),
+    if (tail) add(item, 'tail', tail.startMs, tail.endMs, deadline, item.tailGrid);
+    const head = eightBarWindow(item.bars, {
+      startMs: item.headGrid?.windowStartMs ?? 0,
+      endMs: Math.min(item.durationMs, item.headGrid?.windowEndMs ?? 0),
     }, 'head');
-    if (!head) continue;
-    // No time stretch: Y contributes as many seconds as X's eight bars.
-    add(incoming, 'head', head.startMs, head.startMs + tail.endMs-tail.startMs,
-      deadline, incoming.headGrid);
+    if (head) add(item, 'head', head.startMs, head.endMs, deadline, item.headGrid);
   }
   return [...needs.values()];
 }
