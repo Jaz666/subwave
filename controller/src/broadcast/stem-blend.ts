@@ -21,7 +21,7 @@ import { HARD_DEADLINE_SEC } from './drain-policy.js';
 import { CLIP_SEAM_CROSS_SEC, clipSeamCues, type ClipSeamCues } from './stem-seam.js';
 import type { SubbeatsPlayback } from './subbeats-clock.js';
 import { regularStemRuntime } from './regular-stem-runtime.js';
-import { regularStemPairDecision, regularStemTempoDecision } from './regular-stem-policy.js';
+import { regularStemPairDecision } from './regular-stem-policy.js';
 
 // Cross length at the two clip seams (X→clip, clip→Y); the overlap arithmetic
 // lives with it in broadcast/stem-seam.ts.
@@ -135,8 +135,6 @@ async function renderBlend(
   // A blend always starts at or after the outro wind-down, so a trimmed end
   // at/before it can only cut the clip's source region. Exact test post-render.
   if (opts.outTrimEndSec != null && opts.outTrimEndSec <= (out.outro.startMs ?? 0) / 1000) return reject('the outgoing silence trim cuts the blend region');
-  const tempo = regularStemTempoDecision(out.outro.gridProvenance, inn.gridProvenance);
-  if (!tempo.eligible) return reject(tempo.reason!);
   // Cache-hit-only: both windows must already be separated.
   const [outStems, inStems] = opts.workingSources ? [opts.workingSources.tail, opts.workingSources.head] : await Promise.all([
     stemCache.renderSource(outTrack.id, 'tail'),
@@ -271,12 +269,6 @@ export async function maybeRenderBlend(
     return null;
   }
   const sides = blendSides(String(out.id), String(incoming.id));
-  const tempo = regularStemTempoDecision(sides?.out.outro?.gridProvenance, sides?.inn.gridProvenance);
-  if (!tempo.eligible) {
-    const label = (track: BlendTrack) => [track.title, track.artist].filter(Boolean).join(' — ') || String(track.id);
-    opts.log?.('warn', `Regular stems fallback: ${label(out)} → ${label(incoming)}: ${tempo.reason}`);
-    return null;
-  }
   const sources = await regularStemRuntime.sources(String(out.id), String(incoming.id));
   if (!sources) {
     const pair = regularStemRuntime.pair(String(out.id), String(incoming.id));

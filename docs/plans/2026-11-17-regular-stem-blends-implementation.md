@@ -935,3 +935,15 @@ this controller-only change. The source cache tests use streamed byte fixtures;
 they establish complete-file handling, not musical suitability. Development
 and station commits contain the same scoped tree; pre-existing unrelated
 working edits are retained. Only the controller needs rebuilding for this fix.
+
+
+### 2026-11-19 — Remove the regular BPM veto for listening tests
+
+Regular stem blends no longer require matching outgoing-tail and incoming-head
+BPM. The grids still locate measured audio windows and eight-bar placement;
+tempo remains native, with no beatmatching or time-stretch. Each pair retains
+the existing deterministic pseudo-random style selection across drums-late,
+rhythm-late and vocals-late. The renderer's stem coverage, admission, trim,
+source, deadline and queue checks remain. This opens more listening examples;
+we will judge pair suitability from aired blends before adding admission rules.
+The Sub/Beats path is unchanged.

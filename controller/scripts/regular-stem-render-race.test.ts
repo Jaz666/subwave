@@ -84,19 +84,20 @@ test('finished renders are rejected and removed if queue occurrence or library e
     assert.equal(await maybeRenderBlend({id:'out',gainDb:0},{id:'in'},180,
       {regularStyle:'drums-late',log:(_kind,message)=>messages.push(message)}),null);
     assert.match(messages.join('\n'),/eight bars need nine markers \(outgoing 12, incoming 3\)/);
-    const beforeTempoVeto=releases.length;
+    renderError=null;
     messages.length=0;
-    db.upsertTrackAnalysis('in',{bpm:80,gridProvenance:{...grid,evidence:{...grid.evidence,medianBpm:120}}});
-    assert.equal(await maybeRenderBlend({id:'out',title:'Outgoing'},{id:'in',title:'Incoming'},180,
-      {regularStyle:'drums-late',log:(_kind,message)=>messages.push(message)}),null);
-    assert.equal(releases.length,beforeTempoVeto,'tempo veto happens before acquiring working windows');
-    assert.match(messages.join('\n'),/Outgoing → Incoming: shared grid tempo incompatible.*80 BPM.*120 BPM/);
+    db.upsertTrackAnalysis('in',{bpm:80,bars:Array.from({length:12},(_,i)=>1000+i*2000),gridProvenance:{...grid,evidence:{...grid.evidence,medianBpm:136.364}}});
+    const differentTempo=await maybeRenderBlend({id:'out',title:'Outgoing'},{id:'in',title:'Incoming'},180,
+      {regularStyle:'drums-late',log:(_kind,message)=>messages.push(message)});
+    assert.ok(differentTempo,`BPM mismatch alone does not veto a regular stem blend: ${messages.join('; ')}`);
+    assert.equal(releases.at(-1),true);
+    await rm(differentTempo.clipPath,{force:true});
     messages.length=0;
-    db.upsertTrackAnalysis('in',{bpm:80,gridProvenance:{...grid,evidence:{...grid.evidence,medianBpm:null}}});
-    assert.equal(await maybeRenderBlend({id:'out'},{id:'in'},180,
-      {regularStyle:'drums-late',log:(_kind,message)=>messages.push(message)}),null);
-    assert.equal(releases.length,beforeTempoVeto);
-    assert.match(messages.join('\n'),/shared beat grid BPM missing/);
+    db.upsertTrackAnalysis('in',{bars:Array.from({length:12},(_,i)=>1000+i*2000),gridProvenance:{...grid,evidence:{...grid.evidence,medianBpm:null}}});
+    const unknownTempo=await maybeRenderBlend({id:'out'},{id:'in'},180,
+      {regularStyle:'drums-late',log:(_kind,message)=>messages.push(message)});
+    assert.ok(unknownTempo,'regular blends do not require BPM evidence');
+    await rm(unknownTempo.clipPath,{force:true});
 
   } finally {
     runtime.sources=original;analyzer.shutdown();db.close();server.closeAllConnections();
