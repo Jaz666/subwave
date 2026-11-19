@@ -4767,7 +4767,34 @@ def extract_regular_stem_window(librosa, source, window, destination):
         audio = np.repeat(audio, 2, axis=0)
     expected = round((end-start) * DEMUCS_SR)
     if sr != DEMUCS_SR or audio is None or np.ndim(audio) != 2 or abs(audio.shape[-1] - expected) > 2:
-        raise FacetRequestError("decoded regular stem window is incomplete")
+        # Random-access decoding can return a short segment for some VBR MP3s
+        # even when the complete source covers the requested window. Re-decode
+        # the exact interval with ffmpeg before treating that as missing audio.
+        # MP3 uses an output seek (decode from the start); formats with exact
+        # sample seeking can jump directly to the requested window.
+        source_path = getattr(source, "path", None)
+        if source_path and shutil.which("ffmpeg"):
+            fallback = None
+            try:
+                fallback = extract_tail_window(
+                    source_path, start, end-start,
+                    input_seek=input_seek_is_exact(source_path),
+                )
+                audio, sr = load_audio(librosa, fallback, sr=DEMUCS_SR, mono=False)
+                if audio is not None and np.ndim(audio) == 1:
+                    audio = np.repeat(np.asarray(audio)[None, :], 2, axis=0)
+                elif audio is not None and np.ndim(audio) == 2 and audio.shape[0] == 1:
+                    audio = np.repeat(audio, 2, axis=0)
+            except Exception as e:  # noqa: BLE001 — preserve the incomplete-window result
+                log(f"regular stem window exact decode failed: {e}")
+            finally:
+                if fallback:
+                    try:
+                        os.remove(fallback)
+                    except OSError:
+                        pass
+        if sr != DEMUCS_SR or audio is None or np.ndim(audio) != 2 or abs(audio.shape[-1] - expected) > 2:
+            raise FacetRequestError("decoded regular stem window is incomplete")
     fingerprint = None
     if "source_sha256" in window:
         fingerprint = source_fingerprint(getattr(source, "src_path", None), source.complete)
