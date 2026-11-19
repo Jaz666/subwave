@@ -10,6 +10,7 @@ import { config } from '../config.js';
 import * as settings from '../settings.js';
 import { quietOnlyEnabled } from '../music/analyze-quiet-pure.js';
 import * as analyzer from '../music/analyzer.js';
+import { acquireRegularStemSource, retainRegularStemSources } from '../music/regular-stem-source.js';
 import { bulkPassRunning } from '../music/tagger-lock.js';
 import { RegularStemPreparation } from './regular-stem-preparation.js';
 import { regularStemNeeds, type RegularStemQueueEvidence, type RegularStemWindowNeed } from './regular-stem-needs.js';
@@ -22,6 +23,7 @@ export class RegularStemRuntime {
   private queuedAt = new Map<string, number>();
   private wanted = new Map<string, RegularStemWindowNeed>();
   private gridPending = new Set<string>();
+  private headGridPending = new Set<string>();
   private membership: Promise<void> = Promise.resolve();
   private pairRevisions = new Map<string,{ occurrence: string; revision: number }>();
   private nextPairRevision = 0;
@@ -55,6 +57,7 @@ export class RegularStemRuntime {
       pairs.set(key,{occurrence,revision:old?.occurrence === occurrence ? old.revision : ++this.nextPairRevision});
     }
     this.pairRevisions=pairs;
+    this.headGridPending = new Set(queue.filter(item => item.headGridPending && !item.sent).map(item => item.id));
     this.gridPending = new Set(queue.filter(item => item.tailGridPending && !item.sent).map(item => item.id));
     const needs = regularStemNeeds(queue, Date.now());
     // Spend the nearest pair's runway on its two actual render prerequisites.
@@ -68,6 +71,7 @@ export class RegularStemRuntime {
     for (const key of this.queuedAt.keys()) if (!keys.has(key)) this.queuedAt.delete(key);
     this.wanted = new Map(needs.map(need => [need.key, need]));
     this.membership = this.cache.reconcile(currentId, queue.map(item => item.id), needs);
+    retainRegularStemSources(currentId, queue.map(item => item.id));
     // Rejection is handled here as well as by the job waiting on membership.
     void this.membership.catch(error => this.log(`Regular stems working cache unavailable: ${String(error)}`));
     this.lane.update(needs);
@@ -87,7 +91,7 @@ export class RegularStemRuntime {
     return tail && head ? { tail, head } : null;
   }
   pending(outId: string, inId: string): boolean {
-    if (this.pairRevisions.has(JSON.stringify([outId,inId])) && this.gridPending.has(outId)) return true;
+    if (this.pairRevisions.has(JSON.stringify([outId,inId])) && (this.gridPending.has(outId) || this.headGridPending.has(inId))) return true;
     const pair = this.pair(outId, inId);
     if (!pair) return false;
     const states = [pair.tail,pair.head].map(need => this.lane.state(need.key));
@@ -148,7 +152,8 @@ export class RegularStemRuntime {
         || !await analyzer.regularStemsAvailable()) return false;
     const lease = await this.cache.acquire(need.trackId);
     if (!lease) return false;
-    let staged: Awaited<ReturnType<typeof analyzer.downloadCapped>> | null = null;
+    let staged: Awaited<ReturnType<typeof acquireRegularStemSource>> | null = null;
+    let sourceJobCompleted = true;
     try {
       if (await this.verified(need)) {
         await this.requireSpace([{ directory: lease.directory, bytes: 1024 * 1024 }])
@@ -159,13 +164,13 @@ export class RegularStemRuntime {
       if (Date.now() >= need.deadlineMs || !this.wanted.has(key)) return false;
       const windowBytes = regularStemWindowBytes(need.startMs, need.endMs);
       await this.requireSpace([
-        { directory: analyzer.ANALYZE_TMP_DIR, bytes: analyzer.ANALYZE_MAX_BYTES + 1024 * 1024 },
         { directory: lease.directory, bytes: windowBytes },
       ]);
-      staged = await analyzer.downloadCapped(need.trackId);
+      staged = await acquireRegularStemSource(need.trackId, { expectedBytes: need.sourceBytes,
+        expectedSha256: need.sourceSha256, deadlineMs: need.deadlineMs, log: this.log });
       if (quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)) return false;
       if (bulkPassRunning()) return 'deferred';
-      if (!staged.complete || Date.now() >= need.deadlineMs || !this.wanted.has(key)) return false;
+      if (Date.now() >= need.deadlineMs || !this.wanted.has(key)) return false;
       await this.requireSpace([{ directory: lease.directory, bytes: windowBytes }]);
       await writeFile(path.join(lease.directory, '.subwave-regular-stems'), '1');
       const busy = path.join(lease.directory, '.regular-busy.json');
@@ -176,16 +181,18 @@ export class RegularStemRuntime {
       this.log(`Regular stems: preparing ${need.label ?? need.trackId} (${need.side}, CPU)`);
       const processingStarted = Date.now();
       const waitedMs = processingStarted - (this.queuedAt.get(key) ?? processingStarted);
+      sourceJobCompleted = false;
       await analyzer.analyzeFacets(need.trackId, { facets: ['stems'], stems_device: 'cpu',
-        stems_dir: directory, complete: true, timeoutMs: Math.min(300_000, need.deadlineMs-Date.now()),
+        stems_dir: directory, complete: true, localPathRequired: true, timeoutMs: Math.min(300_000, need.deadlineMs-Date.now()),
         regular_stem_window: { version: 2, side: need.side, start_ms: need.startMs, end_ms: need.endMs,
           key: need.key, source_sha256: need.sourceSha256, source_bytes: need.sourceBytes, model: 'htdemucs' },
       }, staged.path).catch(async error => {
         // A worker's explicit rejection ends its write lease. Keep protection
         // after a transport timeout because that worker may still be running.
-        if (error instanceof analyzer.AnalyzerJobRejectedError) await rm(busy, { force: true });
+        if (error instanceof analyzer.AnalyzerJobRejectedError) { sourceJobCompleted = true; await rm(busy, { force: true }); }
         throw error;
       });
+      sourceJobCompleted = true;
       const verified = await this.verified(need);
       if (verified) await prepareRegularStemPreview(directory, need).catch(() => {
         this.log(`Regular stems: ${need.label ?? need.trackId} ${need.side} preview unavailable; audio remains ready`);
@@ -194,8 +201,8 @@ export class RegularStemRuntime {
       if (verified) this.log(`Regular stems: ${need.label ?? need.trackId} ${need.side} ready; processing ${((Date.now()-processingStarted)/1000).toFixed(1)}s, wait/download ${(waitedMs/1000).toFixed(1)}s`);
       return verified;
     } finally {
-      if (staged) await rm(staged.path, { force: true }).catch(() => {});
-      await lease.release();
+      try { await staged?.release(sourceJobCompleted); }
+      finally { await lease.release(); }
     }
   }
 }

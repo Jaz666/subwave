@@ -895,3 +895,55 @@ The scoped commit is pushed on the development branch and copied to the station
 checkout, preserving the remaining unrelated edits. Next: rebuild both services
 with the preceding wider-tail candidate, then use the explicit grid-BPM vetoes
 to assess actual regular pairing opportunities.
+
+### 2026-11-19 — Complete regular sources and incoming-grid readiness
+
+The 13:19:57 Burn Alive → Glowing in the Dark seam was committed before the
+incoming grid upgrade completed at 13:20:02. Missing BPM was being treated as a
+pair veto while evidence was still being prepared. Regular pair admission now
+remains provisional while either the outgoing wider tail or incoming head grid
+is queued/running. The sender waits through that preparation and subsequent
+extraction within its existing deadline. Measured tempo incompatibility,
+Sub/Beats reservations, failures with backoff, operator force and the hard
+handoff deadline still release the ordinary transition path.
+
+Regular preparation now owns its head/wider-tail grid upgrades, avoiding a
+concurrent capped generic upgrade overwriting the same recording's evidence.
+The existing generic pick-time updater remains available for other tracks.
+The updater module and narrow database writer are included as dependencies of
+that ownership change; unrelated mandatory-grid, genre, mixer and UI edits are
+outside this candidate.
+
+Complete source acquisition uses a verified local library file where available,
+copied once into shared state so the analyzer can read it. Otherwise it streams
+the original recording once with the library file size plus one byte as the
+bound. A short or oversized response fails closed. Cached copies are verified
+by size and SHA-256 and reused for head grid, wider tail grid and both stem
+windows. Current plus eight queued recordings define retention; worker leases
+and bounded timeout protection prevent deletion while the analyzer may read.
+Disk checks retain the 256 MiB station margin. Downloads and requests retain
+bounded deadlines, one source writer and the existing extraction lane. Generic
+analysis retains its 12 MiB prefix cap. Unknown library file sizes are refused.
+
+Incomplete saved head grids are repaired from the complete source before wider
+tail measurement. Writes replace only grid fields, preserve BPM/key/levels/
+vocals and established ending cues, and reject recording changes during work.
+A newly measured head can begin extraction while its wider tail is measured.
+
+Focused verification covers the queue's incoming-head wait, real runtime
+readiness, force/deadline bypass, compatibility veto, >12 MiB streamed sources,
+head repair plus tail from one download, cache reuse/corruption, short/oversized
+responses, verified local copies, lease retirement and transport uncertainty.
+The live Burn Alive seam has not been replayed and no service is restarted by
+this source change. The previous station commit is 8f70843d3; rollback is a
+scoped revert of this candidate followed by a controller rebuild. Next: rebuild
+the controller in /home/jaz666/Docker/subwave and observe a fresh queued regular
+pair through grid readiness, both role extractions and the eventual handoff.
+
+Validation on the exact staged source: 37 regular-stem tests and 14 blend tests
+pass; TypeScript passes; focused ESLint has no errors (one existing queue-test
+`any` warning). The analyzer and actual MP3/FLAC decoding were not rerun for
+this controller-only change. The source cache tests use streamed byte fixtures;
+they establish complete-file handling, not musical suitability. Development
+and station commits contain the same scoped tree; pre-existing unrelated
+working edits are retained. Only the controller needs rebuilding for this fix.
