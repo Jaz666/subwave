@@ -9,6 +9,7 @@ import type { RegularStemNeed } from './regular-stem-preparation.js';
 
 export interface RegularStemQueueEvidence {
   id: string;
+  label?: string;
   occurrence?: string; // queue occurrence, independent of reusable recording windows
   sent: boolean;
   remainingSec: number | null;
@@ -47,7 +48,7 @@ export function regularStemNeeds(items: readonly RegularStemQueueEvidence[], now
       sourceSha256: source.sha256, sourceBytes: source.bytes, grid };
     const key = createHash('sha256').update(JSON.stringify(identity)).digest('hex');
     const existing = needs.get(key);
-    needs.set(key, { key, trackId: item.id, side, startMs, endMs,
+    needs.set(key, { key, trackId: item.id, label: item.label, side, startMs, endMs,
       sourceSha256: source.sha256, sourceBytes: source.bytes,
       deadlineMs: Math.min(existing?.deadlineMs ?? deadlineMs, deadlineMs) });
   };
@@ -56,10 +57,12 @@ export function regularStemNeeds(items: readonly RegularStemQueueEvidence[], now
         || item.remainingSec == null || !Number.isFinite(item.remainingSec)) continue;
     // Leave render + write/probe time inside the existing hard fallback.
     const deadline = now + (item.remainingSec - HARD_DEADLINE_SEC - 10) * 1000;
+    // Provenance endpoints are rounded to milliseconds. Stay one millisecond
+    // inside them so a rounded-up EOF never requests samples beyond the source.
     if (item.tailGrid) add(item, 'tail', item.tailGrid.windowStartMs,
-      Math.min(item.durationMs, item.tailGrid.windowEndMs), deadline, item.tailGrid);
+      Math.min(item.durationMs, item.tailGrid.windowEndMs - 1), deadline, item.tailGrid);
     if (item.headGrid) add(item, 'head', item.headGrid.windowStartMs,
-      Math.min(item.durationMs, item.headGrid.windowEndMs), deadline, item.headGrid);
+      Math.min(item.durationMs, item.headGrid.windowEndMs - 1), deadline, item.headGrid);
   }
   return [...needs.values()];
 }

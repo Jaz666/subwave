@@ -31,7 +31,12 @@ test('queue snapshots prepare in background, pending work holds only before dead
   const originalUpdate = runtime.update, originalPending = runtime.pending;
   runtime.update = (_current, evidence) => { snapshots=evidence; };
   runtime.pending = () => pending;
-  q._renderBlend = async () => { renders++; return null; };
+  q._renderBlend = async (_out: unknown, _incoming: unknown, _remaining: unknown, opts: { regularStyle?: string; log?: (kind: 'warn', message: string) => void }) => {
+    assert.ok(['drums-late','rhythm-late','vocals-late'].includes(opts.regularStyle ?? ''),
+      'the queue must select the working renderer rather than silently returning before sources are read');
+    assert.equal(typeof opts.log,'function','fallback reasons reach the station log');
+    renders++; return null;
+  };
   q._renderSubbeats = async () => null;
   q._pickStems = async () => { legacyPicks++; };
   q.verifyPushResolved = async () => {};
@@ -61,6 +66,7 @@ test('queue snapshots prepare in background, pending work holds only before dead
     assert.equal(q.upcoming[0].sent,false);
     assert.equal(renders,0);
     assert.deepEqual(snapshots.map(item=>[item.id,item.sent,item.regularEligible]),[['a',false,true],['b',false,true]]);
+    assert.equal(snapshots[0].label,'a — a','preparation logs receive the queued title and artist');
     pending=false;
     await queue.drainToLiquidsoap();
     assert.equal(q.upcoming[0].sent,true);

@@ -7,6 +7,7 @@
 export interface RegularStemNeed {
   key: string; // recording + window + extraction version, not just track ID
   trackId: string;
+  label?: string; // operator display text, independent of recording/window identity
   side: 'head' | 'tail';
   deadlineMs: number; // absolute safe preparation deadline, before render/handoff
 }

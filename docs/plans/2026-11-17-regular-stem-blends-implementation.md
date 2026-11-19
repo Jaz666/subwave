@@ -676,3 +676,91 @@ deleting quarantine-only data does not mark the live-cache usage snapshot stale.
 The branch has not been newly deployed or broadly enabled by this PR update;
 real queued-pair listening and CPU timing remain rollout evidence, not inferred
 from these automated checks.
+
+### Station reassessment — 19 November 2026
+
+The operator's temporary testing policy supersedes the preparation policy above:
+prepare each eligible recording's measured head and tail independently, regardless
+of the actual pair. Regular admission is genre-open, and Sub/Beats admission still
+reserves tracks for that path. A prepared role is not proof of an acceptable pair.
+The eight-bar native-tempo renderer and existing pair/trim/deadline gates remain.
+
+The first changes in this chat addressed per-recording preparation (`2a7c80c68`),
+unequal window lengths (`2110ef9cd`), whole measured coverage (`2a0d5dba9`), decoder
+recovery (`5963581fc`), and model packaging (`27dd837a3`, `db55c482a`). Reassessment
+found that those changes did not finish the selection path:
+
+- The production queue passed no `regularStyle` to `maybeRenderBlend()`. In working
+  mode that function immediately returned null. The queue now supplies the same
+  deterministic style used by its pair-admission/hold check and forwards fallback
+  messages to the station log. A regression drives the real queue and real
+  regular renderer through an HTTP fixture, and verifies an armed seam.
+- Whole-window preparation exposed millisecond rounding at decoded EOF. For the
+  exact source of Janelle Monáe — “Electric Lady” (`4P4qhCXUEuaCnEX7UEeOUj`), the
+  hash matches saved provenance, but decoded EOF is 308986.6667 ms and the grid
+  endpoint is 308987 ms. The 288987–308987 ms request returns 881986 samples
+  through the original loader and 881985 through FFmpeg, against 882000 expected.
+  Thus the earlier FFmpeg fallback did not address this failure. Requests now
+  end one millisecond inside the grid interval: 308986 ms returns 881955 samples
+  through the original loader (881956 expected) and 881956 through FFmpeg. The
+  existing two-sample tolerance and complete-source checks remain intact.
+- A failed outgoing tail still suppressed the incoming head. That obsolete pair
+  preparation guard is removed. A completed worker rejection also left a busy
+  marker for up to ten minutes, delaying unrelated preparation. Explicit worker
+  rejections now release the marker; transport timeouts retain it because the
+  worker may still be writing. A real HTTP failure/continuation regression and
+  the existing timeout/restart regression cover both outcomes.
+- Two extraction tests still expected pair-dependent heads and were wrong under
+  independent preparation; another assertion accidentally searched the other
+  recording's valid head. These tests now exercise the requested policy.
+- Analyzer render errors and technical vetoes previously disappeared into null.
+  The regular path now reports missing windows, marker counts, deadline/trim/
+  tempo vetoes, and worker errors such as `no-usable-out-eight-bar-window`.
+
+There is a separate coverage limitation to resolve before promising frequent
+regular blends. The recent outgoing tracks Kamera (6 tail markers), Crown Of
+Creation (6), If You Knew (7), and Electric Lady (8) cannot supply the renderer's
+required nine markers. I Had Too Much to Dream has 12 markers, but no eight-bar
+span before its stored wind-down. A 20-second legacy tail analysis window often
+cannot contain eight bars plus the fade region. Extracting that window does not
+extend its measured beat grid. The existing tempo gate also requires less than
+3% difference, allowing half/double time. Neither rule was loosened to force a
+blend. The next policy decision is how to measure enough outgoing coverage for
+the agreed eight-bar style, then assess musical pairing; do not invent bars or
+relabel a short ordinary crossfade as a stem blend.
+
+The current analyzer logs confirm successful Beat This model loading after the
+packaging rebuild. Earlier packaging explanations were not established by a
+reproduced build; the verified runtime fact is that the model now loads. The
+latest corrections affect the controller only and do not require another analyzer
+rebuild. No service is rebuilt or restarted by this reassessment.
+
+Validation: the focused regular-stem suite passes 32 tests, including queue-to-
+analyzer style forwarding, unequal coverage, independent failure continuation,
+source identity, and timeout/cleanup races. Controller TypeScript passes; focused
+ESLint has no errors. The analyzer Python umbrella suite was run before and after
+these corrections: the same six suites fail against the station snapshot because
+several pure fixtures lack the required shared-grid dependency (including one
+stale logging assertion). The new exact-decode recovery and still-short rejection
+checks pass, as do the existing regular render arithmetic/source-window checks.
+This is not a claim that the full analyzer suite is green. Real-file decoder
+probes ran in a separate container with the matching library file mounted read
+only; no Demucs quality or on-air listening claim follows from that check.
+
+The operator also requested readable preparation logs. Queue evidence now carries
+a display label (`Title — Artist`) separately from extraction identity. Preparing,
+ready, preview-unavailable and failure messages use that label, with the ID only
+when metadata is unavailable. Renaming a track does not invalidate its stems.
+
+The wider stem suite passes all 327 tests across 39 files. Development is isolated
+in `/home/jaz666/codex/regular-stem-reassessment-20261119` on branch
+`fix/regular-stem-reassessment-20261119`, based on `db55c482a`. Only the reassessment
+changes are transferred to the station checkout; its existing unrelated edits
+and running services are preserved. The prior source candidate is `db55c482a`.
+
+Verification of the exact staged candidate, exported without the station's
+unrelated working edits, also passes the complete analyzer Python umbrella
+suite. This isolates the six station-snapshot failures to the pre-existing
+required-grid migration/fixtures; they are not failures of the committed
+reassessment patch. The broad 327-test run used the full station snapshot; the
+final 32-test regular run includes the readable logging change.

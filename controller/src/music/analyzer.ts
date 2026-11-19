@@ -460,7 +460,7 @@ function startWorker(): Promise<void> {
         clearTimeout(waiter.timer);
         pending.delete(msg.id!);
         if (msg.ok) waiter.resolve(msg);
-        else waiter.reject(new Error(msg.error || 'analyze failed'));
+        else waiter.reject(new AnalyzerJobRejectedError(msg.error || 'analyze failed'));
       }
     });
     p.stderr.on('data', (c: Buffer) => {
@@ -723,6 +723,10 @@ class AnalyzerPathUnavailableError extends Error {
   }
 }
 
+// A completed worker rejection is distinct from losing the transport while a
+// worker may still be writing. Working-source leases can end on this result.
+export class AnalyzerJobRejectedError extends Error {}
+
 async function sidecarFailure(res: Response): Promise<never> {
   const raw = await res.text().catch(() => '');
   let detail: unknown = null;
@@ -743,6 +747,9 @@ async function sidecarFailure(res: Response): Promise<never> {
     );
   }
   const message = typeof detail === 'string' ? detail : raw;
+  if (res.status === 500 && typeof detail === 'string') {
+    throw new AnalyzerJobRejectedError(`analyze sidecar ${res.status}: ${message}`);
+  }
   throw new Error(`analyze sidecar ${res.status}: ${message}`);
 }
 
@@ -1047,6 +1054,7 @@ export interface RenderTransitionPayload {
   };
   out_dir: string;
   clip_name: string;
+  regular_style?: 'drums-late' | 'rhythm-late' | 'vocals-late';
   target_lufs?: number | null;
 }
 
@@ -1065,11 +1073,11 @@ export interface RenderTransitionResult {
 // as a heavy backend cached the stems earlier.
 export async function renderTransition(
   payload: RenderTransitionPayload,
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; onFailure?: (reason: string) => void } = {},
 ): Promise<RenderTransitionResult | null> {
   const timeoutMs = opts.timeoutMs ?? config.analyzer.renderTimeoutMs;
   const backend = await resolveBackend();
-  if (!backend) return null;
+  if (!backend) { opts.onFailure?.('no analysis backend available'); return null; }
   if (backend === 'sidecar') {
     try {
       const res = await fetchWithTimeout(`${_sidecarBase}/render-transition`, {
@@ -1080,17 +1088,23 @@ export async function renderTransition(
         bodyDeadline: true,
         retryStaleSocket: true,
       });
-      if (!res.ok) return null; // 404 = pre-render sidecar — silently no blend
+      if (!res.ok) { opts.onFailure?.(`analyzer render HTTP ${res.status}`); return null; }
       const body = (await res.json()) as WorkerMessage & { ok?: boolean };
-      return coerceRenderResult(body);
-    } catch {
+      const result = coerceRenderResult(body);
+      if (!result) opts.onFailure?.(body.error || 'analyzer returned an invalid transition');
+      return result;
+    } catch (error) {
+      opts.onFailure?.(error instanceof Error ? error.message : 'analyzer render request failed');
       return null;
     }
   }
   try {
     if (!ready) await startWorker();
-    return await localRenderTransition(payload, timeoutMs);
-  } catch {
+    const result = await localRenderTransition(payload, timeoutMs);
+    if (!result) opts.onFailure?.('analyzer returned an invalid transition');
+    return result;
+  } catch (error) {
+    opts.onFailure?.(error instanceof Error ? error.message : 'local analyzer render failed');
     return null;
   }
 }
