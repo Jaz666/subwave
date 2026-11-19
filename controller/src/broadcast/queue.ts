@@ -2385,9 +2385,9 @@ class Queue {
     return true;
   }
 
-  // Staged rollout uses the existing exact-pair audition allowlist. Preparation
-  // is never awaited by the sender. The ordinary watcher updates deadlines and
-  // membership after skips/removals as well as additions.
+  // Regular windows are prepared per track before pair suitability is judged.
+  // Preparation is never awaited by the sender. The ordinary watcher updates
+  // deadlines and membership after skips/removals as well as additions.
   private regularStemOccurrences = new WeakMap<QueueItem,string>();
   private syncRegularStemPreparation(): void {
     // Source stems retire with queue membership. Keep only the immediately
@@ -2397,7 +2397,6 @@ class Queue {
     this.history.forEach((item, index) => {
       if (item.stemBlend?.regular && (index > 0 || !retainPrevious)) delete item.stemBlend.regular.envelopes;
     });
-    if (!stemBlend.regularStemTestEnabled()) return;
     const enabled = settings.get().transitions.stemBlends === true
       && !quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)
       && this.pairDrainActive() && !!settings.getEffectivePersona()?.djMode;
@@ -2411,7 +2410,9 @@ class Queue {
         return {
           id: String(item.track.id), occurrence: this.regularStemOccurrences.get(item), sent: !!item.sent,
           remainingSec: this.remainingUntilItemAirs(item),
-          regularEligible: enabled && stemBlend.regularStemTestTrack(String(item.track.id)),
+          // Regular stems are genre-open; Sub/Beats admission alone reserves
+          // dance tracks from this path. Pair eligibility does not gate prep.
+          regularEligible: enabled,
           subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id)),
           pairToNextAllowed: !!row && !!next && mix.bpmCompat(outro?.bpm ?? row.bpm,next.bpm) >= 0.7
             && !!stemBlend.regularStemTestStyle(String(item.track.id), String(this.upcoming[index+1]?.track.id)),
