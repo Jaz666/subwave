@@ -12,7 +12,6 @@ import * as settings from '../settings.js';
 import * as analyzer from '../music/analyzer.js';
 import * as db from '../music/library-db.js';
 import * as library from '../music/library.js';
-import * as mix from '../music/mix.js';
 import * as loudness from '../music/loudness.js';
 import * as stemCache from '../music/stem-cache.js';
 import { bulkPassRunning } from '../music/tagger-lock.js';
@@ -22,15 +21,11 @@ import { HARD_DEADLINE_SEC } from './drain-policy.js';
 import { CLIP_SEAM_CROSS_SEC, clipSeamCues, type ClipSeamCues } from './stem-seam.js';
 import type { SubbeatsPlayback } from './subbeats-clock.js';
 import { regularStemRuntime } from './regular-stem-runtime.js';
-import { regularStemPairDecision } from './regular-stem-policy.js';
+import { regularStemPairDecision, regularStemTempoDecision } from './regular-stem-policy.js';
 
 // Cross length at the two clip seams (X→clip, clip→Y); the overlap arithmetic
 // lives with it in broadcast/stem-seam.ts.
 export { CLIP_SEAM_CROSS_SEC };
-
-// bpmCompat floor: the beat-carry loop is retriggered on the incoming grid, so
-// only near-locked (or clean half/double) tempos read as intentional.
-const BPM_COMPAT_MIN = 0.7;
 
 export type RegularStemBlendStyle = 'drums-late' | 'rhythm-late' | 'vocals-late';
 const REGULAR_TEST_STYLES: RegularStemBlendStyle[] = ['drums-late', 'rhythm-late', 'vocals-late'];
@@ -140,8 +135,8 @@ async function renderBlend(
   // A blend always starts at or after the outro wind-down, so a trimmed end
   // at/before it can only cut the clip's source region. Exact test post-render.
   if (opts.outTrimEndSec != null && opts.outTrimEndSec <= (out.outro.startMs ?? 0) / 1000) return reject('the outgoing silence trim cuts the blend region');
-  // Tempo gate: near-locked or clean half/double only.
-  if (mix.bpmCompat(out.outro.bpm ?? out.bpm, inn.bpm) < BPM_COMPAT_MIN) return reject('the existing tempo compatibility gate rejected this pair');
+  const tempo = regularStemTempoDecision(out.outro.gridProvenance, inn.gridProvenance);
+  if (!tempo.eligible) return reject(tempo.reason!);
   // Cache-hit-only: both windows must already be separated.
   const [outStems, inStems] = opts.workingSources ? [opts.workingSources.tail, opts.workingSources.head] : await Promise.all([
     stemCache.renderSource(outTrack.id, 'tail'),
@@ -273,6 +268,13 @@ export async function maybeRenderBlend(
   // Run admission before looking at any working files, including when missing.
   if (db.subbeatsEligibleTrack(String(out.id)) || db.subbeatsEligibleTrack(String(incoming.id))) {
     opts.log?.('warn', 'Regular stems fallback: subbeats-reserved');
+    return null;
+  }
+  const sides = blendSides(String(out.id), String(incoming.id));
+  const tempo = regularStemTempoDecision(sides?.out.outro?.gridProvenance, sides?.inn.gridProvenance);
+  if (!tempo.eligible) {
+    const label = (track: BlendTrack) => [track.title, track.artist].filter(Boolean).join(' — ') || String(track.id);
+    opts.log?.('warn', `Regular stems fallback: ${label(out)} → ${label(incoming)}: ${tempo.reason}`);
     return null;
   }
   const sources = await regularStemRuntime.sources(String(out.id), String(incoming.id));

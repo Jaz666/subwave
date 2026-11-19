@@ -841,3 +841,57 @@ does not rebuild or restart them. The preceding station source candidate,
 `7d3e62f78`, remains the rollback reference. Next: rebuild analyzer/controller,
 then inspect a newly queued regular track's wider tail preparation and listen
 for an admitted stem seam before judging pairing quality.
+
+
+### Shared-grid BPM for regular admission — 19 November 2026
+
+The operator approved using shared-grid BPM for regular stem compatibility.
+The grid already records `evidence.medianBpm`, derived as 60 divided by the
+median interval between measured beats. The existing standalone BPM columns
+come from librosa and can disagree substantially with that grid. For example,
+I See Your Pain currently has stored head/tail BPM 143.6/89.1, while its shared
+head and tail grids each report 66.667 BPM. The old queue gate could reject a
+pair before extraction, and the generic working-window fallback hid that veto.
+
+`regularStemTempoDecision()` now owns the regular compatibility check. The
+queue's pair admission and the renderer both use the outgoing **tail** grid's
+BPM and incoming **head** grid's BPM. Only current Beat This small0 v1 evidence
+with a finite positive BPM is usable; missing grid tempo is unavailable, with
+no fallback to legacy BPM or the other end of the recording. The existing
+compatibility floor and half/double-time comparison remain unchanged. The
+renderer still measures its spans from actual bars and plays at native tempo.
+Independent head/tail preparation and Sub/Beats reservation are preserved.
+
+The working renderer checks this decision before acquiring stem windows and
+rechecks it inside the render path. Its fallback log now names the pair and
+reports missing grid BPM or the actual incompatible tail/head BPM, rather than
+hiding those vetoes behind “working windows not ready”. Other window, source,
+trim, deadline and queue-membership checks remain in effect. Updating shared
+grid evidence during an asynchronous render still invalidates that render.
+
+No BPM columns or analyzer calculations are rewritten by this controller fix.
+Existing complete shared-grid measurements can supply BPM immediately after
+rebuild. This change itself needs only the controller rebuilt; the preceding
+wider-tail change is still pending on the station and needs both analyzer and
+controller rebuilt together. The preceding source candidate is `1fa9ee7f0`.
+
+While a wider tail measurement is running, pair judgement waits for its new
+BPM, including when the old tail grid is absent. This is provisional permission
+to wait within the existing deadline, not permission to render: completed grid
+BPM must still pass the same tempo check before any working windows are used.
+Sub/Beats reservation, forced drains and hard deadlines retain their authority.
+
+Validation: 36 regular-stem tests pass on the exact staged candidate, plus 14
+blend tests. The real queue-to-renderer regression admits matching grid BPM
+when legacy BPM disagrees; queue evidence also refuses incompatible grid BPM
+without disabling independent extraction. Missing/invalid tempo and clean
+half/double time are covered, as is a grid change during rendering. A queue
+regression verifies provisional waiting for a wider grid with no old tail BPM;
+that regression also passes with the station's existing working edits present.
+TypeScript passes, and focused ESLint has no errors (two existing harness `any`
+warnings). The analyzer Python suite and real-file audio probes were not rerun
+for this controller-only change. No running service or station data is changed.
+The scoped commit is pushed on the development branch and copied to the station
+checkout, preserving the remaining unrelated edits. Next: rebuild both services
+with the preceding wider-tail candidate, then use the explicit grid-BPM vetoes
+to assess actual regular pairing opportunities.
