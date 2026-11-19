@@ -34,6 +34,9 @@ import * as subsonic from '../music/subsonic.js';
 import { createFileFormatLookup, type FileFormat } from '../music/file-format.js';
 import * as settings from '../settings.js';
 import * as stemCache from '../music/stem-cache.js';
+import * as regularStemDb from '../music/library-db.js';
+import { eightBarWindow, regularStemPairDecision, regularStemTempoDecision } from '../broadcast/regular-stem-policy.js';
+import * as beatGridUpgrade from '../music/beat-grid-upgrade.js';
 import { readSubbeatsQueue } from '../music/subbeats-store.js';
 import { subbeatsSourceSeconds, type SubbeatsTiming } from '../broadcast/subbeats-clock.js';
 import { fetchWithTimeout } from '../util/fetch-timeout.js';
@@ -54,6 +57,12 @@ type VisualTransition = {
   gainsDb?: [number, number]; timing?: SubbeatsTiming; periodSec?: number;
   outgoingGainDb?: number; incomingGainDb?: number;
   sources?: { outgoing: Omit<StemSource, 'path'>; incoming: Omit<StemSource, 'path'> };
+};
+export type MixingDeskStemStatus = {
+  currentHeadGrid: boolean | null;
+  currentTailGrid: boolean | null;
+  regular: 'unavailable' | 'suitable' | 'verified' | 'unknown';
+  subbeats: 'unavailable' | 'suitable' | 'verified' | 'unknown';
 };
 
 const PEAK_SAMPLE_RATE = 8_000;
@@ -209,6 +218,7 @@ export function createNowPlayingFileRouter(deps: {
   latestJingle?: () => { filename?: string; startedAt?: number; durationSec?: number; queuedSec?: number; placement?: string } | null;
   latestBed?: () => { filename?: string; startedAt?: number; durationSec?: number | string } | null;
   stemTransition?: (currentId: string) => VisualTransition | null | Promise<VisualTransition | null>;
+  stemStatus?: (currentId: string, nextId: string | null, transition: VisualTransition | null) => MixingDeskStemStatus;
   preparedSpeech?: () => boolean;
   speechPreparing?: () => boolean;
   speechForecasts?: () => Array<{ voiceId: string; expectedAt: string; durationMs: number; text: string }>;
@@ -487,7 +497,11 @@ export function createNowPlayingFileRouter(deps: {
     let speechForecasts: Array<{ voiceId: string; expectedAt: string; durationMs: number; text: string }> = [];
     try { speechForecasts = deps.speechForecasts?.() ?? []; }
     catch { /* no speech forecasts */ }
-    res.set('Cache-Control', 'no-store').json({ jingle, bed, stemTransition, preparedSpeech, speechPreparing, speechForecasts });
+    let stemStatus: MixingDeskStemStatus | null = null;
+    try {
+      if (asked === id && deps.stemStatus) stemStatus = deps.stemStatus(id, deps.nextTrackId?.() ?? null, stemTransition);
+    } catch { /* missing or stale library evidence leaves the indicators unknown */ }
+    res.set('Cache-Control', 'no-store').json({ jingle, bed, stemTransition, stemStatus, preparedSpeech, speechPreparing, speechForecasts });
   });
   return router;
 }
@@ -579,6 +593,56 @@ export const router = createNowPlayingFileRouter({
     timeoutMs: 5 * 60_000, bodyDeadline: true, signal,
   }),
   nextTrackId: () => queue.upcoming[0]?.track?.id || null,
+  stemStatus: (currentId, nextId, transition) => {
+    const outgoing = regularStemDb.getTrack(currentId);
+    if (!outgoing) return { currentHeadGrid: null, currentTailGrid: null, regular: 'unknown', subbeats: 'unknown' };
+    const currentGrid = (grid: typeof outgoing.gridProvenance) => grid?.backend === 'beat-this-onnx'
+      && grid.model === 'small0' && grid.preprocessingVersion === 1 && grid.source?.complete === true;
+    const tailGrid = outgoing.outro?.gridProvenance;
+    const headGrid = outgoing.gridProvenance;
+    const headSource = outgoing.gridProvenance?.source;
+    const tailSource = tailGrid?.source;
+    const headWindow = !!headGrid && currentGrid(headGrid) && !!outgoing.bars?.length
+      && !!eightBarWindow(outgoing.bars, { startMs: headGrid.windowStartMs, endMs: headGrid.windowEndMs }, 'head');
+    const tailWindow = !!tailGrid && currentGrid(tailGrid) && !!tailSource?.complete && !!headSource?.complete
+      && tailSource?.sha256 === headSource.sha256 && tailSource.bytes === headSource.bytes
+      && !!outgoing.outro?.bars?.length
+      && !!eightBarWindow(outgoing.outro.bars, {
+        startMs: tailGrid.windowStartMs,
+        endMs: Math.min(tailGrid.windowEndMs, outgoing.outro.startMs),
+      }, 'tail');
+    if (!nextId) return { currentHeadGrid: headWindow, currentTailGrid: tailWindow, regular: 'unknown', subbeats: 'unknown' };
+    const incoming = regularStemDb.getTrack(nextId);
+    if (!incoming) return { currentHeadGrid: headWindow, currentTailGrid: tailWindow, regular: 'unknown', subbeats: 'unknown' };
+    const incomingGrid = incoming.gridProvenance;
+    const incomingHeadWindow = !!incomingGrid && currentGrid(incomingGrid) && !!incoming.bars?.length
+      && !!eightBarWindow(incoming.bars, { startMs: incomingGrid.windowStartMs, endMs: incomingGrid.windowEndMs }, 'head');
+    const outgoingSubbeats = !!regularStemDb.subbeatsEligibleTrack(currentId);
+    const incomingSubbeats = !!regularStemDb.subbeatsEligibleTrack(nextId);
+    const transitionMatches = transition?.outgoingId === currentId && transition.incomingId === nextId;
+    const regularAdmission = regularStemPairDecision(
+      { regularEligible: true, subbeatsEligible: outgoingSubbeats },
+      { regularEligible: true, subbeatsEligible: incomingSubbeats },
+    );
+    const tempo = regularStemTempoDecision(tailGrid, incomingGrid);
+    const regularSuitable = settings.get().transitions.stemBlends === true && regularAdmission.eligible
+      && tailWindow && incomingHeadWindow && tempo.eligible;
+    const subbeatsJobs = readSubbeatsQueue(config.stateDir).jobs;
+    const savedCoverage = [currentId, nextId].every(id => subbeatsJobs.some(job => job.id === id
+      && job.status === 'prepared' && !!job.bundleKey && !!job.cueCoverage));
+    const subbeatsSuitable = outgoingSubbeats && incomingSubbeats && savedCoverage
+      && beatGridUpgrade.trackGridCurrent(currentId) && beatGridUpgrade.trackGridCurrent(nextId)
+      && settings.get().transitions.subbeatsLive === true && settings.get().transitions.pairDrain !== false
+      && !!settings.getEffectivePersona()?.djMode;
+    return {
+      currentHeadGrid: headWindow,
+      currentTailGrid: tailWindow,
+      regular: transitionMatches && transition?.kind === 'stem-blend' ? 'verified'
+        : regularSuitable ? 'suitable' : 'unavailable',
+      subbeats: transitionMatches && transition?.kind === 'subbeats' ? 'verified'
+        : subbeatsSuitable ? 'suitable' : 'unavailable',
+    };
+  },
   waveformPlayback: id => {
     const item = [queue.current, ...queue.history, ...queue.upcoming]
       .find(candidate => candidate?.track?.id === id);

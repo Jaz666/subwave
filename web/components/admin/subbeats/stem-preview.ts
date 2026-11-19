@@ -39,7 +39,13 @@ export function stemPairKey(transition: StemTransition): string {
 }
 
 export function stemStyle(transition: StemTransition): string {
-  return transition.kind === 'subbeats' ? MIX_STYLE[transition.mixStyle ?? 'short-exchange'].label : 'Stem Blend';
+  if (transition.kind === 'subbeats') return MIX_STYLE[transition.mixStyle ?? 'short-exchange'].label;
+  switch (transition.regular?.style) {
+    case 'drums-late': return 'Drums late';
+    case 'rhythm-late': return 'Rhythm late';
+    case 'vocals-late': return 'Vocals late';
+    default: return 'Stem Blend';
+  }
 }
 
 export function stemStages(transition: StemTransition) {

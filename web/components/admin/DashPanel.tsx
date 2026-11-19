@@ -102,7 +102,7 @@ import {
   type SteerData,
 } from './dash/queries';
 import { useCardHashJump } from '../../hooks/useCardHashJump';
-import NowPlayingWaveform from './subbeats/NowPlayingWaveform';
+import NowPlayingWaveform, { MixingDeskStatus } from './subbeats/NowPlayingWaveform';
 
 // Listeners-table header cells. `sticky top-0` resolves against the ScrollArea
 // viewport, and the opaque card-bg stops rows showing through. The rule is an
@@ -542,7 +542,7 @@ export default function DashPanel() {
 
       {err && <ErrorState error={err} />}
 
-      <Card title="Mixing Desk">
+      <Card title="Mixing Desk" right={<MixingDeskStatus />}>
         <NowPlayingWaveform />
       </Card>
 

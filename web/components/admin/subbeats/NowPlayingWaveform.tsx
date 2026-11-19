@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type WaveSurfer from 'wavesurfer.js';
+import { ArrowLeftToLine, ArrowRightToLine, AudioLines, Check, Disc3, Grid2X2 } from 'lucide-react';
 import { useStationFeed } from '../../../hooks/useStationFeed';
 import { adminJson, adminResponse, useAdminQuery } from '../../../lib/admin-query';
 import { useAdminAuth } from '../../../lib/adminAuth';
@@ -26,11 +27,60 @@ type VisualEvents = {
   jingle?: { airedAt: string; durationMs: number } | null;
   bed?: { airedAt: string; durationMs?: number } | null;
   stemTransition?: StemTransition | null;
+  stemStatus?: {
+    currentHeadGrid: boolean | null;
+    currentTailGrid: boolean | null;
+    regular: 'unavailable' | 'suitable' | 'verified' | 'unknown';
+    subbeats: 'unavailable' | 'suitable' | 'verified' | 'unknown';
+  } | null;
 };
 const EMPTY_SPEECH_FORECASTS: NonNullable<VisualEvents['speechForecasts']> = [];
 type DeckTrack = { id: string; duration: number; startedAt: number; colorRole: 'accent' | 'accent2'; playedSeconds?: number };
 type TransitionMarker = { airedAt: number; label: string };
 type WaveformPeakResponse = { durationSec: number; peaks: number[] };
+
+function StatusIcon({ icon: Icon, label, state, grid = false }: {
+  icon: typeof ArrowLeftToLine;
+  label: string;
+  state: 'ready' | 'unavailable' | 'suitable' | 'verified' | 'unknown';
+  grid?: boolean;
+}) {
+  const active = state === 'ready' || state === 'suitable' || state === 'verified';
+  return <span className={`relative inline-flex ${grid ? 'w-7' : 'w-5'} h-5 items-center justify-center ${active ? 'text-[var(--accent)]' : 'text-[var(--ink-faint)]'}`}
+    role="img" aria-label={label} title={label}>
+    {grid ? <><Grid2X2 size={14} strokeWidth={1.8} aria-hidden="true" /><Icon size={13} strokeWidth={1.8} aria-hidden="true" /></>
+      : <Icon size={16} strokeWidth={1.8} aria-hidden="true" />}
+    {state === 'verified' && <Check className="absolute -right-1 -top-1 rounded-full bg-[var(--card-bg)]" size={9} strokeWidth={3} aria-hidden="true" />}
+  </span>;
+}
+
+export function MixingDeskStatus() {
+  const { nowPlaying } = useStationFeed();
+  const { adminFetch, hydrated, needsAuth } = useAdminAuth();
+  const currentId = nowPlaying?.subsonic_id;
+  const visualEvents = useAdminQuery<VisualEvents>({
+    key: waveformKeys.events(currentId),
+    adminFetch,
+    enabled: !!currentId && hydrated && !needsAuth,
+    staleTime: 0,
+    refetchInterval: 1000,
+    placeholderData: previous => previous,
+    request: (fetcher, signal) => adminJson<VisualEvents>(fetcher,
+      `/now-playing/visual-events?id=${encodeURIComponent(currentId!)}`, undefined, signal),
+  });
+  const status = visualEvents.data?.stemStatus;
+  if (!currentId) return null;
+  return <div className="flex shrink-0 items-center gap-1.5" role="group" aria-label="Current to next track stem status">
+    <StatusIcon icon={ArrowLeftToLine} grid label={`Current head grid: ${status?.currentHeadGrid == null ? 'waiting for grid data' : status.currentHeadGrid ? 'suitable for a stem window' : 'not suitable for a stem window'}`}
+      state={status?.currentHeadGrid == null ? 'unknown' : status.currentHeadGrid ? 'ready' : 'unavailable'} />
+    <StatusIcon icon={ArrowRightToLine} grid label={`Current tail grid: ${status?.currentTailGrid == null ? 'waiting for grid data' : status.currentTailGrid ? 'suitable for a stem window' : 'not suitable for a stem window'}`}
+      state={status?.currentTailGrid == null ? 'unknown' : status.currentTailGrid ? 'ready' : 'unavailable'} />
+    <StatusIcon icon={AudioLines} label={`Stem Blend: ${status?.regular ?? 'waiting for status'}`}
+      state={status?.regular ?? 'unknown'} />
+    <StatusIcon icon={Disc3} label={`Sub/Beats: ${status?.subbeats ?? 'waiting for status'}`}
+      state={status?.subbeats ?? 'unknown'} />
+  </div>;
+}
 
 function formatTime(seconds: number): string {
   const safeSeconds = Math.max(0, Math.floor(seconds));
@@ -472,7 +522,7 @@ export default function NowPlayingWaveform() {
           element.style.setProperty('--overlap-width', `${(outgoingUntil - incomingAt) / duration * 100}%`);
           element.style.setProperty('--outgoing-color', stemColors.current);
           element.style.setProperty('--incoming-color', stemColors.next);
-        }}><span>{stemTransition.kind === 'subbeats' ? 'Sub/Beats' : 'Stem Blend'}</span></div>;
+        }}><span>{stemTransition.kind === 'subbeats' ? 'Sub/Beats' : stemStyle(stemTransition)}</span></div>;
     })()
     : null;
 
@@ -541,6 +591,17 @@ export default function NowPlayingWaveform() {
           <strong>{stemStyle(stemTransition)}</strong><span>{stemStartConfirmed ? stemPhase(stemTransition,mixPosition) : 'Planned · awaiting mixer start'}</span>
         </div>}
         <div className={styles.stemActions}>
+          <div className={styles.syncControls} role="group" aria-label="Timeline audio sync">
+            <span className="hidden sm:inline">Timeline sync</span>
+            <button type="button" aria-label="Move timeline earlier by 0.10 seconds"
+              disabled={syncOffsetMs <= -MAX_SYNC_OFFSET_MS} onClick={() => setSyncOffsetMs(value => Math.max(-MAX_SYNC_OFFSET_MS, value - SYNC_STEP_MS))}>−</button>
+            <output aria-live="polite" aria-label={`Timeline offset ${syncOffsetMs >= 0 ? 'later' : 'earlier'} by ${Math.abs(syncOffsetMs / 1000).toFixed(2)} seconds`}>
+              {syncOffsetMs >= 0 ? '+' : '−'}{Math.abs(syncOffsetMs / 1000).toFixed(2)} s
+            </output>
+            <button type="button" aria-label="Move timeline later by 0.10 seconds"
+              disabled={syncOffsetMs >= MAX_SYNC_OFFSET_MS} onClick={() => setSyncOffsetMs(value => Math.min(MAX_SYNC_OFFSET_MS, value + SYNC_STEP_MS))}>+</button>
+            <button type="button" className={styles.syncReset} disabled={syncOffsetMs === 0} onClick={() => setSyncOffsetMs(0)}>Reset</button>
+          </div>
           <button type="button" className={`${styles.expandButton} ${autoPreview ? styles.autoEnabled : ''}`}
             aria-pressed={autoPreview} title="Automatically show the live stem preview during each transition"
             onClick={() => setAutoPreview(value => !value)}>Auto</button>
@@ -550,17 +611,6 @@ export default function NowPlayingWaveform() {
               else setExpandedPair(pairKey);
             }}>{expanded ? 'Collapse' : 'Expand'}</button>}
         </div>
-      </div>
-      <div className={styles.syncControls} role="group" aria-label="Timeline audio sync">
-        <span>Timeline sync</span>
-        <button type="button" aria-label="Move timeline earlier by 0.10 seconds"
-          disabled={syncOffsetMs <= -MAX_SYNC_OFFSET_MS} onClick={() => setSyncOffsetMs(value => Math.max(-MAX_SYNC_OFFSET_MS, value - SYNC_STEP_MS))}>−</button>
-        <output aria-live="polite" aria-label={`Timeline offset ${syncOffsetMs >= 0 ? 'later' : 'earlier'} by ${Math.abs(syncOffsetMs / 1000).toFixed(2)} seconds`}>
-          {syncOffsetMs >= 0 ? '+' : '−'}{Math.abs(syncOffsetMs / 1000).toFixed(2)} s
-        </output>
-        <button type="button" aria-label="Move timeline later by 0.10 seconds"
-          disabled={syncOffsetMs >= MAX_SYNC_OFFSET_MS} onClick={() => setSyncOffsetMs(value => Math.min(MAX_SYNC_OFFSET_MS, value + SYNC_STEP_MS))}>+</button>
-        <button type="button" className={styles.syncReset} disabled={syncOffsetMs === 0} onClick={() => setSyncOffsetMs(0)}>Reset</button>
       </div>
       {expanded && stemTransition && <LiveStemPreview key={pairKey}
         transition={stemTransition} startAt={confirmedStemStartAt} nowMs={clockMs} adminFetch={adminFetch} colors={stemColors}
