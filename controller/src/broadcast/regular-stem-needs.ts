@@ -1,10 +1,9 @@
-/** Queue snapshot -> exact CPU windows. No cache or provider reads here.
- * Each eligible recording prepares its own measured head and tail; compatibility
- * between two recordings is a later decision.
+/** Queue snapshot -> measured CPU windows. No cache or provider reads here.
+ * Each eligible recording prepares its available head and tail coverage; window
+ * length and compatibility are judged when a pair is rendered.
  */
 import { createHash } from 'node:crypto';
 import type { BeatGridProvenance } from '../schemas/beat-grid.js';
-import { eightBarWindow } from './regular-stem-policy.js';
 import { HARD_DEADLINE_SEC } from './drain-policy.js';
 import type { RegularStemNeed } from './regular-stem-preparation.js';
 
@@ -57,16 +56,10 @@ export function regularStemNeeds(items: readonly RegularStemQueueEvidence[], now
         || item.remainingSec == null || !Number.isFinite(item.remainingSec)) continue;
     // Leave render + write/probe time inside the existing hard fallback.
     const deadline = now + (item.remainingSec - HARD_DEADLINE_SEC - 10) * 1000;
-    const tail = eightBarWindow(item.tailBars, {
-      startMs: item.tailGrid?.windowStartMs ?? 0,
-      endMs: Math.min(item.windDownMs, item.durationMs, item.tailGrid?.windowEndMs ?? 0),
-    }, 'tail');
-    if (tail) add(item, 'tail', tail.startMs, tail.endMs, deadline, item.tailGrid);
-    const head = eightBarWindow(item.bars, {
-      startMs: item.headGrid?.windowStartMs ?? 0,
-      endMs: Math.min(item.durationMs, item.headGrid?.windowEndMs ?? 0),
-    }, 'head');
-    if (head) add(item, 'head', head.startMs, head.endMs, deadline, item.headGrid);
+    if (item.tailGrid) add(item, 'tail', item.tailGrid.windowStartMs,
+      Math.min(item.durationMs, item.tailGrid.windowEndMs), deadline, item.tailGrid);
+    if (item.headGrid) add(item, 'head', item.headGrid.windowStartMs,
+      Math.min(item.durationMs, item.headGrid.windowEndMs), deadline, item.headGrid);
   }
   return [...needs.values()];
 }
