@@ -107,14 +107,13 @@ def assert_grid(actual, expected):
     assert actual == expected, (actual, expected)
 
 
-def assert_unavailable(call, message="required Beat This beat grid is unavailable"):
+def assert_unavailable(call):
     try:
         call()
     except RuntimeError as err:
-        assert message in str(err), err
+        assert "required Beat This beat grid is unavailable" in str(err), err
     else:
         raise AssertionError("missing shared grid silently produced a fallback")
-
 
 def t_missing_model_fails_grid_logged_once():
     saved = sys.modules.get("onnxruntime", "absent")
@@ -172,7 +171,7 @@ def t_inference_failure_fails_grid_logged_once():
 
     def run(logs):
         for _ in range(3):
-            assert_unavailable(lambda: aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES), "bad chunk")
+            assert_unavailable(lambda: aw.bar_grid(None, 22050, _FakeLibrosa(), FRAMES))
         assert len([m for m in logs if "Beat This inference failed" in m]) == 1, logs
         assert aw._downbeat_tracker is not None
 
@@ -334,9 +333,7 @@ def t_tail_grid_survives_librosa_failure():
 
     def no_tracker(_logs):
         with patch.object(aw, "measure_loudness", return_value=(None, None)):
-            out = aw.facet_tail(np.ones(20000), 1000, 180.0, 200.0, TailLibrosa)
-        assert out["ending"] == "cold", out
-        assert "beats" not in out and "bars" not in out and "gridProvenance" not in out, out
+            assert_unavailable(lambda: aw.facet_tail(np.ones(20000), 1000, 180.0, 200.0, TailLibrosa))
 
     with_state(no_tracker, None)
 

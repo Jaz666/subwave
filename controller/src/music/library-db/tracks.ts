@@ -106,34 +106,6 @@ export function writeRegularHeadGrid(id: string, measured: {
   }).immediate();
 }
 
-// Replace only the learned beat-grid fields. A pick-time grid upgrade must
-// leave every unrelated analysis result (and the rest of outro_json) intact.
-export function writeBeatGridUpgrade(id: string, head: {
-  beats: number[]; bars: number[]; gridProvenance: BeatGridProvenance;
-}, tail: {
-  beats: number[]; bars: number[]; gridProvenance: BeatGridProvenance;
-} | null, expectedFileSize: number | null): boolean {
-  const d = requireDb();
-  return d.transaction(() => {
-    const row = d.prepare('SELECT outro_json, file_size FROM tracks WHERE id = ?').get(id) as { outro_json: string | null; file_size: number | null } | undefined;
-    if (!row) return false;
-    if (row.file_size !== expectedFileSize) return false;
-    let outro: Record<string, unknown> = {};
-    try {
-      const parsed = row.outro_json ? JSON.parse(row.outro_json) : null;
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) outro = parsed;
-    } catch { /* replace malformed tail JSON with only the new grid below */ }
-    delete outro.beats;
-    delete outro.bars;
-    delete outro.gridProvenance;
-    if (tail) Object.assign(outro, tail);
-    const nextOutro = Object.keys(outro).length ? JSON.stringify(outro) : null;
-    d.prepare(`UPDATE tracks SET beats_json = ?, bars_json = ?, grid_provenance_json = ?, outro_json = ? WHERE id = ?`)
-      .run(jsonOrNull(head.beats), jsonOrNull(head.bars), gridProvenanceJson(head.gridProvenance), nextOutro, id);
-    return true;
-  }).immediate();
-}
-
 // The raw whole-file loudness curve (loudness_curve_json), or null. Read on
 // its own so rowToTrack never carries it: a DJ set's runs to ~120 KB.
 export function getLoudnessCurveJson(id: string): string | null {

@@ -1495,8 +1495,11 @@ def facet_tail(y_src, sr, offset, duration_s, librosa):
         log(f"outro tempo tracking failed: {e}")
     try:
         beats_ms, bars_ms, provenance = measure_bar_grid(y, sr, librosa, beat_frames, offset_s=offset)
-    except Exception as e:  # noqa: BLE001 — never persist a legacy grid
+    except Exception as e:  # noqa: BLE001 — a failed grid invalidates this facet
         log(f"outro shared beat grid failed: {e}")
+        raise
+    if provenance is None:
+        raise RuntimeError("required Beat This grid provenance is missing for tail window")
 
     out = {"startMs": int(round(wind_start_s * 1000.0)), "ending": ending}
     # Trailing dead air (absolute floor — see SILENCE_DBFS). Rides this decode
@@ -3294,8 +3297,11 @@ def facet_head(y, sr, librosa):
     provenance = None
     try:
         beats_ms, bars_ms, provenance = measure_bar_grid(y, sr, librosa, beat_frames)
-    except Exception as e:  # noqa: BLE001 — never persist a legacy grid
+    except Exception as e:  # noqa: BLE001 — a failed grid invalidates this facet
         log(f"shared beat grid failed: {e}")
+        raise
+    if provenance is None:
+        raise RuntimeError("required Beat This grid provenance is missing for head window")
 
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
     chroma_mean = [float(x) for x in np.mean(chroma, axis=1)]

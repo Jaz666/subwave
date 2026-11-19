@@ -62,7 +62,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     modelSha256:'a'.repeat(64),preprocessingVersion:1,windowStartMs:start,windowEndMs:end,
     evidence:{medianBpm:100,intervalSupport:1,librosaBeatSupport:null},source:{sha256:fingerprint,bytes:audio.length,complete:true}});
   const track=(id:string):RegularStemQueueEvidence=>({id,label:`Title ${id} — Artist`,sent:false,remainingSec:180,regularEligible:true,
-    subbeatsEligible:false,durationMs:240000,windDownMs:235000,
+    pairToNextAllowed:true,subbeatsEligible:false,durationMs:240000,windDownMs:235000,
     bars:Array.from({length:12},(_,i)=>1000+i*2000),tailBars:Array.from({length:12},(_,i)=>200000+i*3000),
     headGrid:grid(0,40000),tailGrid:grid(190000,240000)});
   const only=(id:string,side:'head'|'tail'):RegularStemQueueEvidence=>({
@@ -137,13 +137,14 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
       });
       const beforeDownloads = downloads, beforePosts = posts.length;
       const evidence=only(`blocked-${failAt}`,'tail');
+      const incoming=only(`blocked-incoming-${failAt}`,'head');
       let blockedDone:()=>void=()=>{};
       const blockedReady = new Promise<void>(resolve=>{blockedDone=resolve;});
-      blocked.update(null,[evidence],()=>blockedDone(),()=>{});
+      blocked.update(null,[evidence,incoming],()=>blockedDone(),()=>{});
       const blockedTimer = setTimeout(()=>blockedDone(),2000);
       await blockedReady;
       clearTimeout(blockedTimer);
-      const need = regularStemNeeds([evidence],Date.now())[0];
+      const need = regularStemNeeds([evidence,incoming],Date.now())[0];
       assert.equal(blocked.lane.state(need.key),'failed');
       assert.equal(downloads-beforeDownloads,failAt-1,'only the second check follows a download');
       assert.equal(posts.length,beforePosts,'neither failure submits a CPU job');
@@ -160,7 +161,9 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     const closed=new Promise<void>(resolve=>{onClosed=resolve;});
     const slow=new RegularStemRuntime();
     let oldWakes=0;
-    slow.update(null,[{...only('slow','tail'),remainingSec:56}],()=>{oldWakes++;},()=>{});
+    const slowTail={...only('slow','tail'),remainingSec:56};
+    const slowHead=only('slow-incoming','head');
+    slow.update(null,[slowTail,slowHead],()=>{oldWakes++;},()=>{});
     const limit=new Promise<never>((_resolve,reject)=>{timeout=setTimeout(()=>reject(new Error('timeout recovery did not settle')),5000);});
     await Promise.race([submitted,limit]);
     await Promise.race([closed,limit]);
@@ -169,10 +172,11 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     assert.ok(JSON.parse(await readFile(busy,'utf8')).until>Date.now());
     const restarted=new RegularStemRuntime();
     const evidence=only('slow','tail');
-    const key=regularStemNeeds([evidence],Date.now())[0].key;
+    const incoming=only('slow-incoming','head');
+    const key=regularStemNeeds([evidence,incoming],Date.now())[0].key;
     let recovered:()=>void=()=>{};
     const recoveryReady=new Promise<void>(resolve=>{recovered=resolve;});
-    restarted.update(null,[evidence],()=>recovered(),()=>{});
+    restarted.update(null,[evidence,incoming],()=>recovered(),()=>{});
     const deferred=async()=>{
       const until=Date.now()+4000;
       while(restarted.lane.state(key)!=='pending') {
@@ -187,7 +191,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     await writeFile(path.join(held.directory,'tail-drums.flac'),'late partial');
     await writeFile(busy,JSON.stringify({until:Date.now()-1}));
     hold=false;held.response.destroy();
-    restarted.update(null,[evidence],()=>recovered(),()=>{});
+    restarted.update(null,[evidence,incoming],()=>recovered(),()=>{});
     await Promise.race([recoveryReady,limit]);
     assert.equal(posts.length,beforeSlowPosts+2,'expired lease permits one fresh extraction');
     assert.equal(restarted.lane.state(key),'ready');
@@ -211,12 +215,13 @@ test('nearest pair gets outgoing tail then incoming head; a pending grid holds o
     modelSha256:'a'.repeat(64),preprocessingVersion:1,windowStartMs:start,windowEndMs:end,
     evidence:{medianBpm:100,intervalSupport:1,librosaBeatSupport:null},source:{sha256:'b'.repeat(64),bytes:12345,complete:true}});
   const track=(id:string):RegularStemQueueEvidence=>({id,sent:false,remainingSec:180,regularEligible:true,
-    subbeatsEligible:false,durationMs:240000,windDownMs:235000,bars:[1000],tailBars:[222000],
+    pairToNextAllowed:true,subbeatsEligible:false,durationMs:240000,windDownMs:235000,
+    bars:Array.from({length:10},(_,i)=>1000+i*4000),tailBars:Array.from({length:10},(_,i)=>200000+i*4000),
     headGrid:grid(0,40000),tailGrid:grid(180000,240000)});
   runtime.update(null,[track('priority-a'),track('priority-b'),track('priority-c')],()=>{},()=>{});
   assert.deepEqual(runtime.statusWindows().slice(0,2).map(n=>[n.trackId,n.side]),
     [['priority-a','tail'],['priority-b','head']]);
-  assert.equal(runtime.statusWindows().length,6,'remaining roles still prepare independently');
+  assert.equal(runtime.statusWindows().length,4,'only adjacent-pair roles are prepared');
   runtime.update(null,[{...track('priority-a'),tailGridPending:true},track('priority-b')],()=>{},()=>{});
   assert.equal(runtime.pending('priority-a','priority-b'),true);
   assert.equal(runtime.statusWindows().some(n=>n.trackId==='priority-a' && n.side==='tail'),false);

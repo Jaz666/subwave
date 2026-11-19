@@ -60,8 +60,8 @@ export class RegularStemRuntime {
     this.headGridPending = new Set(queue.filter(item => item.headGridPending && !item.sent).map(item => item.id));
     this.gridPending = new Set(queue.filter(item => item.tailGridPending && !item.sent).map(item => item.id));
     const needs = regularStemNeeds(queue, Date.now());
-    // Spend the nearest pair's runway on its two actual render prerequisites.
-    // All other heads/tails remain independently wanted for the testing phase.
+    // Spend the nearest eligible pair's runway on its two render prerequisites
+    // before work for later eligible pairs.
     const urgent = this.renderPair && pairs.has(JSON.stringify(this.renderPair)) ? this.renderPair : null;
     const priority = (need: RegularStemWindowNeed) => urgent && need.trackId === urgent[0] && need.side === 'tail' ? 0
       : urgent && need.trackId === urgent[1] && need.side === 'head' ? 1 : 2;

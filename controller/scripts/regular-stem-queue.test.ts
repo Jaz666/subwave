@@ -76,7 +76,7 @@ test('queue snapshots prepare in background, pending work holds only before dead
     const originalGrid=db.getTrack('b')!.gridProvenance!;
     db.upsertTrackAnalysis('b',{bpm:143.6,beats:[500,1000],bars:[1000],gridProvenance:{...originalGrid,evidence:{...originalGrid.evidence,medianBpm:120}}});
     q.syncRegularStemPreparation();
-    assert.equal(snapshots[0].pairToNextAllowed,true,'BPM differences do not veto regular blends');
+    assert.equal(snapshots[0].pairToNextAllowed,false,'incompatible shared-grid BPMs block extraction');
     assert.equal(snapshots.every(item=>item.regularEligible),true,'pair admission remains separate from independent extraction');
     db.upsertTrackAnalysis('b',{bpm:143.6,beats:[500,1000],bars:[1000],gridProvenance:originalGrid});
     pending=false;
@@ -108,7 +108,7 @@ test('queue snapshots prepare in background, pending work holds only before dead
     try {
       q.syncRegularStemPreparation();
       assert.equal(snapshots[0].tailGridPending,true);
-      assert.equal(snapshots[0].pairToNextAllowed,true,'missing old tail BPM waits for the wider measurement before pair judgement');
+      assert.equal(snapshots[0].pairToNextAllowed,false,'stems wait for the wider tail grid before pair judgement');
       await Promise.race([gridSettled,new Promise<never>((_resolve,reject)=>{
         gridTimer=setTimeout(()=>reject(new Error('background grid measurement did not settle')),10000);
       })]);
@@ -118,10 +118,10 @@ test('queue snapshots prepare in background, pending work holds only before dead
     q.current=current(180);q.upcoming=[make('a'),make('b')];
     q.syncRegularStemPreparation();
     assert.equal(snapshots[1].headGridPending,true,'incoming head upgrade remains pending before extraction');
-    assert.equal(snapshots[0].pairToNextAllowed,true);
+    assert.equal(snapshots[0].pairToNextAllowed,false,'stems wait for the incoming shared grid before extraction');
     const probe=new RegularStemRuntime();probe.lane.update=()=>{};
     probe.update(null,snapshots,()=>{},()=>{});
-    assert.equal(probe.pending('a','b'),true,'the queue evidence holds the real sender readiness gate');
+    assert.equal(probe.pending('a','b'),false,'stale shared grids keep the pair out of stem preparation');
     probe.update(null,[],()=>{},()=>{});
     // Allow the deliberately unavailable background analyzer to settle.
     const until=Date.now()+10000;

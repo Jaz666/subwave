@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { eightBarWindow, regularStemPairDecision, regularStemWorkingIds } from '../src/broadcast/regular-stem-policy.js';
+import { eightBarWindow, regularStemPairDecision, regularStemTempoDecision, regularStemWorkingIds } from '../src/broadcast/regular-stem-policy.js';
+import type { BeatGridProvenance } from '../src/schemas/beat-grid.js';
+
+const tempoGrid = (medianBpm: number): BeatGridProvenance => ({
+  version: 1, backend: 'beat-this-onnx', model: 'small0', modelSha256: 'a'.repeat(64),
+  preprocessingVersion: 1, windowStartMs: 0, windowEndMs: 60_000,
+  evidence: { medianBpm, intervalSupport: 1, librosaBeatSupport: null },
+});
 
 test('tail searches earlier eight-bar spans before wind-down; head chooses first covered span', () => {
   const bars = Array.from({ length: 12 }, (_, i) => 1000 + i * 4000);
@@ -33,4 +40,11 @@ test('working set follows current plus eight queued tracks without historical re
   assert.deepEqual([...regularStemWorkingIds('q0', queued.slice(1))], queued);
   assert.equal(regularStemWorkingIds('q0', queued).size, 8);
   assert.throws(() => regularStemWorkingIds('current', [...queued, 'extra']), /eight queued/);
+});
+
+test('tempo gate uses the three-percent vanilla tolerance and checks half/double time', () => {
+  assert.equal(regularStemTempoDecision(tempoGrid(100), tempoGrid(102.9)).eligible, true);
+  assert.equal(regularStemTempoDecision(tempoGrid(100), tempoGrid(140)).eligible, false);
+  assert.equal(regularStemTempoDecision(tempoGrid(70), tempoGrid(140)).eligible, true);
+  assert.equal(regularStemTempoDecision(null, tempoGrid(100)).eligible, false);
 });

@@ -113,9 +113,9 @@ import * as stemBlend from './stem-blend.js';
 import { regularStemRuntime } from './regular-stem-runtime.js';
 import type { RegularStemQueueEvidence } from './regular-stem-needs.js';
 import * as regularStemDb from '../music/library-db.js';
+import { regularStemTempoDecision } from './regular-stem-policy.js';
 import * as beatGridUpgrade from '../music/beat-grid-upgrade.js';
 import * as regularTailGrid from '../music/regular-tail-grid.js';
-import * as beatGridUpgrade from '../music/beat-grid-upgrade.js';
 import { quietOnlyEnabled } from '../music/analyze-quiet-pure.js';
 import * as subbeats from './subbeats.js';
 import { queueAiredTrack as queueSubbeatsFromAirplay } from '../music/subbeats-airplay.js';
@@ -2232,9 +2232,8 @@ class Queue {
     return true;
   }
 
-  // Regular windows are prepared per track before pair suitability is judged.
-  // Preparation is never awaited by the sender. The ordinary watcher updates
-  // deadlines and membership after skips/removals as well as additions.
+  // Only roles needed by an adjacent pair that has passed its grid/BPM gates
+  // are prepared. Preparation is never awaited by the sender.
   private regularStemOccurrences = new WeakMap<QueueItem,string>();
   private syncRegularStemPreparation(): void {
     // Source stems retire with queue membership. Keep only the immediately
@@ -2244,24 +2243,13 @@ class Queue {
     this.history.forEach((item, index) => {
       if (item.stemBlend?.regular && (index > 0 || !retainPrevious)) delete item.stemBlend.regular.envelopes;
     });
-    try {
-      const gridTargets = [...(this.current ? [this.current] : []), ...this.upcoming]
-        .filter(item => !!regularStemDb.getTrack(String(item.track.id)))
-        .map(item => String(item.track.id));
-      // Gradually upgrade every library track as it enters the working queue.
-      // One CPU refresh at a time avoids a burst of eight analyzer jobs.
-      const gridTarget = gridTargets.find(id => beatGridUpgrade.upgradeDue(id));
-      if (gridTarget) void beatGridUpgrade.ensureCurrent(gridTarget, message => this.log('mix', message))
-        .then(() => { void this.drainToLiquidsoap(); });
-    } catch (error) { this.log('warn',`Pick-time shared beat grid upgrade unavailable: ${String(error)}`); }
     const enabled = settings.get().transitions.stemBlends === true
       && !quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)
       && this.pairDrainActive() && !!settings.getEffectivePersona()?.djMode;
     try {
       const gridTargets = [...(this.current ? [this.current] : []), ...this.upcoming]
         .filter(item => !!regularStemDb.getTrack(String(item.track.id))
-          && !regularTailGrid.regularTailGridPending(String(item.track.id))
-          && (!enabled || !!regularStemDb.subbeatsEligibleTrack(String(item.track.id))))
+          && !regularTailGrid.regularTailGridPending(String(item.track.id)))
         .map(item => String(item.track.id));
       // Gradually upgrade every library track as it enters the working queue.
       // One CPU refresh at a time avoids a burst of eight analyzer jobs.
@@ -2284,16 +2272,22 @@ class Queue {
       const evidence: RegularStemQueueEvidence[] = this.upcoming.map((item, index) => {
         const row = rows[index], next = rows[index+1], outro = outros[index];
         const tailGridPending = enabled && !item.sent && regularTailGrid.regularGridAwaiting(String(item.track.id));
+        const nextGridPending = enabled && !!next && !this.upcoming[index+1]?.sent
+          && regularTailGrid.regularHeadGridAwaiting(String(next.id));
         if (!this.regularStemOccurrences.has(item)) this.regularStemOccurrences.set(item,randomBytes(8).toString('hex'));
         return {
           id: String(item.track.id),
           label: [item.track.title, item.track.artist].filter(Boolean).join(' — ') || String(item.track.id),
           occurrence: this.regularStemOccurrences.get(item), sent: !!item.sent,
           remainingSec: this.remainingUntilItemAirs(item),
-          regularEligible: enabled && beatGridUpgrade.trackGridCurrent(String(item.track.id)),
-          subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id))
-            && beatGridUpgrade.trackGridCurrent(String(item.track.id)),
+          // Regular stems are genre-open; Sub/Beats admission alone reserves
+          // dance tracks. Pair style and current-grid tempo gates control prep.
+          regularEligible: enabled,
+          // Reservation follows Sub/Beats admission, even while its grid is stale.
+          subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id)),
           pairToNextAllowed: !!row && !!next
+            && !tailGridPending && !nextGridPending
+            && regularStemTempoDecision(outro?.gridProvenance, next.gridProvenance).eligible
             && !!stemBlend.regularStemTestStyle(String(item.track.id), String(this.upcoming[index+1]?.track.id)),
           durationMs: (row?.durationSec ?? 0)*1000,
           bars: row?.bars ?? [], tailBars: outro?.bars ?? [],

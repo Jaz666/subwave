@@ -1,10 +1,10 @@
-/** Queue snapshot -> measured CPU windows. No cache or provider reads here.
- * Each eligible recording prepares its available head and tail coverage; window
- * length and compatibility are judged when a pair is rendered.
+/** Queue snapshot -> only the measured CPU windows needed by compatible pairs.
+ * No cache or provider reads here.
  */
 import { createHash } from 'node:crypto';
 import type { BeatGridProvenance } from '../schemas/beat-grid.js';
 import { HARD_DEADLINE_SEC } from './drain-policy.js';
+import { eightBarWindow, regularStemPairDecision } from './regular-stem-policy.js';
 import type { RegularStemNeed } from './regular-stem-preparation.js';
 
 export interface RegularStemQueueEvidence {
@@ -54,17 +54,26 @@ export function regularStemNeeds(items: readonly RegularStemQueueEvidence[], now
       sourceSha256: source.sha256, sourceBytes: source.bytes,
       deadlineMs: Math.min(existing?.deadlineMs ?? deadlineMs, deadlineMs) });
   };
-  for (const item of items) {
-    if (item.sent || !item.regularEligible || item.subbeatsEligible
-        || item.remainingSec == null || !Number.isFinite(item.remainingSec)) continue;
+  for (let index = 0; index < items.length - 1; index++) {
+    const item = items[index], incoming = items[index + 1];
+    if (item.sent || incoming.sent || item.pairToNextAllowed !== true
+        || !regularStemPairDecision(item, incoming).eligible
+        || item.remainingSec == null || !Number.isFinite(item.remainingSec)
+        || item.tailGridPending || incoming.headGridPending) continue;
     // Leave render + write/probe time inside the existing hard fallback.
     const deadline = now + (item.remainingSec - HARD_DEADLINE_SEC - 10) * 1000;
-    // Provenance endpoints are rounded to milliseconds. Stay one millisecond
-    // inside them so a rounded-up EOF never requests samples beyond the source.
-    if (item.tailGrid && !item.tailGridPending) add(item, 'tail', item.tailGrid.windowStartMs,
-      Math.min(item.durationMs, item.tailGrid.windowEndMs - 1), deadline, item.tailGrid);
-    if (item.headGrid) add(item, 'head', item.headGrid.windowStartMs,
-      Math.min(item.durationMs, item.headGrid.windowEndMs - 1), deadline, item.headGrid);
+    const tail = item.tailGrid && eightBarWindow(item.tailBars,
+      { startMs: item.tailGrid.windowStartMs, endMs: Math.min(item.tailGrid.windowEndMs, item.windDownMs) }, 'tail');
+    const head = incoming.headGrid && eightBarWindow(incoming.bars,
+      { startMs: incoming.headGrid.windowStartMs, endMs: incoming.headGrid.windowEndMs }, 'head');
+    if (tail && item.tailGrid) add(item, 'tail', tail.startMs, tail.endMs, deadline, item.tailGrid);
+    if (head && tail && incoming.headGrid) {
+      // The rendered clip lasts for the outgoing eight bars. Keep the incoming
+      // head's first eight bars when longer, and extend it when the tail lasts
+      // longer (including a clean half/double-time BPM equivalent).
+      const endMs = Math.max(head.endMs, head.startMs + tail.endMs - tail.startMs);
+      add(incoming, 'head', head.startMs, endMs, deadline, incoming.headGrid);
+    }
   }
   return [...needs.values()];
 }
