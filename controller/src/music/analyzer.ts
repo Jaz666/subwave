@@ -1420,6 +1420,9 @@ export interface FacetRequestOpts {
   facets: FacetName[];
   // Tail facet: place the window from the stored edges.
   tailWindow?: TailWindow | null;
+  // Regular stems may need more measured bars than the legacy outro window.
+  // Only the beat grid is widened; ending/level/vocal measurements stay put.
+  tailGridSeconds?: number;
   // Tail facet also carries the outro's vocal ranges (Demucs on the tail only).
   tailVocals?: boolean;
   stems_dir?: string;
@@ -1545,6 +1548,7 @@ export async function analyzeFacets(
   };
   if (opts.regular_stem_window && !await regularStemsAvailable()) throw new Error('analyzer does not support regular stem windows version 2');
   if (opts.tailVocals) body.tail_vocals = true;
+  if (opts.tailGridSeconds != null) body.tail_grid_seconds = opts.tailGridSeconds;
   if (opts.tailWindow && usesTailWindow(opts.facets)) {
     body.tail_window = { end_ms: opts.tailWindow.endMs, duration_ms: opts.tailWindow.durationMs };
   }

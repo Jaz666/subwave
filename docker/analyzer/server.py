@@ -862,6 +862,7 @@ class AnalyzeRequest(BaseModel):
     source_size: Any = None
     stems_device: str | None = None
     regular_stem_window: dict[str, Any] | None = None
+    tail_grid_seconds: int | None = None
 
 
 @app.post("/analyze")
@@ -907,6 +908,8 @@ async def analyze(req: AnalyzeRequest):
     facets = getattr(req, "facets", None)
     if facets is not None:
         payload["facets"] = facets
+        if req.tail_grid_seconds is not None:
+            payload["tail_grid_seconds"] = req.tail_grid_seconds
         if req.regular_stem_window is not None:
             payload["regular_stem_window"] = req.regular_stem_window
         if req.stems_device is not None:

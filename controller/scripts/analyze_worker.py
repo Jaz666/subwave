@@ -4519,8 +4519,43 @@ def parse_stems_windows(raw):
     return [w for w in STEM_WINDOWS if w in raw]
 
 
+def regular_tail_grid(librosa, source, seconds, placement=None):
+    """Measure a wider grid on the complete recording without moving its fade.
+    Decode MP3s from the beginning so random-access seeking cannot shift bars.
+    """
+    import numpy as np
+
+    if source.complete is not True or not source.duration_s:
+        raise FacetRequestError("extended tail grid requires a complete recording")
+    end = min(source.duration_s, placement["end_ms"] / 1000.0 if placement else source.duration_s) - 0.001
+    start = max(0.0, end - seconds)
+    if end <= start:
+        raise FacetRequestError("extended tail grid has no audio")
+    def decode(start, end):
+        decoded = extract_window_by_count(source.path, start, end-start)
+        try:
+            return load_audio(librosa, decoded, sr=ANALYZE_SR, mono=True)
+        finally:
+            os.remove(decoded)
+    audio, sr = decode(start, end)
+    if audio is not None and np.ndim(audio) == 1 and sr == ANALYZE_SR \
+            and 0 < len(audio) < round((end-start) * sr) - 2:
+        # Some complete MP3 headers overstate decoded duration. The count-based
+        # decode gives the real EOF; move the measured window back, never pad.
+        end = start + len(audio) / sr - 0.001
+        start = max(0.0, end - seconds)
+        audio, sr = decode(start, end)
+    if audio is None or np.ndim(audio) != 1 or sr != ANALYZE_SR \
+            or abs(len(audio) - round((end-start) * sr)) > 2:
+        raise FacetRequestError("extended tail grid decode is incomplete")
+    beats, bars, provenance = measure_bar_grid(audio, sr, librosa, [], offset_s=start)
+    if not provenance or not beats or not bars:
+        raise FacetRequestError("extended tail beat grid is unavailable")
+    return {"beats": beats, "bars": bars, "gridProvenance": provenance}
+
+
 def analyze_facets(librosa, source, facets, stems_dir=None, want_tail_vocals=False, stems_require_marker=False,
-                   whole_input=None, tail_window=None, stems_windows=None, source_size=None):
+                   whole_input=None, tail_window=None, stems_windows=None, source_size=None, tail_grid_seconds=None):
     """Compute exactly `facets` from an opened source. Each facet answers on
     its own: ok + data, unmeasurable + reason (this file can't give it at this
     version), unavailable + reason (this engine can't: no CLAP / no Demucs), or
@@ -4698,6 +4733,12 @@ def analyze_facets(librosa, source, facets, stems_dir=None, want_tail_vocals=Fal
                 demucs_tail(detector, lambda **kw: source.load(librosa, **kw), librosa,
                             source.duration_s, outro)
 
+    if tail_grid_seconds is not None and "tail" not in out and outro is not None:
+        try:
+            outro.update(regular_tail_grid(librosa, source, tail_grid_seconds, placement))
+        except Exception as e:  # noqa: BLE001 — preserve other facets and stored ending measurements
+            out["tail"] = _failed(e)
+
     if "tail" in wanted and "tail" not in out:
         if outro is None:
             out["tail"] = _unmeasurable(tail_reason or "tail-not-measured")
@@ -4861,6 +4902,10 @@ def analyze_facet_request(librosa, req):
     Raises FacetRequestError for a malformed request. Fetch / source-open
     failures fail the request; window failures stay inside their facets."""
     facets = parse_facets(req.get("facets"))
+    grid_seconds = req.get("tail_grid_seconds")
+    if grid_seconds is not None and (type(grid_seconds) is not int or not 40 <= grid_seconds <= 120
+                                     or facets != ["tail"] or req.get("tail_vocals") is True):
+        raise FacetRequestError("extended tail grid requires 40-120 seconds on a tail-only request")
     # The whole-file facets stream the music server's URL (or read a local
     # copy known to be complete); `stream_url` rides along with a path request.
     whole_input = whole_file_input(req.get("path"), req.get("complete"), req.get("stream_url") or req.get("url"))
@@ -4895,6 +4940,7 @@ def analyze_facet_request(librosa, req):
             tail_window=req.get("tail_window"),
             stems_windows=parse_stems_windows(req.get("stems_windows")),
             source_size=req.get("source_size"),
+            tail_grid_seconds=grid_seconds,
         )
         return {"facets": result, "source": source.describe()}
     finally:

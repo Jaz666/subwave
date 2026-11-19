@@ -200,3 +200,25 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     await new Promise<void>(resolve=>server.close(()=>resolve()));
   }
 });
+
+test('nearest pair gets outgoing tail then incoming head; a pending grid holds only admitted seams', async () => {
+  const {RegularStemRuntime}=await import('../src/broadcast/regular-stem-runtime.js');
+  const runtime=new RegularStemRuntime();
+  runtime.lane.update=()=>{};
+  const grid=(start:number,end:number):BeatGridProvenance=>({version:1,backend:'beat-this-onnx',model:'small0',
+    modelSha256:'a'.repeat(64),preprocessingVersion:1,windowStartMs:start,windowEndMs:end,
+    evidence:{medianBpm:100,intervalSupport:1,librosaBeatSupport:null},source:{sha256:'b'.repeat(64),bytes:12345,complete:true}});
+  const track=(id:string):RegularStemQueueEvidence=>({id,sent:false,remainingSec:180,regularEligible:true,
+    subbeatsEligible:false,durationMs:240000,windDownMs:235000,bars:[1000],tailBars:[222000],
+    headGrid:grid(0,40000),tailGrid:grid(180000,240000)});
+  runtime.update(null,[track('priority-a'),track('priority-b'),track('priority-c')],()=>{},()=>{});
+  assert.deepEqual(runtime.statusWindows().slice(0,2).map(n=>[n.trackId,n.side]),
+    [['priority-a','tail'],['priority-b','head']]);
+  assert.equal(runtime.statusWindows().length,6,'remaining roles still prepare independently');
+  runtime.update(null,[{...track('priority-a'),tailGridPending:true},track('priority-b')],()=>{},()=>{});
+  assert.equal(runtime.pending('priority-a','priority-b'),true);
+  assert.equal(runtime.statusWindows().some(n=>n.trackId==='priority-a' && n.side==='tail'),false);
+  runtime.update(null,[{...track('priority-a'),tailGridPending:true,pairToNextAllowed:false},track('priority-b')],()=>{},()=>{});
+  assert.equal(runtime.pending('priority-a','priority-b'),false,'tempo/style vetoes never wait for a grid');
+  runtime.update(null,[],()=>{},()=>{});
+});

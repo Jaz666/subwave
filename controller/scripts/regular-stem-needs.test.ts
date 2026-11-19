@@ -54,3 +54,8 @@ test('rounded EOF stays inside the measured recording without padding missing sa
   assert.equal(regularStemNeeds([{...item,durationMs:308000}],0)[0].endMs,308000,
     'a shorter known duration still bounds the request');
 });
+
+test('wider grid measurement delays only its tail, retaining independent head preparation', () => {
+  const needs=regularStemNeeds([{...track('a'),tailGridPending:true},track('b')],0);
+  assert.deepEqual(needs.map(n=>[n.trackId,n.side]),[['a','head'],['b','tail'],['b','head']]);
+});

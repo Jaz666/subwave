@@ -22,6 +22,7 @@ export interface RegularStemQueueEvidence {
   windDownMs: number;
   headGrid: BeatGridProvenance | null;
   tailGrid: BeatGridProvenance | null;
+  tailGridPending?: boolean;
 }
 export interface RegularStemWindowNeed extends RegularStemNeed {
   startMs: number;
@@ -59,7 +60,7 @@ export function regularStemNeeds(items: readonly RegularStemQueueEvidence[], now
     const deadline = now + (item.remainingSec - HARD_DEADLINE_SEC - 10) * 1000;
     // Provenance endpoints are rounded to milliseconds. Stay one millisecond
     // inside them so a rounded-up EOF never requests samples beyond the source.
-    if (item.tailGrid) add(item, 'tail', item.tailGrid.windowStartMs,
+    if (item.tailGrid && !item.tailGridPending) add(item, 'tail', item.tailGrid.windowStartMs,
       Math.min(item.durationMs, item.tailGrid.windowEndMs - 1), deadline, item.tailGrid);
     if (item.headGrid) add(item, 'head', item.headGrid.windowStartMs,
       Math.min(item.durationMs, item.headGrid.windowEndMs - 1), deadline, item.headGrid);

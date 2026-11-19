@@ -797,6 +797,66 @@ def t_regular_rejects_replaced_recording_before_model():
 
 
 test("replaced recording is rejected before loading Demucs", t_regular_rejects_replaced_recording_before_model)
+def t_wider_regular_tail_grid():
+    class Source:
+        path = "/fake/master.mp3"
+        complete = True
+        duration_s = 240
+    calls = []
+    removed = []
+    def extract(path, start, length):
+        calls.append((path, start, length))
+        return "/fake/window.wav"
+    def measure(audio, sr, librosa, frames, offset_s):
+        assert sr == SR and frames == []
+        return [round(offset_s * 1000) + 1000], [round(offset_s * 1000) + 1000], {"windowStartMs": round(offset_s * 1000)}
+    with Patched(extract_window_by_count=extract,
+                 load_audio=lambda *_a, **_k: (silence(60), SR), measure_bar_grid=measure), \
+            patch.object(aw.os, "remove", side_effect=removed.append):
+        result = aw.regular_tail_grid(None, Source(), 60, {"end_ms": 230000})
+        assert result["gridProvenance"]["windowStartMs"] == 169999
+        assert calls == [(Source.path, 169.999, 60.0)], calls
+        assert removed == ["/fake/window.wav"]
+    with Patched(extract_window_by_count=extract, load_audio=lambda *_a, **_k: (silence(59), SR)), \
+            patch.object(aw.os, "remove", side_effect=removed.append):
+        try:
+            aw.regular_tail_grid(None, Source(), 60)
+        except aw.FacetRequestError as error:
+            assert "incomplete" in str(error)
+        else:
+            raise AssertionError("accepted a short wider decode")
+    assert len(removed) == 3
+    with Patched(extract_window_by_count=extract, measure_bar_grid=measure), \
+            patch.object(aw, "load_audio", side_effect=[(silence(56), SR), (silence(60), SR)]), \
+            patch.object(aw.os, "remove", side_effect=removed.append):
+        result = aw.regular_tail_grid(None, Source(), 60)
+        assert result["gridProvenance"]["windowStartMs"] == 175998
+        assert round(calls[-1][1] * 1000) == 175998
+    Source.complete = False
+    with Patched(extract_window_by_count=no_decode):
+        try:
+            aw.regular_tail_grid(None, Source(), 60)
+        except aw.FacetRequestError:
+            pass
+        else:
+            raise AssertionError("accepted incomplete recording")
+
+
+def t_wider_request_bounds():
+    for seconds, facets, vocals in [(True, ["tail"], False), (39, ["tail"], False),
+                                   (121, ["tail"], False), (60, ["head", "tail"], False),
+                                   (60, ["tail"], True)]:
+        with patch.object(aw.FileSource, "from_request", side_effect=AssertionError("opened invalid request")):
+            try:
+                aw.analyze_facet_request(None, {"facets": facets, "tail_grid_seconds": seconds, "tail_vocals": vocals})
+            except aw.FacetRequestError:
+                pass
+            else:
+                raise AssertionError("accepted invalid wider-grid request")
+
+
+test("wider regular tail grid uses complete exact audio, placement and cleanup", t_wider_regular_tail_grid)
+test("wider grid requests reject invalid bounds and mixed facets before source opening", t_wider_request_bounds)
 if failures:
     print(f"✗ analyzer_facets_test.py: {failures} failure(s)")
     sys.exit(1)
