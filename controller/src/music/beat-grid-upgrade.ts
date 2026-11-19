@@ -22,7 +22,7 @@ export function trackGridCurrent(id: string): boolean {
 }
 
 export function upgradeDue(id: string): boolean {
-  return !trackGridCurrent(id) && !inFlight.has(id) && (failuresUntil.get(id) ?? 0) <= Date.now();
+  return inFlight.size === 0 && !trackGridCurrent(id) && (failuresUntil.get(id) ?? 0) <= Date.now();
 }
 
 export function ensureCurrent(id: string, log: (message: string) => void): Promise<boolean> {

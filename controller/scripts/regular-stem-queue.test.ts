@@ -9,7 +9,7 @@ const settings = await import('../src/settings.js');
 const library = await import('../src/music/library.js');
 const db = await import('../src/music/library-db.js');
 const { queue } = await import('../src/broadcast/queue.js');
-const { regularStemRuntime: runtime } = await import('../src/broadcast/regular-stem-runtime.js');
+const { regularStemRuntime: runtime, RegularStemRuntime } = await import('../src/broadcast/regular-stem-runtime.js');
 const { config } = await import('../src/config.js');
 
 test('queue snapshots prepare in background, pending work holds only before deadline, force bypasses hold', async () => {
@@ -113,6 +113,22 @@ test('queue snapshots prepare in background, pending work holds only before dead
         gridTimer=setTimeout(()=>reject(new Error('background grid measurement did not settle')),10000);
       })]);
     } finally {clearTimeout(gridTimer);q.drainToLiquidsoap=originalDrain;}
+    q.drainToLiquidsoap=async()=>{};
+    db.getDb()!.prepare('UPDATE tracks SET grid_provenance_json=NULL WHERE id=?').run('b');
+    q.current=current(180);q.upcoming=[make('a'),make('b')];
+    q.syncRegularStemPreparation();
+    assert.equal(snapshots[1].headGridPending,true,'incoming head upgrade is provisional, not a BPM veto');
+    assert.equal(snapshots[0].pairToNextAllowed,true);
+    const probe=new RegularStemRuntime();probe.lane.update=()=>{};
+    probe.update(null,snapshots,()=>{},()=>{});
+    assert.equal(probe.pending('a','b'),true,'the queue evidence holds the real sender readiness gate');
+    probe.update(null,[],()=>{},()=>{});
+    // Allow the deliberately unavailable background analyzer to settle.
+    const until=Date.now()+10000;
+    const grids=await import('../src/music/regular-tail-grid.js');
+    while(grids.regularTailGridPending('b') && Date.now()<until) await new Promise(resolve=>setTimeout(resolve,10));
+    q.drainToLiquidsoap=originalDrain;
+
   } finally {
     runtime.update=originalUpdate; runtime.pending=originalPending;
     clearInterval(consumer);

@@ -23,6 +23,7 @@ export interface RegularStemQueueEvidence {
   headGrid: BeatGridProvenance | null;
   tailGrid: BeatGridProvenance | null;
   tailGridPending?: boolean;
+  headGridPending?: boolean;
 }
 export interface RegularStemWindowNeed extends RegularStemNeed {
   startMs: number;

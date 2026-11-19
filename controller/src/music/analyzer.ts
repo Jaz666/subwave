@@ -1221,12 +1221,12 @@ function subsonicErrorMessage(body: string): string {
 // any error; the caller falls back to the url path for that one track.
 export async function downloadCapped(
   songId: string,
-  opts: { maxBytes?: number; timeoutMs?: number } = {},
+  opts: { maxBytes?: number; timeoutMs?: number; destination?: string } = {},
 ): Promise<{ path: string; complete: boolean }> {
   const maxBytes = opts.maxBytes ?? ANALYZE_MAX_BYTES;
   if (opts.maxBytes !== undefined && (!Number.isSafeInteger(maxBytes) || maxBytes <= 0)) throw new Error('Invalid analysis download limit');
-  mkdirSync(ANALYZE_TMP_DIR, { recursive: true });
-  const dest = `${ANALYZE_TMP_DIR}/${encodeURIComponent(songId)}.audio`;
+  const dest = opts.destination ?? `${ANALYZE_TMP_DIR}/${encodeURIComponent(songId)}.audio`;
+  mkdirSync(dirname(dest), { recursive: true });
   const url = subsonic.getRawStreamUrl(songId);
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), opts.timeoutMs ?? config.analyzer.requestTimeoutMs);
@@ -1254,8 +1254,9 @@ export async function downloadCapped(
     let read = 0;
     async function* capped() {
       for await (const chunk of res.body as AsyncIterable<Uint8Array>) {
-        read += chunk.length;
-        yield chunk;
+        const kept = chunk.subarray(0, maxBytes - read);
+        read += kept.length;
+        yield kept;
         if (read >= maxBytes) return; // enough audio for the window
       }
     }
@@ -1431,6 +1432,9 @@ export interface FacetRequestOpts {
   // stemsWindowsFor).
   stems_windows?: StemWindow[];
   complete?: boolean;
+  // Complete regular sources must remain on the shared-path lane. Never
+  // retry a capped URL or extend their explicit preparation deadline.
+  localPathRequired?: boolean;
   // The request's deadline. Omitted, the pass's ANALYZE_REQUEST_TIMEOUT_MS. A
   // pick-time separation passes its own longer one (pick-stems-policy.ts).
   timeoutMs?: number;
@@ -1480,10 +1484,11 @@ export function parseFacetAnswer(msg: WorkerMessage): FacetAnalysis {
 async function facetRequest(
   body: Record<string, unknown>,
   deadlineMs?: number,
+  strictDeadline = false,
 ): Promise<FacetAnalysis> {
   const backend = await resolveBackend();
   if (!backend) throw new Error('no analysis backend available');
-  const timeoutMs = analyzeRequestTimeoutMs(body, deadlineMs);
+  const timeoutMs = strictDeadline ? deadlineMs ?? config.analyzer.requestTimeoutMs : analyzeRequestTimeoutMs(body, deadlineMs);
   let msg: WorkerMessage;
   if (backend === 'sidecar') {
     const res = await fetchWithTimeout(`${_sidecarBase}/analyze`, {
@@ -1561,6 +1566,7 @@ export async function analyzeFacets(
     : {};
   const url = subsonic.getRawStreamUrl(songId);
   const timeoutMs = opts.timeoutMs; // undefined: facetRequest's default
+  if (!localPath && opts.localPathRequired) throw new Error('complete regular source path is required');
   if (!localPath) return facetRequest({ url, ...body, ...stems }, timeoutMs);
   try {
     return await facetRequest({
@@ -1571,9 +1577,9 @@ export async function analyzeFacets(
       // known to be complete; the worker decides, never the sidecar.
       ...(readsStream(body) ? { stream_url: url } : {}),
       ...stems,
-    }, timeoutMs);
+    }, timeoutMs, opts.localPathRequired);
   } catch (err) {
-    if (!(err instanceof AnalyzerPathUnavailableError) || opts.regular_stem_window) throw err;
+    if (!(err instanceof AnalyzerPathUnavailableError) || opts.regular_stem_window || opts.localPathRequired) throw err;
     // Same degrade as analyzePathWithUrlFallback: no stems without shared state.
     const facets = opts.facets.filter(f => f !== 'stems');
     return facets.length ? facetRequest({ url, ...body, facets }, timeoutMs)

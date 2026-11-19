@@ -62,7 +62,7 @@ export function writeBeatGridUpgrade(id: string, head: {
 
 // A wider regular grid must not replace the existing fade, levels or vocals.
 // Bind the write to the complete recording currently measured at the head.
-export function writeRegularTailGrid(id: string, measured: TrackOutro): boolean {
+export function writeRegularTailGrid(id: string, measured: TrackOutro, expectedFileSize?: number | null): boolean {
   const grid = measured.gridProvenance, source = grid?.source;
   if (!grid || !source?.complete) return false;
   const d = requireDb();
@@ -70,6 +70,7 @@ export function writeRegularTailGrid(id: string, measured: TrackOutro): boolean 
     const row = d.prepare('SELECT outro_json, grid_provenance_json, file_size FROM tracks WHERE id = ?').get(id) as
       { outro_json: string | null; grid_provenance_json: string | null; file_size: number | null } | undefined;
     if (!row) return false;
+    if (expectedFileSize !== undefined && row.file_size !== expectedFileSize) return false;
     const head = parseBeatGridProvenance(row.grid_provenance_json ? JSON.parse(row.grid_provenance_json) : null);
     if (!head?.source?.complete || head.source.sha256 !== source.sha256 || head.source.bytes !== source.bytes
         || (row.file_size != null && row.file_size !== source.bytes)) return false;
@@ -81,6 +82,54 @@ export function writeRegularTailGrid(id: string, measured: TrackOutro): boolean 
     d.prepare('UPDATE tracks SET outro_json = ? WHERE id = ?').run(JSON.stringify({
       ...base, beats: measured.beats, bars: measured.bars, gridProvenance: grid,
     }), id);
+    return true;
+  }).immediate();
+}
+
+// Repair a prefix/legacy head grid from the complete recording, preserving
+// keys, BPM, levels, vocals, facet stamps and the established ending cue.
+export function writeRegularHeadGrid(id: string, measured: {
+  beats: number[]; bars: number[]; gridProvenance: BeatGridProvenance;
+}, expectedFileSize: number | null): boolean {
+  const source = measured.gridProvenance.source;
+  if (!source?.complete) return false;
+  const d = requireDb();
+  return d.transaction(() => {
+    const row = d.prepare('SELECT file_size, grid_provenance_json FROM tracks WHERE id=?').get(id) as
+      { file_size: number | null; grid_provenance_json: string | null } | undefined;
+    if (!row || row.file_size !== expectedFileSize || (expectedFileSize != null && expectedFileSize !== source.bytes)) return false;
+    const before = parseBeatGridProvenance(row.grid_provenance_json ? JSON.parse(row.grid_provenance_json) : null);
+    if (before?.source?.complete && before.source.sha256 !== source.sha256) return false;
+    d.prepare('UPDATE tracks SET beats_json=?, bars_json=?, grid_provenance_json=? WHERE id=?')
+      .run(JSON.stringify(measured.beats), JSON.stringify(measured.bars), JSON.stringify(measured.gridProvenance), id);
+    return true;
+  }).immediate();
+}
+
+// Replace only the learned beat-grid fields. A pick-time grid upgrade must
+// leave every unrelated analysis result (and the rest of outro_json) intact.
+export function writeBeatGridUpgrade(id: string, head: {
+  beats: number[]; bars: number[]; gridProvenance: BeatGridProvenance;
+}, tail: {
+  beats: number[]; bars: number[]; gridProvenance: BeatGridProvenance;
+} | null, expectedFileSize: number | null): boolean {
+  const d = requireDb();
+  return d.transaction(() => {
+    const row = d.prepare('SELECT outro_json, file_size FROM tracks WHERE id = ?').get(id) as { outro_json: string | null; file_size: number | null } | undefined;
+    if (!row) return false;
+    if (row.file_size !== expectedFileSize) return false;
+    let outro: Record<string, unknown> = {};
+    try {
+      const parsed = row.outro_json ? JSON.parse(row.outro_json) : null;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) outro = parsed;
+    } catch { /* replace malformed tail JSON with only the new grid below */ }
+    delete outro.beats;
+    delete outro.bars;
+    delete outro.gridProvenance;
+    if (tail) Object.assign(outro, tail);
+    const nextOutro = Object.keys(outro).length ? JSON.stringify(outro) : null;
+    d.prepare(`UPDATE tracks SET beats_json = ?, bars_json = ?, grid_provenance_json = ?, outro_json = ? WHERE id = ?`)
+      .run(jsonOrNull(head.beats), jsonOrNull(head.bars), gridProvenanceJson(head.gridProvenance), nextOutro, id);
     return true;
   }).immediate();
 }
@@ -562,6 +611,14 @@ export function acceptReplacedFiles(
 export function trackFileSize(id: string): number | null {
   const row = requireDb().prepare('SELECT file_size AS s FROM tracks WHERE id = ?').get(id) as { s: number | null } | undefined;
   return positiveInt(row?.s ?? null);
+}
+
+// Controller-readable source metadata, without expanding every TrackRecord.
+export function trackFileInfo(id: string): FileInfo | null {
+  const row = requireDb().prepare('SELECT file_path, file_suffix, file_size, bit_rate FROM tracks WHERE id=?').get(id) as
+    { file_path: string | null; file_suffix: string | null; file_size: number | null; bit_rate: number | null } | undefined;
+  return row ? cleanFileInfo({ filePath: row.file_path, fileSuffix: row.file_suffix,
+    fileSize: row.file_size, bitRate: row.bit_rate }) : null;
 }
 
 // Stem passes in a row whose proven tail did not land (music/stem-stamp-policy.ts).

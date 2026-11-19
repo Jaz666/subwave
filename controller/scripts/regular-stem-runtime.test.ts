@@ -220,6 +220,8 @@ test('nearest pair gets outgoing tail then incoming head; a pending grid holds o
   runtime.update(null,[{...track('priority-a'),tailGridPending:true},track('priority-b')],()=>{},()=>{});
   assert.equal(runtime.pending('priority-a','priority-b'),true);
   assert.equal(runtime.statusWindows().some(n=>n.trackId==='priority-a' && n.side==='tail'),false);
+  runtime.update(null,[track('priority-a'),{...track('priority-b'),headGrid:null,headGridPending:true}],()=>{},()=>{});
+  assert.equal(runtime.pending('priority-a','priority-b'),true,'incoming grid upgrade holds before head evidence exists');
   runtime.update(null,[{...track('priority-a'),tailGridPending:true,pairToNextAllowed:false},track('priority-b')],()=>{},()=>{});
   assert.equal(runtime.pending('priority-a','priority-b'),false,'tempo/style vetoes never wait for a grid');
   runtime.update(null,[],()=>{},()=>{});
