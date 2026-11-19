@@ -202,13 +202,16 @@ occurrence before rendering; a late job may finish but cannot arm a stale pair.
 
 ## 6. Migration and compatibility
 
-- Preserve current valid Sub/Beats saved stems and coverage records. Reuse only
-  after source and separator provenance validation.
+- A clean Sub/Beats rebuild on the test station is approved. The rollout may
+  discard existing Sub/Beats-specific cue, eligibility, coverage and prepared
+  stem state, then regenerate it under the new flow; it does not need to carry
+  forward old Sub/Beats readiness or saved coverage.
+- Scope that reset to Sub/Beats preparation state. Keep shared Beat This grids,
+  library metadata and unrelated analysis. Leave old standard stem-cache files
+  untouched; they are not inputs to either new pick-time workflow.
 - Version the new role-readiness and pick-time evidence. Old broad eligibility
   rows are candidate hints only until refreshed; do not silently reinterpret
   them as current head/tail readiness.
-- Keep old standard cache files untouched. They are not evidence for either
-  new pick-time workflow.
 - Make preparation resumable so existing library analysis and source data are
   not needlessly repeated. Refresh only the grid/cue facets required to settle
   missing or stale roles.
@@ -285,8 +288,9 @@ library-wide Demucs pass.
    keep user-facing icons as a follow-up on the agreed Mixing Desk status
    contract.
 7. **Test-station rollout:** verify contrasting recent tracks from cold and
-   warm working state, review timing and logs, listen to aired results, and
-   preserve a rollback route before widening candidate refresh.
+   warm working state after a clean Sub/Beats preparation reset; review timing
+   and logs, listen to aired results, and preserve a rollback route before
+   widening candidate refresh.
 
 Do not remove the Sub/Beats tempo/pair checks, relax source-completeness or
 tail-placement guards, force a transition style, run whole-track Demucs just
