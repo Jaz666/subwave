@@ -427,11 +427,12 @@ async def test_facet_contract():
     with tempfile.NamedTemporaryFile() as audio:
         await server.analyze(server.AnalyzeRequest(
             path=audio.name, complete=False, facets=["tail"], stream_url="http://navi/stream",
-            tail_window={"end_ms": 180000, "duration_ms": 200000},
+            tail_window={"end_ms": 180000, "duration_ms": 200000}, tail_grid_seconds=60,
         ))
     assert worker_calls == [{
         "id": "1", "path": audio.name, "complete": False, "facets": ["tail"],
         "stream_url": "http://navi/stream", "tail_window": {"end_ms": 180000, "duration_ms": 200000},
+        "tail_grid_seconds": 60,
     }], worker_calls
     # A flat request (the regular analysis pass) carries the placement too,
     # and its answer passes the placed marker back.

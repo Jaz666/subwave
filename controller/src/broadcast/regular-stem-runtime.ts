@@ -21,6 +21,7 @@ export class RegularStemRuntime {
   private readonly cache = new RegularStemWorkingCache(path.join(config.stateDir, 'regular-stems-working'));
   private queuedAt = new Map<string, number>();
   private wanted = new Map<string, RegularStemWindowNeed>();
+  private gridPending = new Set<string>();
   private membership: Promise<void> = Promise.resolve();
   private pairRevisions = new Map<string,{ occurrence: string; revision: number }>();
   private nextPairRevision = 0;
@@ -54,7 +55,14 @@ export class RegularStemRuntime {
       pairs.set(key,{occurrence,revision:old?.occurrence === occurrence ? old.revision : ++this.nextPairRevision});
     }
     this.pairRevisions=pairs;
+    this.gridPending = new Set(queue.filter(item => item.tailGridPending && !item.sent).map(item => item.id));
     const needs = regularStemNeeds(queue, Date.now());
+    // Spend the nearest pair's runway on its two actual render prerequisites.
+    // All other heads/tails remain independently wanted for the testing phase.
+    const urgent = this.renderPair && pairs.has(JSON.stringify(this.renderPair)) ? this.renderPair : null;
+    const priority = (need: RegularStemWindowNeed) => urgent && need.trackId === urgent[0] && need.side === 'tail' ? 0
+      : urgent && need.trackId === urgent[1] && need.side === 'head' ? 1 : 2;
+    needs.sort((a, b) => priority(a)-priority(b));
     for (const need of needs) if (!this.queuedAt.has(need.key)) this.queuedAt.set(need.key, Date.now());
     const keys = new Set(needs.map(need => need.key));
     for (const key of this.queuedAt.keys()) if (!keys.has(key)) this.queuedAt.delete(key);
@@ -79,6 +87,7 @@ export class RegularStemRuntime {
     return tail && head ? { tail, head } : null;
   }
   pending(outId: string, inId: string): boolean {
+    if (this.pairRevisions.has(JSON.stringify([outId,inId])) && this.gridPending.has(outId)) return true;
     const pair = this.pair(outId, inId);
     if (!pair) return false;
     const states = [pair.tail,pair.head].map(need => this.lane.state(need.key));

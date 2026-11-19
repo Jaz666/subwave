@@ -46,7 +46,7 @@ test('the real queue arms a working stem blend and forwards its selected style t
       beats: [500, 1000], gridProvenance: grid, loudnessLufs: -14, peakDb: -2 });
     db.getDb()!.prepare('UPDATE tracks SET outro_json=? WHERE id=?').run(JSON.stringify({
       startMs: 235000, ending: 'cold', bars: Array.from({ length: 12 }, (_, i) => 200000 + i * 3000),
-      gridProvenance: { ...grid, windowStartMs: 190000, windowEndMs: 240000 },
+      gridProvenance: { ...grid, windowStartMs: 180000, windowEndMs: 240000 },
     }), id);
   }
   const original = { update: runtime.update, pending: runtime.pending, sources: runtime.sources };

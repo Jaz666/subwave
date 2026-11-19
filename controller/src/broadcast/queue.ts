@@ -114,6 +114,7 @@ import { regularStemRuntime } from './regular-stem-runtime.js';
 import type { RegularStemQueueEvidence } from './regular-stem-needs.js';
 import * as regularStemDb from '../music/library-db.js';
 import * as beatGridUpgrade from '../music/beat-grid-upgrade.js';
+import * as regularTailGrid from '../music/regular-tail-grid.js';
 import { quietOnlyEnabled } from '../music/analyze-quiet-pure.js';
 import * as subbeats from './subbeats.js';
 import { queueAiredTrack as queueSubbeatsFromAirplay } from '../music/subbeats-airplay.js';
@@ -2259,6 +2260,13 @@ class Queue {
       const rows = this.upcoming.map(item => regularStemDb.getTrack(String(item.track.id)));
       const outros = this.upcoming.map((item, index) =>
         library.get(String(item.track.id))?.outro ?? rows[index]?.outro);
+      if (enabled) {
+        const target = this.upcoming.find(item => !item.sent
+          && (this.remainingUntilItemAirs(item) ?? 0) > HARD_DEADLINE_SEC + 10
+          && regularTailGrid.regularTailGridDue(String(item.track.id)));
+        if (target) regularTailGrid.ensureRegularTailGrid(String(target.track.id),
+          message => this.log('mix', message), () => { void this.drainToLiquidsoap(); });
+      }
       const evidence: RegularStemQueueEvidence[] = this.upcoming.map((item, index) => {
         const row = rows[index], next = rows[index+1], outro = outros[index];
         if (!this.regularStemOccurrences.has(item)) this.regularStemOccurrences.set(item,randomBytes(8).toString('hex'));
@@ -2276,6 +2284,7 @@ class Queue {
           bars: row?.bars ?? [], tailBars: outro?.bars ?? [],
           windDownMs: outro?.startMs ?? (row?.durationSec ?? 0)*1000,
           headGrid: row?.gridProvenance ?? null, tailGrid: outro?.gridProvenance ?? null,
+          tailGridPending: regularTailGrid.regularTailGridPending(String(item.track.id)),
         };
       });
       regularStemRuntime.update(this.current?.track.id ? String(this.current.track.id) : null, evidence,

@@ -764,3 +764,68 @@ suite. This isolates the six station-snapshot failures to the pre-existing
 required-grid migration/fixtures; they are not failures of the committed
 reassessment patch. The broad 327-test run used the full station snapshot; the
 final 32-test regular run includes the readable logging change.
+
+### Wider regular tail grids — 19 November 2026
+
+The operator approved addressing the remaining 20-second tail-coverage limit.
+Regular queued recordings now request a separate tail-only grid measurement over
+60 seconds, growing to at most 120 seconds when existing measured bar spacing
+and the saved fade need more room. This estimate only chooses the audio window;
+Beat This still measures every beat/bar. The eight-bar renderer, tempo gate,
+Sub/Beats reservation and native-tempo playback are unchanged. No genre filter
+was introduced. Head/tail separation remains independent during testing.
+
+The regular queue starts one wider measurement at a time, outside the bulk pass
+and with runway before the existing handoff deadline. While its grid is pending,
+that recording's head can still prepare. An admitted seam can wait within its
+existing deadline; tempo/style vetoes and forced handoffs do not wait. Preparation
+prioritises the nearest seam's outgoing tail and incoming head; the other roles
+remain wanted. Missing/old workers and failed measurements back off five minutes.
+
+Only `beats`, `bars` and `gridProvenance` in `outro_json` are replaced. The write
+checks the current complete recording's hash/size and rechecks Sub/Beats admission.
+It preserves existing fade timing, ending type, loudness, vocals, extra outro
+fields, head analysis and facet stamps. New tail evidence supplies the ending
+measurements only when no outro was previously stored. The wider measurement
+requests no Demucs work and needs both analyzer and controller rebuilt.
+
+Real-file checks ran in a separate container, with the recent station recordings
+mounted read only, no network and no station database writes. Every source hash
+and byte count matched saved provenance. The 60-second results were:
+
+| Recording | Old tail markers | New markers | Eight measured bars before the saved wind-down (seconds) |
+| --- | ---: | ---: | --- |
+| Wilco — Kamera | 6 | 26 | 185.745–202.185 |
+| Jefferson Airplane — Crown Of Creation | 6 | 32 | 152.532–165.332 |
+| The Rascals — If You Knew | 7 | 28 | 159.218–174.818 |
+| Janelle Monáe feat. Solange — Electric Lady | 8 | 24 | 280.446–300.666 |
+| The Electric Prunes — I Had Too Much to Dream (Last Night) | 12 | 39 | 154.267–166.187 |
+
+Kamera's complete MP3 header reports 213.752 seconds, but only about 210.286
+seconds decode. Both timestamp seeking and sample counting confirmed the short
+window. The new measurement counts decoded samples, discovers actual EOF on a
+short first read, moves its window earlier, and retries once. It never pads audio
+or widens the two-sample completeness tolerance. A second short read is refused.
+Its resulting grid covers 150.285–210.285 seconds. Repeating the ordinary ending
+analysis gave Kamera a cue 286 ms later; persistence deliberately retains its
+previously saved 203.033-second cue. The other four ordinary cues were unchanged.
+These checks prove available measured coverage, not musical suitability or an
+on-air blend. Pair quality remains the next listening task.
+
+Validation for this follow-up: all 35 focused regular tests pass on both the
+station snapshot and the exact staged candidate. The complete analyzer Python
+umbrella passes on the exact candidate, including request forwarding, validation,
+cleanup, successful EOF recovery and second-short-read rejection. TypeScript
+passes; focused ESLint reports no errors and one existing queue-harness `any`
+warning. The five wider extraction windows each decode 2645955 samples at 44.1
+kHz against 2645956 expected, within the unchanged two-sample tolerance. These
+probes did not load Demucs or audition a rendered pair.
+
+Development remains on `fix/regular-stem-reassessment-20261119` in
+`/home/jaz666/codex/regular-stem-reassessment-20261119`. The scoped commit is
+pushed there and transferred to the test-station checkout; unrelated working
+edits are preserved. Both services need rebuilding by the operator; this session
+does not rebuild or restart them. The preceding station source candidate,
+`7d3e62f78`, remains the rollback reference. Next: rebuild analyzer/controller,
+then inspect a newly queued regular track's wider tail preparation and listen
+for an admitted stem seam before judging pairing quality.

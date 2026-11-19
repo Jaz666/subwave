@@ -60,6 +60,31 @@ export function writeBeatGridUpgrade(id: string, head: {
   }).immediate();
 }
 
+// A wider regular grid must not replace the existing fade, levels or vocals.
+// Bind the write to the complete recording currently measured at the head.
+export function writeRegularTailGrid(id: string, measured: TrackOutro): boolean {
+  const grid = measured.gridProvenance, source = grid?.source;
+  if (!grid || !source?.complete) return false;
+  const d = requireDb();
+  return d.transaction(() => {
+    const row = d.prepare('SELECT outro_json, grid_provenance_json, file_size FROM tracks WHERE id = ?').get(id) as
+      { outro_json: string | null; grid_provenance_json: string | null; file_size: number | null } | undefined;
+    if (!row) return false;
+    const head = parseBeatGridProvenance(row.grid_provenance_json ? JSON.parse(row.grid_provenance_json) : null);
+    if (!head?.source?.complete || head.source.sha256 !== source.sha256 || head.source.bytes !== source.bytes
+        || (row.file_size != null && row.file_size !== source.bytes)) return false;
+    const old = row.outro_json ? JSON.parse(row.outro_json) : null;
+    const saved = old && typeof old === 'object' && !Array.isArray(old) ? old : {};
+    const hasEnding = Number.isFinite(saved.startMs) && saved.startMs >= 0
+      && (saved.ending === 'fade' || saved.ending === 'cold');
+    const base = hasEnding ? saved : { ...saved, ...measured };
+    d.prepare('UPDATE tracks SET outro_json = ? WHERE id = ?').run(JSON.stringify({
+      ...base, beats: measured.beats, bars: measured.bars, gridProvenance: grid,
+    }), id);
+    return true;
+  }).immediate();
+}
+
 // The raw whole-file loudness curve (loudness_curve_json), or null. Read on
 // its own so rowToTrack never carries it: a DJ set's runs to ~120 KB.
 export function getLoudnessCurveJson(id: string): string | null {
