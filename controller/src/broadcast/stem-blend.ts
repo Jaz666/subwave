@@ -105,42 +105,49 @@ async function renderBlend(
     log?: (kind: 'warn', message: string) => void;
   } = {},
 ): Promise<BlendPlan | null> {
+  const reject = (reason: string): null => {
+    if (opts.regularStyle) opts.log?.('warn', `Regular stems fallback: ${reason}`);
+    return null;
+  };
   const s = settings.get();
-  if (s?.transitions?.stemBlends !== true) return null;
-  if (s?.transitions?.pairDrain === false) return null; // blends ride pair drains
-  if (!settings.getEffectivePersona()?.djMode) return null;
-  if (!outTrack?.id || !inTrack?.id) return null;
-  if (opts.outCapped) return null;      // a capped exit already owns that ending
+  if (s?.transitions?.stemBlends !== true) return reject('stem blends are disabled');
+  if (s?.transitions?.pairDrain === false) return reject('pair drain is disabled');
+  if (!settings.getEffectivePersona()?.djMode) return reject('DJ mode is disabled');
+  if (!outTrack?.id || !inTrack?.id) return reject('track identity is missing');
+  if (opts.outCapped) return reject('the outgoing track is capped or cut at a show boundary');
   // Dead-air trim veto (music/silence-trim.ts). The incoming head is
   // unconditional: the clip is rendered from the successor's head window starting
   // at zero, so a trimmed leading blank would be baked into the seam.
-  if (opts.inHeadTrimmed) return null;
+  if (opts.inHeadTrimmed) return reject('the incoming head has a silence trim');
   // A bulk pass holds the single-flight analyzer worker for minutes; a render would
   // only time out behind it. The pidfile is that pass's own lock.
-  if (bulkPassRunning()) return null;
+  if (bulkPassRunning()) return reject('a library analysis pass is running');
 
   const sides = blendSides(outTrack.id, inTrack.id);
-  if (!sides) return null;
+  if (!sides) return reject('library analysis is missing');
   const { out, inn } = sides;
   const admission = regularStemPairDecision(
     { regularEligible: true, subbeatsEligible: !!db.subbeatsEligibleTrack(outTrack.id) },
     { regularEligible: true, subbeatsEligible: !!db.subbeatsEligibleTrack(inTrack.id) },
   );
-  if (!admission.eligible) return null;
+  if (!admission.eligible) return reject(admission.reason);
   // Alignment data both sides. The render re-checks all of it; these gates only
   // avoid pointless round-trips.
-  if (!out.outro?.bars?.length || !out.durationSec || !inn.bars?.length) return null;
+  if (!out.outro?.bars?.length || !out.durationSec || !inn.bars?.length) return reject('a measured head or tail grid is missing');
+  if (opts.regularStyle && (out.outro.bars.length < 9 || inn.bars.length < 9)) {
+    return reject(`eight bars need nine markers (outgoing ${out.outro.bars.length}, incoming ${inn.bars.length})`);
+  }
   // A blend always starts at or after the outro wind-down, so a trimmed end
   // at/before it can only cut the clip's source region. Exact test post-render.
-  if (opts.outTrimEndSec != null && opts.outTrimEndSec <= (out.outro.startMs ?? 0) / 1000) return null;
+  if (opts.outTrimEndSec != null && opts.outTrimEndSec <= (out.outro.startMs ?? 0) / 1000) return reject('the outgoing silence trim cuts the blend region');
   // Tempo gate: near-locked or clean half/double only.
-  if (mix.bpmCompat(out.outro.bpm ?? out.bpm, inn.bpm) < BPM_COMPAT_MIN) return null;
+  if (mix.bpmCompat(out.outro.bpm ?? out.bpm, inn.bpm) < BPM_COMPAT_MIN) return reject('the existing tempo compatibility gate rejected this pair');
   // Cache-hit-only: both windows must already be separated.
   const [outStems, inStems] = opts.workingSources ? [opts.workingSources.tail, opts.workingSources.head] : await Promise.all([
     stemCache.renderSource(outTrack.id, 'tail'),
     stemCache.renderSource(inTrack.id, 'head'),
   ]);
-  if (!outStems || !inStems) return null;
+  if (!outStems || !inStems) return reject('separated source windows are missing');
   // A pick-time separation (broadcast/pick-stems.ts) holds a worker for a
   // minute or more. Only a cache hit gets this far, so this costs exactly the
   // seams that would have blended; with one worker the render would lose the
@@ -151,14 +158,14 @@ async function renderBlend(
     backend: analyzer.backendLabel(),
     concurrency: config.analyzer.concurrency,
     sidecarConcurrency: analyzer.sidecarConcurrency(),
-  })) return null;
+  })) return reject('another separation is using the analyzer');
 
   // The render must lose the race to the drain's hard fallback, so it gets the
   // window to the hard deadline minus a write/stamp margin, capped by the render
   // budget. An unknown clock vetoes outright: the sender is blocked while it runs.
-  if (remainingSec == null) return null;
+  if (remainingSec == null) return reject('the handoff clock is unknown');
   const windowMs = Math.floor((remainingSec - HARD_DEADLINE_SEC - 5) * 1000);
-  if (windowMs < 3000) return null; // too late to even try
+  if (windowMs < 3000) return reject('the render deadline is too close');
   const timeoutMs = Math.min(config.analyzer.renderTimeoutMs, windowMs);
 
   // Level match (#1240). The clip carries no liq_amplify of its own, so the render
@@ -171,6 +178,7 @@ async function renderBlend(
     : await loudness.resolveGainDb(outTrack);
   const inGainDb = await loudness.resolveGainDb(inTrack);
 
+  let renderFailure = 'the analyzer returned no usable transition';
   const result = await analyzer.renderTransition({
     out: {
       stems_dir: outStems.stemsDir,
@@ -207,19 +215,19 @@ async function renderBlend(
     clip_name: `${path.basename(String(outTrack.id))}-${path.basename(String(inTrack.id))}${opts.regularStyle ? `-${randomUUID()}` : ''}.wav`,
     ...(opts.regularStyle ? { regular_style: opts.regularStyle } : {}),
     target_lufs: s?.loudness?.targetLufs ?? -14,
-  }, { timeoutMs });
-  if (!result) return null;
+  }, { timeoutMs, onFailure: reason => { renderFailure = reason; } });
+  if (!result) return reject(renderFailure);
 
   // The worker's points are where the clip starts and ends; the stamped cues
   // sit one seam overlap outside them so each crossfade mixes the same instant
   // of the music on both sides (broadcast/stem-seam.ts).
   const cues = clipSeamCues(result);
   // Cue points must sit inside their tracks and leave real audio either side.
-  if (!(result.blendStartSec > 10 && cues.outCueSec < out.durationSec)) return null;
-  if (!(result.inCueSec > 1 && result.clipSec > 2)) return null;
+  if (!(result.blendStartSec > 10 && cues.outCueSec < out.durationSec)) return reject('the rendered outgoing cue falls outside the track');
+  if (!(result.inCueSec > 1 && result.clipSec > 2)) return reject('the rendered incoming cue or clip is too short');
   // cue_outs arbitrate as earliest-wins, so a trimmed end before the extended
   // cue would cut X before the seam overlap (or the clip's source region) plays.
-  if (opts.outTrimEndSec != null && opts.outTrimEndSec < cues.outCueSec) return null;
+  if (opts.outTrimEndSec != null && opts.outTrimEndSec < cues.outCueSec) return reject('the outgoing trim cuts the rendered cue');
   return {
     ...(opts.regularStyle ? { regular: { id: path.basename(result.path), gainsDb: [outGainDb ?? 0, inGainDb ?? 0].map(db => Math.max(-12, Math.min(12, db))) as [number, number], style: opts.regularStyle,
       outgoingStartSec: result.blendStartSec, incomingStartSec: result.inCueSec-result.clipSec } } : {}),
@@ -264,12 +272,14 @@ export async function maybeRenderBlend(
   if (!opts.regularStyle) return regularStemWorkingMode() ? null : renderBlend(out, incoming, remaining, opts);
   // Run admission before looking at any working files, including when missing.
   if (db.subbeatsEligibleTrack(String(out.id)) || db.subbeatsEligibleTrack(String(incoming.id))) {
-    opts.log?.('warn', 'regular stem test: subbeats-reserved');
+    opts.log?.('warn', 'Regular stems fallback: subbeats-reserved');
     return null;
   }
   const sources = await regularStemRuntime.sources(String(out.id), String(incoming.id));
   if (!sources) {
-    opts.log?.('warn', 'regular stem test: working windows not ready at handoff; using ordinary transition');
+    const pair = regularStemRuntime.pair(String(out.id), String(incoming.id));
+    const states = pair ? ` (tail ${regularStemRuntime.lane.state(pair.tail.key)}, head ${regularStemRuntime.lane.state(pair.head.key)})` : ' (pair not admitted or role evidence missing)';
+    opts.log?.('warn', `Regular stems fallback: working windows not ready at handoff${states}`);
     return null;
   }
   // A library refresh can replace timing/source evidence without changing

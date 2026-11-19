@@ -30,7 +30,7 @@ export class RegularStemRuntime {
   readonly lane = new RegularStemPreparation({
     run: need => this.prepare(need.key),
     ready: () => this.wake(),
-    failed: (_need, error) => { this.log(`Regular stems preparation skipped: ${error instanceof Error ? error.message : String(error ?? 'not ready')}`); this.wake(); },
+    failed: (need, error) => { this.log(`Regular stems preparation skipped for ${need.label ?? need.trackId} (${need.side}): ${error instanceof Error ? error.message : String(error ?? 'not ready')}`); this.wake(); },
     available: () => {
       if (bulkPassRunning()) return false;
       const pair = this.renderPair && this.pair(...this.renderPair);
@@ -137,8 +137,6 @@ export class RegularStemRuntime {
     const need = this.wanted.get(key);
     if (!need || quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)
         || !await analyzer.regularStemsAvailable()) return false;
-    const pair = this.renderPair && this.pair(...this.renderPair);
-    if (need.side === 'head' && pair?.head.key === key && this.lane.state(pair.tail.key) === 'failed') return false;
     const lease = await this.cache.acquire(need.trackId);
     if (!lease) return false;
     let staged: Awaited<ReturnType<typeof analyzer.downloadCapped>> | null = null;
@@ -166,20 +164,25 @@ export class RegularStemRuntime {
       const directory = this.directory(need);
       await rm(directory, { recursive: true, force: true });
       await mkdir(directory, { recursive: true });
-      this.log(`Regular stems: preparing ${need.trackId} (${need.side}, CPU)`);
+      this.log(`Regular stems: preparing ${need.label ?? need.trackId} (${need.side}, CPU)`);
       const processingStarted = Date.now();
       const waitedMs = processingStarted - (this.queuedAt.get(key) ?? processingStarted);
       await analyzer.analyzeFacets(need.trackId, { facets: ['stems'], stems_device: 'cpu',
         stems_dir: directory, complete: true, timeoutMs: Math.min(300_000, need.deadlineMs-Date.now()),
         regular_stem_window: { version: 2, side: need.side, start_ms: need.startMs, end_ms: need.endMs,
           key: need.key, source_sha256: need.sourceSha256, source_bytes: need.sourceBytes, model: 'htdemucs' },
-      }, staged.path);
+      }, staged.path).catch(async error => {
+        // A worker's explicit rejection ends its write lease. Keep protection
+        // after a transport timeout because that worker may still be running.
+        if (error instanceof analyzer.AnalyzerJobRejectedError) await rm(busy, { force: true });
+        throw error;
+      });
       const verified = await this.verified(need);
       if (verified) await prepareRegularStemPreview(directory, need).catch(() => {
-        this.log(`Regular stems: ${need.trackId} ${need.side} preview unavailable; audio remains ready`);
+        this.log(`Regular stems: ${need.label ?? need.trackId} ${need.side} preview unavailable; audio remains ready`);
       });
       await rm(busy, { force: true });
-      if (verified) this.log(`Regular stems: ${need.trackId} ${need.side} ready; processing ${((Date.now()-processingStarted)/1000).toFixed(1)}s, wait/download ${(waitedMs/1000).toFixed(1)}s`);
+      if (verified) this.log(`Regular stems: ${need.label ?? need.trackId} ${need.side} ready; processing ${((Date.now()-processingStarted)/1000).toFixed(1)}s, wait/download ${(waitedMs/1000).toFixed(1)}s`);
       return verified;
     } finally {
       if (staged) await rm(staged.path, { force: true }).catch(() => {});

@@ -667,7 +667,7 @@ def t_cpu_override_does_not_leak():
 
 test("request-scoped CPU stems do not change subsequent analysis", t_cpu_override_does_not_leak)
 
-def t_regular_explicit_window(mono=False):
+def t_regular_explicit_window(mono=False, recover_short_decode=False):
     import json
     calls = []
     window = {"version": 2, "side": "tail", "start_ms": 100000,
@@ -675,8 +675,11 @@ def t_regular_explicit_window(mono=False):
     class Source:
         complete = True
         duration_s = 200
+        path = '/fake/recording.mp3'
         def load(self, _librosa, **kw):
             calls.append(kw)
+            if recover_short_decode:
+                return np.zeros((2, 100)), aw.DEMUCS_SR
             return np.zeros(round(kw["duration"] * aw.DEMUCS_SR) if mono else (2, round(kw["duration"] * aw.DEMUCS_SR))), aw.DEMUCS_SR
         def describe(self):
             return {"complete": True, "duration_s": self.duration_s}
@@ -690,12 +693,22 @@ def t_regular_explicit_window(mono=False):
         directory = str(Path(directory, "job"))
         Path(directory).mkdir()
         written = []
+        fallback = Path(directory, 'decoded-window.wav')
+        if recover_short_decode:
+            fallback.touch()
+        def exact_decode(src, offset, length, input_seek=False):
+            assert (src, offset, length, input_seek) == (Source.path, 100.0, 32.0, False)
+            return str(fallback)
         with Patched(get_vocal_detector=lambda force=False: Detector(),
-                     write_stems=lambda stems, side, dest: written.append((side, dest))):
+                     write_stems=lambda stems, side, dest: written.append((side, dest)),
+                     extract_tail_window=exact_decode,
+                     load_audio=lambda *_args, **_kwargs: (np.zeros((2, 32 * aw.DEMUCS_SR)), aw.DEMUCS_SR)), \
+                patch.object(aw.shutil, 'which', return_value='/bin/ffmpeg'):
             evidence = aw.extract_regular_stem_window(None, Source(), window, directory)
             assert calls == [{"sr": aw.DEMUCS_SR, "mono": False, "offset": 100.0, "duration": 32.0}]
             assert written == [("tail", directory)]
             assert json.loads(Path(directory, "tail-regular.json").read_text()) == evidence
+            assert not fallback.exists(), 'the temporary recovery decode is removed before publication'
             try:
                 aw.extract_regular_stem_window(None, Source(), window, directory)
             except aw.FacetRequestError:
@@ -724,17 +737,24 @@ def t_regular_rejects_bad_requests():
         raise AssertionError(changes)
 
 
-def t_regular_short_source_never_publishes():
+def t_regular_short_source_never_publishes(recover_short_decode=False):
     class Source:
         complete = True
         duration_s = 100
+        path = '/fake/recording.mp3' if recover_short_decode else None
         def load(self, *_args, **_kwargs):
             return np.zeros((2, 100)), aw.DEMUCS_SR
     with tempfile.TemporaryDirectory() as directory:
         Path(directory, ".subwave-regular-stems").touch()
         directory = str(Path(directory, "job"))
         Path(directory).mkdir()
-        with Patched(get_vocal_detector=lambda **kw: (_ for _ in ()).throw(AssertionError("model loaded"))):
+        fallback = Path(directory, 'decoded-window.wav')
+        if recover_short_decode:
+            fallback.touch()
+        with Patched(get_vocal_detector=lambda **kw: (_ for _ in ()).throw(AssertionError("model loaded")),
+                     extract_tail_window=lambda *_args, **_kwargs: str(fallback),
+                     load_audio=lambda *_args, **_kwargs: (np.zeros((2, 100)), aw.DEMUCS_SR)), \
+                patch.object(aw.shutil, 'which', return_value='/bin/ffmpeg'):
             try:
                 aw.extract_regular_stem_window(None, Source(),
                     {"side": "head", "start_ms": 0, "end_ms": 32000}, directory)
@@ -747,8 +767,12 @@ def t_regular_short_source_never_publishes():
 
 test("regular stems decode only the explicit CPU window and publish last", t_regular_explicit_window)
 test("mono masters use the same regular CPU window", lambda: t_regular_explicit_window(mono=True))
+test("a short random-access decode retries an exact window and removes its temporary audio",
+     lambda: t_regular_explicit_window(recover_short_decode=True))
 test("regular stem contract rejects unsupported and malformed jobs", t_regular_rejects_bad_requests)
 test("short regular audio never loads Demucs or publishes completion", t_regular_short_source_never_publishes)
+test("an exact decode that is still short never loads Demucs or publishes completion",
+     lambda: t_regular_short_source_never_publishes(recover_short_decode=True))
 def t_regular_rejects_replaced_recording_before_model():
     class Source:
         complete = True

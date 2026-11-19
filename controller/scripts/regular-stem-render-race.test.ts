@@ -7,6 +7,7 @@ import path from 'node:path';
 test('finished renders are rejected and removed if queue occurrence or library evidence changes', async () => {
   let change: () => void = () => {};
   let clipPath='';
+  let renderError: string | null = null;
   const server=createServer(async(req,res)=>{
     res.setHeader('Content-Type','application/json');
     if(req.url==='/health') {res.end(JSON.stringify({ok:true,engines:['analyze']}));return;}
@@ -14,6 +15,7 @@ test('finished renders are rejected and removed if queue occurrence or library e
     const body=JSON.parse(raw);
     assert.equal(body.out.regular_key,'tail-proof');
     assert.equal(body.in.regular_key,'head-proof');
+    if (renderError) { res.end(JSON.stringify({ok:false,error:renderError})); return; }
     clipPath=path.join(body.out_dir,body.clip_name);
     await mkdir(body.out_dir,{recursive:true});await writeFile(clipPath,'rendered seam');
     change();
@@ -64,6 +66,20 @@ test('finished renders are rejected and removed if queue occurrence or library e
       if(scenario==='unchanged') {assert.ok(result);await access(clipPath);await rm(clipPath);}
       else {assert.equal(result,null);await assert.rejects(access(clipPath));assert.match(messages.join('\n'),/changed during render/);}
     }
+    db.upsertTrackMeta('in',{genres:['Rock']});
+    db.upsertTrackAnalysis('in',{bpm:80,bars:Array.from({length:12},(_,i)=>1000+i*2000),loudnessLufs:-14,peakDb:-2});
+    pairValid=true; change=()=>{};
+    renderError='no-usable-out-eight-bar-window';
+    const messages:string[]=[];
+    assert.equal(await maybeRenderBlend({id:'out',gainDb:0},{id:'in'},180,
+      {regularStyle:'drums-late',log:(_kind,message)=>messages.push(message)}),null);
+    assert.match(messages.join('\n'),/Regular stems fallback: no-usable-out-eight-bar-window/,
+      'the worker rejection must reach the station instead of disappearing into an ordinary transition');
+    messages.length=0;
+    db.upsertTrackAnalysis('in',{bars:[1000,3000,5000]});
+    assert.equal(await maybeRenderBlend({id:'out',gainDb:0},{id:'in'},180,
+      {regularStyle:'drums-late',log:(_kind,message)=>messages.push(message)}),null);
+    assert.match(messages.join('\n'),/eight bars need nine markers \(outgoing 12, incoming 3\)/);
   } finally {
     runtime.sources=original;analyzer.shutdown();db.close();server.closeAllConnections();
     await new Promise<void>(resolve=>server.close(()=>resolve()));

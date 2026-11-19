@@ -13,6 +13,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
   const audio = Buffer.alloc(2048,1);
   const fingerprint = createHash('sha256').update(audio).digest('hex');
   let hold=false;
+  let rejectTail=false;
   let downloads=0;
   let held: {directory:string;window:NonNullable<FacetRequestOpts['regular_stem_window']>;response:ServerResponse} | undefined;
   let onHeld=()=>{},onClosed=()=>{};
@@ -32,6 +33,10 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     assert.equal(window.source_sha256,fingerprint);
     assert.equal(window.source_bytes,audio.length);
     posts.push(window);
+    if (rejectTail && window.side==='tail') {
+      rejectTail=false; res.writeHead(500,{'Content-Type':'application/json'});
+      res.end(JSON.stringify({detail:'decoded regular stem window is incomplete'})); return;
+    }
     if(hold) {
       held={directory:request.stems_dir,window,response:res};
       res.on('close',()=>onClosed());onHeld();return;
@@ -54,7 +59,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
   const grid=(start:number,end:number):BeatGridProvenance=>({version:1,backend:'beat-this-onnx',model:'small0',
     modelSha256:'a'.repeat(64),preprocessingVersion:1,windowStartMs:start,windowEndMs:end,
     evidence:{medianBpm:100,intervalSupport:1,librosaBeatSupport:null},source:{sha256:fingerprint,bytes:audio.length,complete:true}});
-  const track=(id:string):RegularStemQueueEvidence=>({id,sent:false,remainingSec:180,regularEligible:true,
+  const track=(id:string):RegularStemQueueEvidence=>({id,label:`Title ${id} — Artist`,sent:false,remainingSec:180,regularEligible:true,
     subbeatsEligible:false,durationMs:240000,windDownMs:235000,
     bars:Array.from({length:12},(_,i)=>1000+i*2000),tailBars:Array.from({length:12},(_,i)=>200000+i*3000),
     headGrid:grid(0,40000),tailGrid:grid(190000,240000)});
@@ -64,6 +69,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
   const old=path.join(config.stateDir,'stems','a');
   await mkdir(old,{recursive:true});await writeFile(path.join(old,'tail-drums.flac'),'old cache');
   let diskFull=false;
+  const messages:string[]=[];
   const runtime=new RegularStemRuntime(async requests=>{
     if(diskFull) throw new Error('Insufficient free space');
     await requireRegularStemSpace(requests);
@@ -72,9 +78,11 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
   const ready=new Promise<void>(resolve=>{done=resolve;});
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    runtime.update(null,[only('a','tail'),only('b','head')],()=>{if(++wakes===2)done();},()=>{});
+    runtime.update(null,[only('a','tail'),only('b','head')],()=>{if(++wakes===2)done();},message=>messages.push(message));
     await Promise.race([ready,new Promise<never>((_resolve,reject)=>{timeout=setTimeout(()=>reject(new Error('preparation did not settle')),10000);})]);
     assert.deepEqual(posts.map(p=>p.side),['tail','head']);
+    assert.ok(messages.some(message=>message==='Regular stems: preparing Title a — Artist (tail, CPU)'));
+    assert.ok(messages.some(message=>message.startsWith('Regular stems: Title b — Artist head ready;')));
     assert.equal(runtime.pending('a','b'),false);
     const windows=runtime.statusWindows();
     assert.ok(windows.some(window=>window.trackId==='a' && window.side==='tail' && window.state==='ready'));
@@ -100,6 +108,23 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     await assert.rejects(access(sources.tail.stemsDir));
     assert.equal(await readFile(path.join(old,'tail-drums.flac'),'utf8'),'old cache');
     if(timeout)clearTimeout(timeout);
+
+    // An explicit worker failure releases its busy stamp and cannot suppress
+    // independent head extraction, including the next track's incoming role.
+    rejectTail=true;
+    const independent=new RegularStemRuntime();
+    const independentEvidence=[only('broken','tail'),only('independent','head')];
+    let settled=0,independentDone:()=>void=()=>{};
+    const independentReady=new Promise<void>(resolve=>{independentDone=resolve;});
+    independent.update(null,independentEvidence,()=>{if(++settled===2)independentDone();},()=>{});
+    const independentTimeout=setTimeout(()=>independentDone(),4000);
+    await independentReady;clearTimeout(independentTimeout);
+    const independentNeeds=regularStemNeeds(independentEvidence,Date.now());
+    assert.equal(independent.lane.state(independentNeeds[0].key),'failed');
+    assert.equal(independent.lane.state(independentNeeds[1].key),'ready',
+      'a rejected tail must not prevent the independent incoming head');
+    await assert.rejects(access(path.join(path.dirname(independent.directory(independentNeeds[0])),'.regular-busy.json')));
+    independent.update(null,[],()=>{},()=>{});
 
     // Low-space admission is a real preparation failure before fetching any
     // recording or submitting a CPU job, and cannot pin the queue as pending.
@@ -128,6 +153,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     // Real HTTP timeout: the controller loses the reply while the sidecar may
     // still be working. A fresh runtime must defer, not submit a second job.
     hold=true;
+    const beforeSlowPosts=posts.length;
     const submitted=new Promise<void>(resolve=>{onHeld=resolve;});
     const closed=new Promise<void>(resolve=>{onClosed=resolve;});
     const slow=new RegularStemRuntime();
@@ -153,7 +179,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
       }
     };
     await Promise.race([deferred(),limit]);
-    assert.equal(posts.length,3,'restart does not overlap a timed-out sidecar job');
+    assert.equal(posts.length,beforeSlowPosts+1,'restart does not overlap a timed-out sidecar job');
     assert.equal(oldWakes,0,'a completion past the deadline cannot wake the old seam');
     // Late partial output is retained safely, but cannot be treated as ready.
     await writeFile(path.join(held.directory,'tail-drums.flac'),'late partial');
@@ -161,7 +187,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     hold=false;held.response.destroy();
     restarted.update(null,[evidence],()=>recovered(),()=>{});
     await Promise.race([recoveryReady,limit]);
-    assert.equal(posts.length,4,'expired lease permits one fresh extraction');
+    assert.equal(posts.length,beforeSlowPosts+2,'expired lease permits one fresh extraction');
     assert.equal(restarted.lane.state(key),'ready');
     assert.equal(await readFile(path.join(held.directory,'tail-drums.flac'),'utf8'),'fixture');
     await assert.rejects(access(busy));

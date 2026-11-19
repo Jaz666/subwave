@@ -2408,7 +2408,9 @@ class Queue {
         const row = rows[index], next = rows[index+1], outro = outros[index];
         if (!this.regularStemOccurrences.has(item)) this.regularStemOccurrences.set(item,randomBytes(8).toString('hex'));
         return {
-          id: String(item.track.id), occurrence: this.regularStemOccurrences.get(item), sent: !!item.sent,
+          id: String(item.track.id),
+          label: [item.track.title, item.track.artist].filter(Boolean).join(' — ') || String(item.track.id),
+          occurrence: this.regularStemOccurrences.get(item), sent: !!item.sent,
           remainingSec: this.remainingUntilItemAirs(item),
           // Regular stems are genre-open; Sub/Beats admission alone reserves
           // dance tracks from this path. Pair eligibility does not gate prep.
@@ -2703,7 +2705,11 @@ class Queue {
                 this.log('mix','Sub/Beats fallback: the rendered handoff conflicts with the live queue boundary.',{subbeats:'fallback'});
               }
               if (!blend && adjacent()) blend = await this._renderBlend(
-                item.track,successor.track,this.remainingUntilItemAirs(item),pairOptions);
+                item.track,successor.track,this.remainingUntilItemAirs(item), {
+                  ...pairOptions,
+                  regularStyle: stemBlend.regularStemTestStyle(String(item.track.id), String(successor.track.id)) ?? undefined,
+                  log: (_kind, message) => this.log('mix', message),
+                });
               if (blend && adjacent()) {
                 const previousBlend = item.stemBlend;
                 // A recovered proposal already stripped this track's exit.
