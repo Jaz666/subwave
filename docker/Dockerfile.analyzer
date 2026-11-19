@@ -105,16 +105,14 @@ COPY controller/scripts/analyze_worker.py /app/workers/analyze_worker.py
 COPY controller/scripts/subbeats_live.py /app/workers/subbeats_live.py
 COPY controller/scripts/stem_blend_preview.py /app/workers/stem_blend_preview.py
 COPY controller/scripts/beat_this_grid.py controller/scripts/subbeats_models.py controller/scripts/subbeats_cues.py controller/scripts/subbeats_cue_preview.py controller/scripts/subbeats_cue_matching.py controller/scripts/subbeats_handoff.py controller/scripts/subbeats_vocal_confidence.py controller/scripts/subbeats_coverage.py controller/scripts/subbeats_vocal_plan.py controller/scripts/subbeats_vocals.py controller/scripts/subbeats_matching.py controller/scripts/subbeats_suitability.py controller/scripts/subbeats_prepare.py controller/scripts/subbeats_cache.py controller/scripts/subbeats_preview.py controller/scripts/subbeats_structure.py controller/scripts/subbeats_reference.py controller/scripts/subbeats_reference_preview.py /app/workers/
-# The Beat This! downbeat model at the worker's default BEAT_THIS_MODEL:
-# tools/beat-this/export.py's small0 export, published as a prerelease asset
-# on this repo. --checksum fails the build on any other bytes, and --chmod
-# because ADD gives a downloaded file mode 600 and the server runs as 10001.
-# One file for every architecture. Keep the URL and hash in lockstep with
-# docker/Dockerfile.aio; tools/beat-this/README.md says how to publish a new
-# version.
-ADD --chmod=644 --checksum=sha256:5cff50fb031bc4a43b036f0af4835cf60bf8d43e6ccc8a7e676ed89db53f6eaf \
-    https://github.com/perminder-klair/subwave/releases/download/beat-this-small0-v1/beat_this-small0.onnx \
-    /opt/analyzer/models/beat_this-small0.onnx
+# Download the required shared-grid model for every analyzer tier. Keep the
+# URL and hash in lockstep with docker/Dockerfile.aio; tools/beat-this/README.md
+# says how to publish a new version.
+RUN mkdir -p /opt/analyzer/models && \
+    curl -fsSL --retry 3 -o /opt/analyzer/models/beat_this-small0.onnx \
+      https://github.com/perminder-klair/subwave/releases/download/beat-this-small0-v1/beat_this-small0.onnx && \
+    echo "5cff50fb031bc4a43b036f0af4835cf60bf8d43e6ccc8a7e676ed89db53f6eaf  /opt/analyzer/models/beat_this-small0.onnx" | sha256sum -c - && \
+    chmod 644 /opt/analyzer/models/beat_this-small0.onnx
 
 # Shared state mount — the controller pre-fetches tracks into
 # /var/sub-wave/analyze-tmp. mkdir'd here so the image runs standalone too.
