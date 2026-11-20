@@ -2280,11 +2280,9 @@ class Queue {
           label: [item.track.title, item.track.artist].filter(Boolean).join(' — ') || String(item.track.id),
           occurrence: this.regularStemOccurrences.get(item), sent: !!item.sent,
           remainingSec: this.remainingUntilItemAirs(item),
-          // Regular stems are genre-open; Sub/Beats admission alone reserves
-          // dance tracks. Pair style and current-grid tempo gates control prep.
+          // Genre-open fallback: Sub/Beats gets first render refusal, while
+          // regular preparation uses only its own pair, grid and window rules.
           regularEligible: enabled,
-          // Reservation follows Sub/Beats admission, even while its grid is stale.
-          subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id)),
           pairToNextAllowed: !!row && !!next
             && !tailGridPending && !nextGridPending
             && regularStemTempoDecision(outro?.gridProvenance, next.gridProvenance).eligible

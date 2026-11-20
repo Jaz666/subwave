@@ -8,7 +8,6 @@ import { config } from '../config.js';
 import { parseWav } from '../audio/wav-edges.js';
 import * as settings from '../settings.js';
 import * as analyzer from '../music/analyzer.js';
-import * as beatGridUpgrade from '../music/beat-grid-upgrade.js';
 import * as loudness from '../music/loudness.js';
 import * as stemCache from '../music/stem-cache.js';
 import { subbeatsPairSnapshot } from '../music/subbeats-pair.js';
@@ -57,13 +56,11 @@ export async function maybeRenderSubbeats(
     log: (message: string, meta?: Record<string, unknown>) => void },
 ): Promise<BlendPlan | null> {
   if (settings.get().transitions.subbeatsLive !== true) return null;
-  const fallback = (reason: string) => { opts.log(`Sub/Beats fallback: ${reason}`, {
+  const fallback = (reason: string, details: Record<string, unknown> = {}) => { opts.log(`Sub/Beats fallback: ${reason}`, {
     subbeats:'fallback',reason,outgoingId:outTrack.id,incomingId:inTrack.id,
+    ...details,
   }); return null; };
   if (!outTrack.id || !inTrack.id || outTrack.id === inTrack.id) return fallback('The pair needs two library tracks.');
-  if (!beatGridUpgrade.trackGridCurrent(outTrack.id) || !beatGridUpgrade.trackGridCurrent(inTrack.id)) {
-    return fallback('The pair is waiting for the shared beat grid upgrade.');
-  }
   if (settings.get().transitions.pairDrain === false || !settings.getEffectivePersona()?.djMode) return fallback('DJ mode and pair-aware transitions are required.');
   if (opts.outCapped) return fallback('A track-length cap or show boundary owns this transition.');
   if (opts.inHeadTrimmed) return fallback('The incoming track has a silence trim.');
@@ -86,8 +83,13 @@ export async function maybeRenderSubbeats(
   let readinessTimer: ReturnType<typeof setTimeout> | undefined;
   try {
     const before = subbeatsPairSnapshot(outTrack.id,inTrack.id);
-    if (before.jobs.length !== 2 || before.jobs.some(job => job.status !== 'prepared' || !job.bundleKey || !job.cueCoverage)) {
-      return fallback('Both tracks need completed saved Sub/Beats coverage.');
+    const unavailable = before.roles.findIndex(role => role.state !== 'coverage-ready');
+    if (unavailable >= 0) {
+      const role = unavailable === 0 ? 'outgoing tail' : 'incoming head';
+      const track = unavailable === 0 ? outTrack : inTrack;
+      return fallback(`${track.title ?? track.id} ${role}: ${before.roles[unavailable].reason}`, {
+        reasonCode:before.roles[unavailable].reason,role,state:before.roles[unavailable].state,
+      });
     }
     const loudnessSettings = JSON.stringify(settings.get().loudness);
     const interrupted = new Promise<never>((_,reject) => {
@@ -127,6 +129,12 @@ export async function maybeRenderSubbeats(
         mixStyle:rendered.mixStyle,timing,loudnessSettings,gainsDb,
         clipPath:rendered.clipPath,leadPath:rendered.leadPath,
         incomingDurationSeconds:before.jobs.find(job => job.id === inTrack.id)!.cuePoints!.durationSeconds!}};
+    const incomingGrid = before.sourceEvidence[1].grid;
+    if (!before.roles[0].cueIndices.includes(rendered.candidate.outgoingCueIndex)
+      || !before.roles[1].cueIndices.includes(rendered.candidate.incomingCueIndex)
+      || !incomingGrid || timing.incomingResumeSample * 1000 / timing.sampleRate > incomingGrid.windowEndMs + 2) {
+      return fallback('The selected cues fall outside current role coverage.', {reasonCode:'window-too-short'});
+    }
     if (!opts.valid() || !subbeatsStillCurrent(result.subbeats!) || abort.signal.aborted) return fallback('The pair or saved evidence changed during rendering.');
     if (cues.outCueSec <= Math.max(10,(opts.outCueInSec ?? 0)+1)
       || (opts.outTrimEndSec != null && opts.outTrimEndSec < cues.outCueSec)) return fallback('The handoff conflicts with an existing cue or trim.');

@@ -50,7 +50,7 @@ function StatusIcon({ icon: Icon, label, state, grid = false }: {
     role="img" aria-label={label} title={label}>
     {grid ? <><Grid2X2 size={14} strokeWidth={1.8} aria-hidden="true" /><Icon size={13} strokeWidth={1.8} aria-hidden="true" /></>
       : <Icon size={16} strokeWidth={1.8} aria-hidden="true" />}
-    {state === 'verified' && <Check className="absolute -right-1 -top-1 rounded-full bg-[var(--card-bg)]" size={9} strokeWidth={3} aria-hidden="true" />}
+    {state === 'verified' && <Check className="absolute -top-1 -right-1 rounded-full bg-[var(--card-bg)]" size={9} strokeWidth={3} aria-hidden="true" />}
   </span>;
 }
 

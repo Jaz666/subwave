@@ -1,12 +1,71 @@
 # Sub/Beats eligibility and pick-time preparation plan
 
-Status: proposed implementation plan, 19 November 2026. This plan changes the
+Status: policy contract implemented, 20 November 2026; preparation split and
+pick-time Sub/Beats extraction remain pending. This plan changes the
 Sub/Beats candidate and preparation flow so a recording is not held in that
 path merely because its genre and BPM match. Shared-grid and cue evidence
 first establishes which roles it can supply. Stem extraction and vocal
 measurement then happen for a real pair at pick time, before the transition
 type is finalized. A candidate that cannot supply the needed Sub/Beats role is
 released to the regular Stem Blend path, which makes its own pick-time decision.
+
+## Implementation checkpoint — 20 November: role policy and regular fallback
+
+The owner confirmed that a declined Sub/Beats pair must always be offered to
+Regular Stem Blend under its independent rules. Both regular roles use the
+regular renderer; there is no mixed Sub/Beats/regular renderer. This supersedes
+the candidate reservation and crossover rules in the 17 November regular plan.
+
+`music/subbeats-role-policy.ts` now screens the requested head or tail separately
+using current small0 shared-grid provenance, complete-source size, cue timing and
+window coverage. It distinguishes `cue-ready` from `coverage-ready` and returns
+stable missing/stale/short/source reasons. The screen reads metadata only and
+does no separation. These are readiness proposals; the existing worker still
+verifies saved artifacts and original source audio, applies the Sub/Beats tempo
+and vocal checks and renders before a handoff can be armed.
+
+Live admission and Mixing Desk status use the same directional check. A missing
+outgoing head or incoming tail no longer vetoes the roles this pair needs. The
+pair fingerprint includes the relevant shared grids and library source sizes so
+their replacement invalidates an unpublished render.
+
+Broad Dance Candidate admission no longer blocks regular window preparation,
+grid widening, rendering or suitability status. Regular preparation retains its
+own exact eight-bar windows, three-percent tempo rule, CPU/source safeguards and
+handoff deadlines. The current coordinator can prepare regular fallback windows
+while Sub/Beats has saved coverage; prioritizing Sub/Beats extraction ahead of
+regular work belongs to the preparation split below.
+
+This checkpoint does **not** change the managed preparation worker: it still
+generates cue coverage and measures vocals before pair selection. Live Sub/Beats
+still needs saved coverage. Next implement shared-grid cue refresh without
+Demucs, then exact CPU extraction and vocal checks for the actual pair. No new
+persisted role evidence or station reset has been introduced yet.
+
+The local station candidate is on `codex/subbeats-role-policy-station-20261120` in
+`/home/jaz666/codex/pr10-integration-20261118`. No source has been copied to the
+test-station checkout and no services, cache files or settings were changed.
+The owner requires station behavior to be confirmed before this work is added
+to PR #10. Keep this candidate local; do not push it to the PR branch or update
+the PR description until that confirmation.
+
+Verification for this checkpoint:
+
+- Controller lint and the final type check pass (existing lint warnings remain).
+- The focused regular-stem suite passes 36 cases; the Sub/Beats suite passes
+  95 cases and the extended grid test passes. The final live suite passes all
+  17 cases, including cancellation, uncovered-cue cleanup and grid replacement.
+- All 737 web tests and the final web lint/type check pass. The first web lint
+  run exposed one existing class-order error in `NowPlayingWaveform.tsx`; its
+  class order was corrected without a visual or behavioral change.
+- The full controller run completed 7,649 cases: 7,647 passed and two failed.
+  One is the unchanged `analyzer-python.test.ts` group, covering existing beat,
+  downbeat, facet, tail-placement, loudness-curve and stem-marker fixture
+  failures. The other was this checkpoint's live fixture clearing markers
+  during simulated grid replacement; it was corrected and its suite rerun
+  successfully. The whole 28-minute suite was not repeated after that fixture
+  correction. Analyzer source and its failing Python fixtures are unchanged.
+- Real audio auditions, live station playback and rollout were not run.
 
 ## Goal
 

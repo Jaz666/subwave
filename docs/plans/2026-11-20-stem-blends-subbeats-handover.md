@@ -5,11 +5,29 @@ Blend work, Mixing Desk updates, the pending-grid timing correction, and the
 next Sub/Beats investigation/implementation step. The combined work is in the
 [draft PR #10](https://github.com/Jaz666/subwave/pull/10).
 
+**Continuation, 20 November:** the first role-policy checkpoint is now
+implemented in the development worktree. Broad Dance Candidate status no longer
+reserves regular stems; Sub/Beats checks only the required outgoing tail and
+incoming head. The owner explicitly approved independent regular fallback for
+declined Sub/Beats pairs, with no mixed-mode renderer. See the
+[current implementation checkpoint](2026-11-19-subbeats-eligibility-pick-time-preparation-plan.md#implementation-checkpoint--20-november-role-policy-and-regular-fallback)
+for the implemented contract and remaining preparation split. No source was
+copied to the station and no station rebuild, restart or reset was performed in
+this continuation. The earlier runtime notes below describe the prior handover,
+not a fresh verification of the running image.
+
+The owner requires confirmed station behavior before adding these changes to
+PR #10. The checkpoint is kept locally on
+`codex/subbeats-role-policy-station-20261120`; the existing PR branch and remote
+PR have not been updated. Do not push this candidate or update PR metadata
+before station confirmation.
+
 ## Current work locations
 
 | Purpose | Location and state |
 | --- | --- |
-| Development / PR source | `/home/jaz666/codex/pr10-integration-20261118`, branch `codex/pr10-integration-20261118`, tracking `jaz666/feat/subbeats-draft`. Current PR head includes `e27150bb6`. |
+| Local station candidate | `/home/jaz666/codex/pr10-integration-20261118`, branch `codex/subbeats-role-policy-station-20261120`. Local only, pending station behavior confirmation. |
+| Existing PR source | `codex/pr10-integration-20261118` / `jaz666/feat/subbeats-draft` remain at `988cd6e66`, including `e27150bb6`. The role-policy checkpoint has not been added to the PR. |
 | Test-station integration checkout | `/home/jaz666/Docker/subwave`, branch `test-station/ordered-pr-union-20261118`. The pending-grid correction is committed there as `10bcfaa92`; the controller has not been rebuilt since. The checkout still has many other uncommitted changes, including unrelated work and changes to the same runtime file. Do not reset or clean it. |
 | Draft PR | [Jaz666/subwave#10](https://github.com/Jaz666/subwave/pull/10), open draft, `feat(stems): integrate Sub/Beats and regular Stem Blends`. |
 
@@ -99,9 +117,10 @@ In short:
    Blend independently, then use the ordinary transition if neither path is
    ready before the deadline.
 
-The plan is proposed; this new Sub/Beats eligibility/preparation flow has not
-been implemented. Pair crossover behavior should be confirmed during
-integration; do not silently introduce a mixed-mode renderer.
+The role-policy and independent regular fallback stage is implemented; the new
+Sub/Beats grid/cue refresh and pick-time extraction flow is still pending. Pair
+crossover behavior is now confirmed: always evaluate regular policy after
+Sub/Beats declines, using a complete regular render rather than mixed modes.
 
 The user has approved starting Sub/Beats preparation from scratch on the test
 station when this is implemented. That means the implementation can discard
@@ -112,14 +131,16 @@ the future implementation rollout, not a reset already performed.
 
 ## Suggested next steps for a fresh chat
 
-1. Rebuild the test-station controller from `/home/jaz666/Docker/subwave` and
-   confirm the grid-pending fix behaves as expected in the next eligible pair.
+1. The prior handover left a controller rebuild for the grid-pending fix. This
+   continuation did not operate the station or verify which source its running
+   image contains. Follow the repository's operator-run deployment procedure;
+   do not copy the development worktree over the station's overlapping edits.
 2. Continue from the Sub/Beats plan linked above. First verify the current
    station and PR source state; the station checkout has many unrelated local
    changes and should not be cleaned or replaced wholesale.
-3. Implement the role-specific grid/cue screening and remove broad
-   candidate-level reservation only after the exact pair routing and fallback
-   behavior are explicit.
+3. The metadata role policy and removal of broad candidate reservation are now
+   implemented. Next add shared-grid cue refresh without Demucs, preserving
+   head/tail outcomes independently and versioning the persisted evidence.
 4. Move Sub/Beats extraction to pick time, run its vocal check before final
    admission, and retain the handoff deadline and source-integrity guards.
 5. Use the approved clean Sub/Beats preparation reset only during the scoped

@@ -6,7 +6,7 @@ import path from 'node:path';
 import type { BeatGridProvenance } from '../src/schemas/beat-grid.js';
 import type { RenderTransitionPayload } from '../src/music/analyzer.js';
 
-test('the real queue arms a working stem blend and forwards its selected style to the analyzer', async () => {
+test('the real queue releases an unprepared dance candidate to a complete regular blend', async () => {
   const requests: RenderTransitionPayload[] = [];
   const server = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
@@ -35,16 +35,15 @@ test('the real queue arms a working stem blend and forwards its selected style t
   const { regularStemRuntime: runtime } = await import('../src/broadcast/regular-stem-runtime.js');
   await settings.load(); await library.load();
   await settings.update({ personas: settings.get().personas.map(p => ({ ...p, djMode: true })),
-    transitions: { pairDrain: true, stemBlends: true }, loudness: { source: 'measured' } });
+    transitions: { pairDrain: true, stemBlends: true, subbeatsLive: true }, loudness: { source: 'measured' } });
   const grid: BeatGridProvenance = { version: 1, backend: 'beat-this-onnx', model: 'small0',
     modelSha256: 'a'.repeat(64), preprocessingVersion: 1, windowStartMs: 0, windowEndMs: 40000,
     evidence: { medianBpm: 80, intervalSupport: 1, librosaBeatSupport: null },
     source: { sha256: 'b'.repeat(64), bytes: 12345, complete: true } };
   for (const id of ['out', 'in']) {
-    const trackGrid = id === 'in' ? { ...grid, evidence: { ...grid.evidence, medianBpm: 136.364 } } : grid;
-    db.upsertTrackMeta(id, { title: id, artist: id, duration: 240, genres: ['Rock'] });
-    db.upsertTrackAnalysis(id, { bpm: id === 'out' ? 63 : 143.6, bars: Array.from({ length: 12 }, (_, i) => 1000 + i * 2000),
-      beats: [500, 1000], gridProvenance: trackGrid, loudnessLufs: -14, peakDb: -2 });
+    db.upsertTrackMeta(id, { title: id, artist: id, duration: 240, genres: id === 'out' ? ['House'] : ['Rock'] });
+    db.upsertTrackAnalysis(id, { bpm: id === 'out' ? 120 : 143.6, bars: Array.from({ length: 12 }, (_, i) => 1000 + i * 2000),
+      beats: [500, 1000], gridProvenance: grid, loudnessLufs: -14, peakDb: -2 });
     db.getDb()!.prepare('UPDATE tracks SET outro_json=? WHERE id=?').run(JSON.stringify({
       startMs: 235000, ending: 'cold', bars: Array.from({ length: 12 }, (_, i) => 200000 + i * 3000),
       gridProvenance: { ...grid, windowStartMs: 180000, windowEndMs: 240000 },
@@ -58,14 +57,15 @@ test('the real queue arms a working stem blend and forwards its selected style t
     head: { stemsDir: '/test/working/in', regularKey: 'head-proof' },
     release: async (completed = true) => { releases.push(completed); } });
   const q = queue as any;
-  q._renderSubbeats = async () => null; q.verifyPushResolved = async () => {};
+  q.verifyPushResolved = async () => {};
   q.current = { track: { id: 'live', duration: 300 }, startedAt: new Date(Date.now() - 120000).toISOString() };
   q.upcoming = ['out', 'in'].map(id => ({ track: { id, title: id, artist: id, duration: 240, gainDb: 0 },
     sent: false, queuedAt: new Date().toISOString() }));
   const consumer = setInterval(() => { void rm(config.liquidsoap.queueFile, { force: true }); }, 20);
   try {
     await queue.drainToLiquidsoap();
-    assert.equal(requests.length, 1, 'a large shared-grid tempo difference still reaches the analyzer');
+    assert.ok(db.subbeatsEligibleTrack('out'),'outgoing is a broad dance candidate with no saved cues or stems');
+    assert.equal(requests.length, 1, 'the actual Sub/Beats refusal reaches the regular renderer');
     assert.equal(q.upcoming[0].sent, true);
     assert.equal(q.upcoming[0].stemBlend.regular.style, requests[0].regular_style);
     assert.equal(q.upcoming[1].stemSeam, true);

@@ -17,7 +17,7 @@ test('queue snapshots prepare in background, pending work holds only before dead
   await settings.update({ personas: settings.get().personas.map(p=>({...p,djMode:true})),
     transitions:{pairDrain:true,stemBlends:true,pickTimeStems:true} });
   for (const id of ['a','b']) {
-    db.upsertTrackMeta(id,{title:id,artist:id,genres:['Rock'],duration:240});
+    db.upsertTrackMeta(id,{title:id,artist:id,genres:id==='a'?['House']:['Rock'],duration:240});
     db.upsertTrackAnalysis(id,{bpm:id==='a'?63:143.6,beats:[500,1000],bars:[1000],gridProvenance:{
       version:1,backend:'beat-this-onnx',model:'small0',modelSha256:'a'.repeat(64),
       preprocessingVersion:1,windowStartMs:0,windowEndMs:40000,
@@ -121,7 +121,7 @@ test('queue snapshots prepare in background, pending work holds only before dead
     assert.equal(snapshots[0].pairToNextAllowed,false,'stems wait for the incoming shared grid before extraction');
     const probe=new RegularStemRuntime();probe.lane.update=()=>{};
     probe.update(null,snapshots,()=>{},()=>{});
-    assert.equal(probe.pending('a','b'),false,'stale shared grids keep the pair out of stem preparation');
+    assert.equal(probe.pending('a','b'),true,'a pending incoming grid holds the pair before admission is possible');
     probe.update(null,[],()=>{},()=>{});
     // Allow the deliberately unavailable background analyzer to settle.
     const until=Date.now()+10000;

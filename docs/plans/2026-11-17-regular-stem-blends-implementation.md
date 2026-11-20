@@ -2,6 +2,13 @@
 
 Status: implementation plan with operator decisions recorded, 17 November 2026. Planning only; this document does not enable new station behaviour.
 
+**20 November update:** the owner approved independent regular fallback for
+every pair declined by Sub/Beats. The candidate reservation and ordinary-only
+crossover rules below are historical and superseded by the
+[Sub/Beats role-policy checkpoint](2026-11-19-subbeats-eligibility-pick-time-preparation-plan.md#implementation-checkpoint--20-november-role-policy-and-regular-fallback).
+Both roles of a regular fallback use regular grids, windows and rendering; no
+mixed-mode renderer is introduced. The preparation split remains pending.
+
 ## Intended result
 
 Replace regular Stem Blends' legacy beat-carry transition and library-wide stem backfill with eight-bar, native-tempo transitions prepared as tracks enter the queue. Prepare an outgoing tail for a qualifying track; prepare an incoming head only when its actual predecessor forms an eligible pair. Keep a small, bounded working cache. Sub/Beats retains its beatmatched transitions and its existing prepared stems.

@@ -15,7 +15,6 @@ export interface RegularStemQueueEvidence {
   remainingSec: number | null;
   regularEligible: boolean;
   pairToNextAllowed?: boolean;
-  subbeatsEligible: boolean;
   durationMs: number;
   bars: readonly number[];
   tailBars: readonly number[];

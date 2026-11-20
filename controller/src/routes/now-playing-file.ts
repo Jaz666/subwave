@@ -35,8 +35,8 @@ import { createFileFormatLookup, type FileFormat } from '../music/file-format.js
 import * as settings from '../settings.js';
 import * as stemCache from '../music/stem-cache.js';
 import * as regularStemDb from '../music/library-db.js';
-import { eightBarWindow, regularStemPairDecision, regularStemTempoDecision } from '../broadcast/regular-stem-policy.js';
-import * as beatGridUpgrade from '../music/beat-grid-upgrade.js';
+import { eightBarWindow, regularStemTempoDecision } from '../broadcast/regular-stem-policy.js';
+import { subbeatsRoleDecision } from '../music/subbeats-role-policy.js';
 import { readSubbeatsQueue } from '../music/subbeats-store.js';
 import { subbeatsSourceSeconds, type SubbeatsTiming } from '../broadcast/subbeats-clock.js';
 import { fetchWithTimeout } from '../util/fetch-timeout.js';
@@ -617,21 +617,16 @@ export const router = createNowPlayingFileRouter({
     const incomingGrid = incoming.gridProvenance;
     const incomingHeadWindow = !!incomingGrid && currentGrid(incomingGrid) && !!incoming.bars?.length
       && !!eightBarWindow(incoming.bars, { startMs: incomingGrid.windowStartMs, endMs: incomingGrid.windowEndMs }, 'head');
-    const outgoingSubbeats = !!regularStemDb.subbeatsEligibleTrack(currentId);
-    const incomingSubbeats = !!regularStemDb.subbeatsEligibleTrack(nextId);
     const transitionMatches = transition?.outgoingId === currentId && transition.incomingId === nextId;
-    const regularAdmission = regularStemPairDecision(
-      { regularEligible: true, subbeatsEligible: outgoingSubbeats },
-      { regularEligible: true, subbeatsEligible: incomingSubbeats },
-    );
     const tempo = regularStemTempoDecision(tailGrid, incomingGrid);
-    const regularSuitable = settings.get().transitions.stemBlends === true && regularAdmission.eligible
+    const regularSuitable = settings.get().transitions.stemBlends === true
       && tailWindow && incomingHeadWindow && tempo.eligible;
     const subbeatsJobs = readSubbeatsQueue(config.stateDir).jobs;
-    const savedCoverage = [currentId, nextId].every(id => subbeatsJobs.some(job => job.id === id
-      && job.status === 'prepared' && !!job.bundleKey && !!job.cueCoverage));
-    const subbeatsSuitable = outgoingSubbeats && incomingSubbeats && savedCoverage
-      && beatGridUpgrade.trackGridCurrent(currentId) && beatGridUpgrade.trackGridCurrent(nextId)
+    const outgoingRole = subbeatsRoleDecision(subbeatsJobs.find(job => job.id === currentId),
+      'tail', tailGrid, regularStemDb.trackFileSize(currentId), outgoing.outro?.bars ?? []);
+    const incomingRole = subbeatsRoleDecision(subbeatsJobs.find(job => job.id === nextId),
+      'head', incomingGrid, regularStemDb.trackFileSize(nextId), incoming.bars ?? []);
+    const subbeatsSuitable = outgoingRole.state === 'coverage-ready' && incomingRole.state === 'coverage-ready'
       && settings.get().transitions.subbeatsLive === true && settings.get().transitions.pairDrain !== false
       && !!settings.getEffectivePersona()?.djMode;
     return {

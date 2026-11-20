@@ -65,7 +65,9 @@ test('regular tail widening forwards the window, preserves ending measurements a
     assert.equal(tail.regularTailGridSeconds({outro:null}),60);
     assert.equal(tail.regularTailGridSeconds({outro:{...old,ending:'fade',bars:[100000,112000],gridProvenance:grid(0,240000)}}),120);
     seed('ok');seed('other');seed('dance',['House']);
-    assert.equal(tail.regularTailGridDue('dance'),false,'Sub/Beats admission reserves dance tracks');
+    assert.equal(tail.regularTailGridDue('dance'),true,'dance discovery does not reserve regular grid preparation');
+    await measure('dance');
+    assert.equal(tail.regularTailGridDue('dance'),false,'dance candidates receive the same verified grid coverage');
     const headBefore=db.getTrack('ok')!.gridProvenance;
     const job=measure('ok');
     assert.equal(tail.regularTailGridPending('ok'),true);
@@ -84,7 +86,9 @@ test('regular tail widening forwards the window, preserves ending measurements a
       assert.equal(tail.regularTailGridDue(failure),false,'failure backs off');
     }
     mode='wide';seed('new-admission');beforeReply=()=>db.upsertTrackMeta('new-admission',{genres:['House']});
-    await measure('new-admission');assert.deepEqual(rawOutro('new-admission'),old);
+    await measure('new-admission');
+    assert.equal(rawOutro('new-admission').gridProvenance.windowStartMs,180000,
+      'a genre change cannot invalidate an unchanged measured recording');
     beforeReply=()=>{};
     seed('missing-ending');
     db.getDb()!.prepare('UPDATE tracks SET outro_json=? WHERE id=?').run(JSON.stringify({extra:'keep'}),'missing-ending');
@@ -92,7 +96,7 @@ test('regular tail widening forwards the window, preserves ending measurements a
     assert.equal(rawOutro('missing-ending').extra,'keep');
     assert.equal(db.getTrack('missing-ending')!.outro?.startMs,230000,'a grid-only old outro gets real ending measurements');
     assert.equal(tail.regularTailGridDue('missing-ending'),false);
-    assert.equal(calls,5);
+    assert.equal(calls,6);
     seed('prefix');
     const prefix=grid(0,40000);prefix.source!.complete=false;prefix.source!.bytes=12*1024*1024;
     db.upsertTrackAnalysis('prefix',{bpm:77,beats:[1000],bars:[1000],gridProvenance:prefix});
@@ -100,9 +104,9 @@ test('regular tail widening forwards the window, preserves ending measurements a
     assert.equal(db.getTrack('prefix')!.gridProvenance!.source!.complete,true);
     assert.equal(db.getTrack('prefix')!.bpm,77,'grid repair preserves legacy analysis');
     assert.equal(db.getTrack('prefix')!.outro!.gridProvenance!.source!.bytes,audio.length);
-    assert.equal(downloads,6,'each track downloads once, including head repair plus tail');
+    assert.equal(downloads,7,'each track downloads once, including head repair plus tail');
     const reused=await sources.acquireRegularStemSource('prefix');await reused.release();
-    assert.equal(downloads,6,'extraction reuses the complete source');
+    assert.equal(downloads,7,'extraction reuses the complete source');
     sources.retainRegularStemSources(null,[]);
   } finally {
     db.close();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));

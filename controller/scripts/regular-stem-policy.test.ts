@@ -24,12 +24,12 @@ test('slow spans remain measured, malformed evidence fails closed', () => {
   }
 });
 
-test('Sub/Beats reservations exclude crossovers in both directions and both-dance pairs', () => {
+test('dance discovery never reserves either regular role; feature admission remains independent', () => {
   const regular = { regularEligible: true, subbeatsEligible: false };
   const dance = { regularEligible: true, subbeatsEligible: true };
   assert.deepEqual(regularStemPairDecision(regular, regular), { eligible: true });
   for (const [out, incoming] of [[regular, dance], [dance, regular], [dance, dance]]) {
-    assert.deepEqual(regularStemPairDecision(out, incoming), { eligible: false, reason: 'subbeats-reserved' });
+    assert.deepEqual(regularStemPairDecision(out, incoming), { eligible: true });
   }
   assert.equal(regularStemPairDecision(regular, { ...regular, regularEligible: false }).eligible, false);
 });

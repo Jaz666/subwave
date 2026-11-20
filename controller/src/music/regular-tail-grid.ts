@@ -35,7 +35,7 @@ export function regularHeadGridAwaiting(id: string): boolean {
 
 export function regularGridAwaiting(id: string): boolean {
   if (running?.id === id) return true;
-  if (bulkPassRunning() || (failures.get(id) ?? 0) > Date.now() || db.subbeatsEligibleTrack(id)) return false;
+  if (bulkPassRunning() || (failures.get(id) ?? 0) > Date.now()) return false;
   const row = db.getTrack(id), head = row?.gridProvenance;
   if (!row) return false;
   if (!current(head) || !head?.source?.complete || !row.beats?.length || !row.bars?.length) return true;
@@ -96,7 +96,7 @@ export function ensureRegularTailGrid(id: string, log: (message: string) => void
           || grid.windowEndMs-grid.windowStartMs < wantedMs-2) {
         throw new Error(tail?.reason ?? 'analyzer did not return the extended grid; rebuild the analyzer');
       }
-      if (db.subbeatsEligibleTrack(id) || !db.writeRegularTailGrid(id, outro, fileSize)) throw new Error('recording or admission changed during tail measurement');
+      if (!db.writeRegularTailGrid(id, outro, fileSize)) throw new Error('recording changed during tail measurement');
       failures.delete(id);
       log(`Regular stems: tail grid ready for ${label} (${outro.bars?.length ?? 0} measured markers)`);
     } catch (error) {

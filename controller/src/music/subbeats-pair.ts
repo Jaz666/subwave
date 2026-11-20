@@ -11,6 +11,7 @@ import { endingKeyFrom, openingKeyFrom, parseCamelot, keyCompat } from './mix.js
 import { planSubbeatsPairFromEvidence } from './analyzer.js';
 import { readSubbeatsQueue } from './subbeats-store.js';
 import { withSubbeatsLyrics } from './subbeats-lyrics.js';
+import { subbeatsRoleDecision } from './subbeats-role-policy.js';
 
 type KeyTrack = Pick<TrackRecord,'musicalKey'|'keyRanges'|'durationSec'>;
 
@@ -42,9 +43,17 @@ export function subbeatsPairSnapshot(outgoingId:string,incomingId:string) {
     return job ? [job] : [];
   }),config.stateDir);
   const choice = subbeatsHarmonicChoice(outgoing,incoming);
+  const sourceEvidence = [
+    { grid: outgoing.outro?.gridProvenance, bars: outgoing.outro?.bars ?? [], bytes: db.trackFileSize(outgoingId) },
+    { grid: incoming.gridProvenance, bars: incoming.bars ?? [], bytes: db.trackFileSize(incomingId) },
+  ];
+  const roles = sourceEvidence.map(({ grid, bars, bytes }, index) => subbeatsRoleDecision(
+    jobs.find(job => job.id === (index === 0 ? outgoingId : incomingId)),
+    index === 0 ? 'tail' : 'head', grid, bytes, bars,
+  ));
   const evidenceFingerprint = createHash('sha256').update(JSON.stringify({version:1,
-    outgoingId,incomingId,jobs,choice})).digest('hex');
-  return {jobs,...choice,evidenceFingerprint};
+    outgoingId,incomingId,jobs,choice,sourceEvidence,roles})).digest('hex');
+  return {jobs,roles,sourceEvidence,...choice,evidenceFingerprint};
 }
 
 export async function assessSubbeatsPair(outgoingId:string,incomingId:string) {

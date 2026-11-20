@@ -328,13 +328,32 @@ test('a cold live renderer checks readiness for this pair, with bounded and canc
   const store = createSubbeatsStore(root);
   store.cacheId();
   for (const id of ['ready-out','ready-in']) {
-    db.upsertTrackMeta(id, { title: id, artist: 'Fixture', duration: 300 });
+    db.upsertTrackMeta(id, { title: id, artist: 'Fixture', duration: 300, fileSize: 12345 });
+    const grid = { version:1 as const, backend:'beat-this-onnx' as const, model:'small0' as const,
+      modelSha256:'c'.repeat(64), preprocessingVersion:1 as const, windowStartMs:0, windowEndMs:300000,
+      evidence:{medianBpm:120,intervalSupport:1,librosaBeatSupport:null},
+      source:{sha256:'d'.repeat(64),bytes:12345,complete:true} };
+    // Only the requested role is available: the other end must not veto it.
+    if (id === 'ready-in') db.upsertTrackAnalysis(id, { beats:[1000],
+      bars:Array.from({length:30},(_,i)=>1000+i*2000),gridProvenance:grid });
+    else db.getDb()!.prepare('UPDATE tracks SET outro_json=? WHERE id=?').run(JSON.stringify({
+      startMs:295000,ending:'cold',bars:Array.from({length:30},(_,i)=>240000+i*2000),
+      gridProvenance:{...grid,windowStartMs:240000},
+    }),id);
+    const activity = {version:1,method:'stem-energy',barAlignment:'unverified',
+      coverageStartSeconds:id === 'ready-in' ? 0 : 260,coverageEndSeconds:id === 'ready-in' ? 60 : 300,
+      resolutionSeconds:.1,passages:[]};
     store.enqueue([{ id, title: id, artist: 'Fixture', album: '' }]);
     store.event({ id, status: 'running' }, [id]);
     store.event({ id, status: 'prepared', bundleKey: 'a'.repeat(64),
-      cueCoverage: { version: 1, artifactKey: 'b'.repeat(64), incoming: null, outgoing: null } }, [id]);
+      cuePoints:{version:1,model:'small0',artifactKey:'e'.repeat(64),algorithmVersion:13,durationSeconds:300,
+        incoming:id === 'ready-in' ? [{sourceSeconds:32,bpm:120,strength:1,reason:'opening',timingValidated:true}] : [],
+        outgoing:id === 'ready-out' ? [{sourceSeconds:260,bpm:120,strength:1,reason:'ending',timingValidated:true}] : []},
+      cueCoverage: { version: 1, artifactKey: 'b'.repeat(64),
+        incoming:id === 'ready-in' ? activity : null,outgoing:id === 'ready-out' ? activity : null } }, [id]);
   }
-  let mode: 'ready' | 'unsupported' | 'slow' = 'ready';
+  let mode: 'ready' | 'unsupported' | 'slow' | 'outside-grid' = 'ready';
+  let returnedParts: string[] = [];
   let posted = 0, valid = true;
   let healthStarted = deferred(), releaseHealth = deferred();
   const http = await listen(createServer(async (req,res) => {
@@ -349,6 +368,17 @@ test('a cold live renderer checks readiness for this pair, with bounded and canc
     assert.equal(req.url, '/render-subbeats-transition');
     let raw = ''; for await (const chunk of req) raw += chunk;
     const input = JSON.parse(raw); posted++;
+    if (mode === 'outside-grid') {
+      const folder = join(root,'transitions'); mkdirSync(folder,{recursive:true});
+      returnedParts = ['in','out'].map(role => join(folder,`subbeats-${input.transitionId}-${role}.wav`));
+      for (const file of returnedParts) writeFileSync(file,'untrusted audio');
+      res.end(JSON.stringify({version:1,status:'rendered',reason:'Fixture selected an uncovered cue',
+        transitionId:input.transitionId,mixStyle:input.mixStyle,evidenceFingerprint:input.evidenceFingerprint,
+        sourceVerified:true,clipPath:returnedParts[0],leadPath:returnedParts[1],
+        candidate:{outgoingCueIndex:7,incomingCueIndex:0,outgoingBars:8,incomingBars:8,
+          vocal:{status:'estimated',reason:'Fixture'},timing:timing(),originalLeadInSeconds:0}}));
+      return;
+    }
     res.end(JSON.stringify({ version: 1, status: 'unavailable', reason: 'Fixture reached the pair renderer',
       transitionId: input.transitionId, mixStyle: input.mixStyle, evidenceFingerprint: input.evidenceFingerprint }));
   }));
@@ -363,6 +393,15 @@ test('a cold live renderer checks readiness for this pair, with bounded and canc
     assert.equal(await render(), null);
     assert.equal(posted, 1, 'the first cold pair reaches rendering instead of being sacrificed to warm-up');
     assert.match(logs.at(-1)!, /Fixture reached the pair renderer/);
+    const { subbeatsPairSnapshot } = await import('../src/music/subbeats-pair.js');
+    const beforeGridChange = subbeatsPairSnapshot('ready-out','ready-in').evidenceFingerprint;
+    const originalHead = db.getTrack('ready-in')!;
+    const originalGrid = originalHead.gridProvenance!;
+    const markers = {beats:originalHead.beats,bars:originalHead.bars};
+    db.upsertTrackAnalysis('ready-in',{...markers,gridProvenance:{...originalGrid,modelSha256:'f'.repeat(64)}});
+    assert.notEqual(subbeatsPairSnapshot('ready-out','ready-in').evidenceFingerprint,beforeGridChange,
+      'a refreshed role grid invalidates an unpublished handoff');
+    db.upsertTrackAnalysis('ready-in',{...markers,gridProvenance:originalGrid});
     mode = 'unsupported'; analyzer._resetBackendCacheForTests();
     assert.equal(await render(), null); assert.equal(posted, 1);
     assert.match(logs.at(-1)!, /readiness/);
@@ -378,6 +417,13 @@ test('a cold live renderer checks readiness for this pair, with bounded and canc
     assert.equal(await render(), null);
     assert.ok(Date.now() - startedAt < 6500, 'readiness cannot consume the full render budget');
     assert.match(logs.at(-1)!, /readiness/); assert.equal(posted, 1);
+    releaseHealth.resolve();
+    await new Promise(resolve => setTimeout(resolve,50));
+    mode='outside-grid'; analyzer._resetBackendCacheForTests();
+    assert.equal(await render(),null);
+    assert.equal(posted,2);
+    assert.match(logs.at(-1)!,/selected cues fall outside current role coverage/);
+    assert.ok(returnedParts.every(file => !existsSync(file)),'a declined cue removes both owned handoff parts');
   } finally {
     releaseHealth.resolve(); http.server.closeAllConnections(); await http.close();
     config.analyzer.urls = saved.urls; config.analyzer.python = saved.python;

@@ -943,11 +943,11 @@ export default function SettingsPanel({ djBrainEnabled = false, hosted = false }
                       />
                     </div>
                     <div className="field-hint">
-                      Tries a beat-matched transition when both selected tracks have completed
-                      Sub/Beats preparation. Needs DJ mode and pair-aware transitions. If preparation,
-                      timing or the render budget is insufficient, uses the usual transition.
-                      Tracks eligible for Sub/Beats are reserved for it, including mixed pairs; they
-                      do not use regular Stem Blends. Applies to future handoffs as they are prepared.
+                      Tries a beat-matched transition when the outgoing track has a prepared closing
+                      passage and the incoming track has a prepared opening. Needs DJ mode and
+                      pair-aware transitions. If Sub/Beats cannot use the pair, enabled regular Stem
+                      Blends assess it independently; otherwise the usual transition plays.
+                      Applies to future handoffs as they are prepared.
                     </div>
                   </div>
 

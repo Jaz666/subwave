@@ -7,7 +7,7 @@ const library = await import('../src/music/library.js');
 const settings = await import('../src/settings.js');
 const { maybeRenderBlend } = await import('../src/broadcast/stem-blend.js');
 
-test('live regular renderer reserves unprepared Sub/Beats tracks in either direction', async () => {
+test('live regular renderer evaluates its own working windows for dance and non-dance pairs', async () => {
   await library.load();
   await settings.load();
   await settings.update({
@@ -26,7 +26,8 @@ test('live regular renderer reserves unprepared Sub/Beats tracks in either direc
       const result = await maybeRenderBlend({ id: out }, { id: incoming }, 120,
         { regularStyle: 'drums-late', log: (_kind, message) => messages.push(message) });
       assert.equal(result, null);
-      assert.match(messages.join('\n'), /subbeats-reserved/);
+      assert.match(messages.join('\n'), /working windows not ready at handoff/);
+      assert.doesNotMatch(messages.join('\n'), /subbeats-reserved/);
     }
     const messages: string[] = [];
     await maybeRenderBlend({ id: 'regular' }, { id: 'other' }, 120,

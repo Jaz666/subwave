@@ -62,7 +62,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     modelSha256:'a'.repeat(64),preprocessingVersion:1,windowStartMs:start,windowEndMs:end,
     evidence:{medianBpm:100,intervalSupport:1,librosaBeatSupport:null},source:{sha256:fingerprint,bytes:audio.length,complete:true}});
   const track=(id:string):RegularStemQueueEvidence=>({id,label:`Title ${id} — Artist`,sent:false,remainingSec:180,regularEligible:true,
-    pairToNextAllowed:true,subbeatsEligible:false,durationMs:240000,windDownMs:235000,
+    pairToNextAllowed:true,durationMs:240000,windDownMs:235000,
     bars:Array.from({length:12},(_,i)=>1000+i*2000),tailBars:Array.from({length:12},(_,i)=>200000+i*3000),
     headGrid:grid(0,40000),tailGrid:grid(190000,240000)});
   const only=(id:string,side:'head'|'tail'):RegularStemQueueEvidence=>({
@@ -207,7 +207,7 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
   }
 });
 
-test('nearest pair gets outgoing tail then incoming head; a pending grid holds only admitted seams', async () => {
+test('nearest pair gets outgoing tail then incoming head; a pending grid can supply missing admission evidence', async () => {
   const {RegularStemRuntime}=await import('../src/broadcast/regular-stem-runtime.js');
   const runtime=new RegularStemRuntime();
   runtime.lane.update=()=>{};
@@ -215,7 +215,7 @@ test('nearest pair gets outgoing tail then incoming head; a pending grid holds o
     modelSha256:'a'.repeat(64),preprocessingVersion:1,windowStartMs:start,windowEndMs:end,
     evidence:{medianBpm:100,intervalSupport:1,librosaBeatSupport:null},source:{sha256:'b'.repeat(64),bytes:12345,complete:true}});
   const track=(id:string):RegularStemQueueEvidence=>({id,sent:false,remainingSec:180,regularEligible:true,
-    pairToNextAllowed:true,subbeatsEligible:false,durationMs:240000,windDownMs:235000,
+    pairToNextAllowed:true,durationMs:240000,windDownMs:235000,
     bars:Array.from({length:10},(_,i)=>1000+i*4000),tailBars:Array.from({length:10},(_,i)=>200000+i*4000),
     headGrid:grid(0,40000),tailGrid:grid(180000,240000)});
   runtime.update(null,[track('priority-a'),track('priority-b'),track('priority-c')],()=>{},()=>{});
@@ -228,6 +228,6 @@ test('nearest pair gets outgoing tail then incoming head; a pending grid holds o
   runtime.update(null,[track('priority-a'),{...track('priority-b'),headGrid:null,headGridPending:true}],()=>{},()=>{});
   assert.equal(runtime.pending('priority-a','priority-b'),true,'incoming grid upgrade holds before head evidence exists');
   runtime.update(null,[{...track('priority-a'),tailGridPending:true,pairToNextAllowed:false},track('priority-b')],()=>{},()=>{});
-  assert.equal(runtime.pending('priority-a','priority-b'),false,'tempo/style vetoes never wait for a grid');
+  assert.equal(runtime.pending('priority-a','priority-b'),true,'pending grids can supply the missing tempo needed for pair admission');
   runtime.update(null,[],()=>{},()=>{});
 });

@@ -8,6 +8,26 @@ existing picker. The owner-run station trial remains outstanding.
 
 ## Implementation checkpoint — 10 November: live queue candidate
 
+**Current routing, 20 November:** Dance Candidate is discovery only. Live
+Sub/Beats checks the outgoing tail and incoming head independently through
+`music/subbeats-role-policy.ts`; the unused ends do not veto a pair. Current
+shared small0 provenance, complete source size, usable cues and saved role
+coverage are required. Cue readiness is distinct from saved coverage. Neither
+state is final source, tempo or vocal approval: the worker performs those checks
+before publication. The fingerprint includes the relevant grids and library file
+sizes so changed analysis invalidates unpublished proposals.
+
+A declined Sub/Beats pair is offered to enabled Regular Stem Blend under its
+own grid, window, tempo and deadline rules, then to the ordinary transition.
+The broad genre/BPM predicate does not reserve either regular role or prevent
+regular grid refresh. Both sides of a regular fallback use the regular renderer.
+The owner explicitly confirmed this crossover policy on 20 November.
+
+Managed Sub/Beats preparation still performs cue extraction and vocal analysis
+before pair selection; moving those to pick time is the next implementation
+stage in the [eligibility plan](../plans/2026-11-19-subbeats-eligibility-pick-time-preparation-plan.md).
+No preparation reset has been performed for this policy checkpoint.
+
 `broadcast/queue.ts` now offers the actual adjacent pair to
 [`broadcast/subbeats.ts`](../../controller/src/broadcast/subbeats.ts) before
 ordinary Stem Blend. It reads the same saved evidence/harmonic style choice as

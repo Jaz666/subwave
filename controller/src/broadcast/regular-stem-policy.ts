@@ -54,17 +54,15 @@ export function eightBarWindow(
 
 export type RegularStemPairDecision =
   | { eligible: true }
-  | { eligible: false; reason: 'subbeats-reserved' | 'track-ineligible' };
+  | { eligible: false; reason: 'track-ineligible' };
 
-// The caller supplies the authoritative Sub/Beats admission result. Saved
-// coverage is deliberately not an input: admitted Sub/Beats tracks stay reserved
-// while preparation is pending. Regular-stem genre eligibility follows the
-// existing upstream stem behavior; pair suitability is judged separately.
+// Sub/Beats discovery never reserves either role. The queue tries that renderer
+// first, then evaluates a complete regular pair using its own grids and windows.
+// Neither path combines a Sub/Beats role with a regular role.
 export function regularStemPairDecision(
-  out: { regularEligible: boolean; subbeatsEligible: boolean },
-  incoming: { regularEligible: boolean; subbeatsEligible: boolean },
+  out: { regularEligible: boolean },
+  incoming: { regularEligible: boolean },
 ): RegularStemPairDecision {
-  if (out.subbeatsEligible || incoming.subbeatsEligible) return { eligible: false, reason: 'subbeats-reserved' };
   if (!out.regularEligible || !incoming.regularEligible) return { eligible: false, reason: 'track-ineligible' };
   return { eligible: true };
 }

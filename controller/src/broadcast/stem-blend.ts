@@ -21,7 +21,6 @@ import { HARD_DEADLINE_SEC } from './drain-policy.js';
 import { CLIP_SEAM_CROSS_SEC, clipSeamCues, type ClipSeamCues } from './stem-seam.js';
 import type { SubbeatsPlayback } from './subbeats-clock.js';
 import { regularStemRuntime } from './regular-stem-runtime.js';
-import { regularStemPairDecision } from './regular-stem-policy.js';
 
 // Cross length at the two clip seams (X→clip, clip→Y); the overlap arithmetic
 // lives with it in broadcast/stem-seam.ts.
@@ -121,11 +120,6 @@ async function renderBlend(
   const sides = blendSides(outTrack.id, inTrack.id);
   if (!sides) return reject('library analysis is missing');
   const { out, inn } = sides;
-  const admission = regularStemPairDecision(
-    { regularEligible: true, subbeatsEligible: !!db.subbeatsEligibleTrack(outTrack.id) },
-    { regularEligible: true, subbeatsEligible: !!db.subbeatsEligibleTrack(inTrack.id) },
-  );
-  if (!admission.eligible) return reject(admission.reason);
   // Alignment data both sides. The render re-checks all of it; these gates only
   // avoid pointless round-trips.
   if (!out.outro?.bars?.length || !out.durationSec || !inn.bars?.length) return reject('a measured head or tail grid is missing');
@@ -263,12 +257,6 @@ export async function maybeRenderBlend(
   opts: Omit<NonNullable<Parameters<typeof renderBlend>[3]>, 'workingSources'> = {},
 ): Promise<BlendPlan | null> {
   if (!opts.regularStyle) return regularStemWorkingMode() ? null : renderBlend(out, incoming, remaining, opts);
-  // Run admission before looking at any working files, including when missing.
-  if (db.subbeatsEligibleTrack(String(out.id)) || db.subbeatsEligibleTrack(String(incoming.id))) {
-    opts.log?.('warn', 'Regular stems fallback: subbeats-reserved');
-    return null;
-  }
-  const sides = blendSides(String(out.id), String(incoming.id));
   const sources = await regularStemRuntime.sources(String(out.id), String(incoming.id));
   if (!sources) {
     const pair = regularStemRuntime.pair(String(out.id), String(incoming.id));
@@ -281,8 +269,7 @@ export async function maybeRenderBlend(
   const evidence=() => JSON.stringify([out.id,incoming.id].map(id => {
     const row=db.getTrack(String(id));
     const outro=library.get(String(id))?.outro ?? row?.outro;
-    return [row?.durationSec,row?.bpm,row?.bars,row?.gridProvenance,outro,
-      !!db.subbeatsEligibleTrack(String(id))];
+    return [row?.durationSec,row?.bpm,row?.bars,row?.gridProvenance,outro];
   }));
   const before=evidence();
   let completed = false;
