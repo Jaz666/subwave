@@ -91,7 +91,11 @@ export class RegularStemRuntime {
     return tail && head ? { tail, head } : null;
   }
   pending(outId: string, inId: string): boolean {
-    if (this.pairRevisions.has(JSON.stringify([outId,inId])) && (this.gridPending.has(outId) || this.headGridPending.has(inId))) return true;
+    // Grid work may be the evidence that makes this pair eligible. Do not
+    // require an already-admitted pair revision here: missing BPM is exactly
+    // why the revision may not exist yet. The queue caller applies its normal
+    // handoff deadline before holding for this refresh.
+    if (this.gridPending.has(outId) || this.headGridPending.has(inId)) return true;
     const pair = this.pair(outId, inId);
     if (!pair) return false;
     const states = [pair.tail,pair.head].map(need => this.lane.state(need.key));
