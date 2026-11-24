@@ -164,7 +164,7 @@ export interface QueueEntry {
   subsonic_id?: string;
   stemCacheCoverage?: {
     regular: { head: boolean; tail: boolean };
-    subbeats: { head: boolean; exit: boolean };
+    stemBeats: { incoming: string; outgoing: string };
   };
   requestedBy?: string;
   /** ISO timestamp on older payloads; the live controller sends the three
@@ -177,11 +177,13 @@ export interface QueueEntry {
   queuedAt?: string;
   /** True once the controller has handed this item to Liquidsoap. */
   sent?: boolean;
+  /** The queue occurrence arrives through a rendered V2 Stem Beats transition. */
+  stemBeats?: boolean;
   /** The track arrives via a pre-rendered stem blend rather than a plain
    *  crossfade. Stamped once the seam's clip is queued, so it's definitive,
    *  not a prediction (#1257). */
   stemSeam?: boolean;
-  /** True when the rendered stem seam uses a prepared Sub/Beats handoff. */
+  /** Legacy V1 marker from an older controller response. */
   subbeats?: boolean;
   flow?: { id: string; label: string; index: number; size: number };
   /** The operator block this row was queued as part of (#1622 FR 4) — a whole

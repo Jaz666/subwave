@@ -4523,8 +4523,30 @@ def regular_tail_grid(librosa, source, seconds, placement=None):
     return {"beats": beats, "bars": bars, "gridProvenance": provenance}
 
 
+def regular_head_grid(librosa, source, seconds):
+    """Grid-only complete-source repair; source zero and real markers stay authoritative."""
+    import numpy as np
+    if source.complete is not True or not source.duration_s:
+        raise FacetRequestError("extended head grid requires a complete recording")
+    end = min(source.duration_s, seconds) - .001
+    if end <= 0:
+        raise FacetRequestError("extended head grid has no audio")
+    decoded = extract_window_by_count(source.path, 0., end)
+    try:
+        audio, sr = load_audio(librosa, decoded, sr=ANALYZE_SR, mono=True)
+    finally:
+        os.remove(decoded)
+    if sr != ANALYZE_SR or audio is None or np.ndim(audio) != 1 or abs(len(audio)-round(end*sr)) > 2:
+        raise FacetRequestError("extended head grid decode is incomplete")
+    beats, bars, provenance = measure_bar_grid(audio, sr, librosa, [], offset_s=0.)
+    if not provenance or not beats or not bars:
+        raise FacetRequestError("extended head beat grid is unavailable")
+    return {"beats": beats, "bars": bars, "grid_provenance": provenance}
+
+
 def analyze_facets(librosa, source, facets, stems_dir=None, want_tail_vocals=False, stems_require_marker=False,
-                   whole_input=None, tail_window=None, stems_windows=None, source_size=None, tail_grid_seconds=None):
+                   whole_input=None, tail_window=None, stems_windows=None, source_size=None, tail_grid_seconds=None,
+                   head_grid_seconds=None):
     """Compute exactly `facets` from an opened source. Each facet answers on
     its own: ok + data, unmeasurable + reason (this file can't give it at this
     version), unavailable + reason (this engine can't: no CLAP / no Demucs), or
@@ -4569,10 +4591,16 @@ def analyze_facets(librosa, source, facets, stems_dir=None, want_tail_vocals=Fal
         out.update(whole_file_facets(whole_input, whole_wanted))
     placement = tail_window_from_edges(out.get("edges")) or parse_tail_window(tail_window)
 
+    if head_grid_seconds is not None:
+        try:
+            out["head"] = _ok(regular_head_grid(librosa, source, head_grid_seconds))
+        except Exception as e:  # noqa: BLE001 — grid failure must not invent coverage
+            out["head"] = _failed(e)
+
     # Head window, decoded once with channels: head works off the mono
     # downmix, loudness off the real channels (issue #998).
     y_src = y = sr = None
-    window = {"head"} | ({"loudness"} if "loudness" not in out else set())
+    window = ({"head"} if "head" not in out else set()) | ({"loudness"} if "loudness" not in out else set())
     if wanted & window:
         try:
             y_src, sr = source.load(librosa, sr=ANALYZE_SR, mono=False, duration=ANALYZE_SECONDS)
@@ -4791,28 +4819,69 @@ def parse_regular_stem_window(req, facets):
     return window
 
 
-def extract_regular_stem_window(librosa, source, window, destination):
+def parse_stembeats_stem_window(req, facets):
+    """Separate pick-time contract and marker from the regular stem path."""
+    window = req.get("stembeats_window")
+    if window is None:
+        return None
+    if (not isinstance(window, dict) or window.get("version") != 1
+            or facets != ["stems"] or req.get("stems_device") != "cpu"
+            or not req.get("stems_dir")):
+        raise FacetRequestError("Stem Beats requires version 1, CPU, stems-only and a destination")
+    start, end = window.get("start_ms"), window.get("end_ms")
+    if (window.get("side") not in ("head", "tail")
+            or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                   or not math.isfinite(v) for v in (start, end))
+            or start < 0 or end <= start or end - start > 120000
+            or not isinstance(window.get("key"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", window["key"])):
+        raise FacetRequestError("invalid Stem Beats window")
+    if window.get("model") != DEMUCS_MODEL:
+        raise FacetRequestError("Stem Beats model does not match worker")
+    if (not isinstance(window.get("source_sha256"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", window["source_sha256"])
+            or type(window.get("source_bytes")) is not int or window["source_bytes"] <= 0):
+        raise FacetRequestError("invalid Stem Beats recording fingerprint")
+    return window
+
+
+def _extract_bounded_stem_window(librosa, source, window, destination, feature):
     """Separate only the requested source span. Completion is published last.
     Callers supply a fresh job directory; incomplete jobs have no usable stamp.
     No vocal/grid analysis and no legacy cache reads or writes happen here.
     """
     import numpy as np
     start, end = window["start_ms"] / 1000.0, window["end_ms"] / 1000.0
+    label = "Stem Beats" if feature == "stembeats" else "regular stems"
+    marker_name = ".subwave-stembeats" if feature == "stembeats" else ".subwave-regular-stems"
     if source.complete is not True or not source.duration_s or end > source.duration_s + 0.001:
-        raise FacetRequestError("regular stems require a complete source covering the window")
-    marker = os.path.join(os.path.dirname(destination), ".subwave-regular-stems")
+        raise FacetRequestError(f"{label} require a complete source covering the window")
+    marker = os.path.join(os.path.dirname(destination), marker_name)
     if not os.path.isfile(marker):
-        raise FacetRequestError("regular working root marker missing")
-    stamp = os.path.join(destination, window["side"] + "-regular.json")
+        raise FacetRequestError(f"{label} working root marker missing")
+    stamp = os.path.join(destination, window["side"] + f"-{feature}.json")
     if os.path.exists(stamp):
-        raise FacetRequestError("regular stem destination already published")
-    audio, sr = source.load(librosa, sr=DEMUCS_SR, mono=False, offset=start, duration=end-start)
+        raise FacetRequestError(f"{label} destination already published")
+    if feature == "stembeats":
+        # Use the same decode-from-zero sample clock as the live renderer.
+        # Seeking compressed audio can return the right length at a wrong offset.
+        counted = extract_window_by_count(getattr(source, "src_path", source.path), start, end-start)
+        try:
+            audio, sr = load_audio(librosa, counted, sr=DEMUCS_SR, mono=False)
+        finally:
+            os.remove(counted)
+    else:
+        audio, sr = source.load(librosa, sr=DEMUCS_SR, mono=False, offset=start, duration=end-start)
     # Mono masters remain eligible; normalize exactly as the separator does.
     if audio is not None and np.ndim(audio) == 1:
         audio = np.repeat(np.asarray(audio)[None, :], 2, axis=0)
     elif audio is not None and np.ndim(audio) == 2 and audio.shape[0] == 1:
         audio = np.repeat(audio, 2, axis=0)
-    expected = round((end-start) * DEMUCS_SR)
+    expected = (round(end * DEMUCS_SR) - round(start * DEMUCS_SR)
+                if feature == "stembeats" else round((end-start) * DEMUCS_SR))
+    if feature == "stembeats" and (sr != DEMUCS_SR or audio is None
+            or np.ndim(audio) != 2 or audio.shape[-1] != expected):
+        raise FacetRequestError("decoded Stem Beats window is incomplete")
     if sr != DEMUCS_SR or audio is None or np.ndim(audio) != 2 or abs(audio.shape[-1] - expected) > 2:
         # Random-access decoding can return a short segment for some VBR MP3s
         # even when the complete source covers the requested window. Re-decode
@@ -4841,12 +4910,12 @@ def extract_regular_stem_window(librosa, source, window, destination):
                     except OSError:
                         pass
         if sr != DEMUCS_SR or audio is None or np.ndim(audio) != 2 or abs(audio.shape[-1] - expected) > 2:
-            raise FacetRequestError("decoded regular stem window is incomplete")
+            raise FacetRequestError(f"decoded {label} window is incomplete")
     fingerprint = None
     if "source_sha256" in window:
         fingerprint = source_fingerprint(getattr(source, "src_path", None), source.complete)
         if not fingerprint or fingerprint["sha256"] != window["source_sha256"] or fingerprint["bytes"] != window["source_bytes"]:
-            raise FacetRequestError("regular stem source differs from measured recording")
+            raise FacetRequestError(f"{label} source differs from measured recording")
     detector = get_vocal_detector(force=True)
     if detector is None:
         raise FacetRequestError("Demucs unavailable")
@@ -4855,15 +4924,23 @@ def extract_regular_stem_window(librosa, source, window, destination):
             np.shape(v) != np.shape(audio) or not np.isfinite(v).all() for v in stems.values()):
         raise FacetRequestError("invalid regular separation output")
     if fingerprint is not None and source_fingerprint(getattr(source, "src_path", None), source.complete) != fingerprint:
-        raise FacetRequestError("regular source changed during separation")
+        raise FacetRequestError(f"{label} source changed during separation")
     if not os.path.isfile(marker):
-        raise FacetRequestError("regular working root disappeared")
+        raise FacetRequestError(f"{label} working root disappeared")
     write_stems(stems, window["side"], destination)
     evidence = {**window, "device": "cpu", "sample_rate": DEMUCS_SR,
                 "samples": audio.shape[-1], "source": source.describe(), "model": DEMUCS_MODEL}
     with shared_output(stamp) as tmp, open(tmp, "w") as handle:
         json.dump(evidence, handle)
     return evidence
+
+
+def extract_regular_stem_window(librosa, source, window, destination):
+    return _extract_bounded_stem_window(librosa, source, window, destination, "regular")
+
+
+def extract_stembeats_stem_window(librosa, source, window, destination):
+    return _extract_bounded_stem_window(librosa, source, window, destination, "stembeats")
 
 
 def analyze_facet_request(librosa, req):
@@ -4875,6 +4952,10 @@ def analyze_facet_request(librosa, req):
     if grid_seconds is not None and (type(grid_seconds) is not int or not 40 <= grid_seconds <= 120
                                      or facets != ["tail"] or req.get("tail_vocals") is True):
         raise FacetRequestError("extended tail grid requires 40-120 seconds on a tail-only request")
+    head_grid_seconds = req.get("head_grid_seconds")
+    if head_grid_seconds is not None and (type(head_grid_seconds) is not int or not 40 <= head_grid_seconds <= 120
+                                         or facets != ["head"]):
+        raise FacetRequestError("extended head grid requires 40-120 seconds on a head-only request")
     # The whole-file facets stream the music server's URL (or read a local
     # copy known to be complete); `stream_url` rides along with a path request.
     whole_input = whole_file_input(req.get("path"), req.get("complete"), req.get("stream_url") or req.get("url"))
@@ -4895,8 +4976,15 @@ def analyze_facet_request(librosa, req):
     if stems_device is not None and (stems_device != "cpu" or facets != ["stems"]):
         raise FacetRequestError("stems_device supports only cpu on stems-only requests")
     regular_window = parse_regular_stem_window(req, facets)
+    stembeats_window = parse_stembeats_stem_window(req, facets)
+    if regular_window is not None and stembeats_window is not None:
+        raise FacetRequestError("choose one bounded stem window contract")
     try:
         source.open(librosa)
+        if stembeats_window is not None:
+            evidence = extract_stembeats_stem_window(librosa, source, stembeats_window, req["stems_dir"])
+            return {"facets": {"stems": {"status": "ok", "data": {"stembeats_window": evidence}}},
+                    "source": {**source.describe(), "stems_device": "cpu"}}
         if regular_window is not None:
             evidence = extract_regular_stem_window(librosa, source, regular_window, req["stems_dir"])
             return {"facets": {"stems": {"status": "ok", "data": {"regular_window": evidence}}},
@@ -4910,6 +4998,7 @@ def analyze_facet_request(librosa, req):
             stems_windows=parse_stems_windows(req.get("stems_windows")),
             source_size=req.get("source_size"),
             tail_grid_seconds=grid_seconds,
+            head_grid_seconds=head_grid_seconds,
         )
         return {"facets": result, "source": source.describe()}
     finally:
@@ -5008,6 +5097,7 @@ def main():
         # figure stored without a curve only on `=== true`.
         "loudness_curve_capable": shutil.which("ffmpeg") is not None,
         "regular_stems_version": 2,
+        "stembeats_stem_windows_version": 1,
         "subbeats_capable": vocal_capable,
         "shared_beat_grid_capable": _downbeat_tracker is not None and not _downbeat_failed,
         "subbeats_cache_version": 2,
@@ -5078,6 +5168,13 @@ def main():
         if req.get("op") == "prepare_subbeats":
             try:
                 from subbeats_prepare import prepare_request
+                emit({"id": rid, **prepare_request(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "prepare_subbeats_v2":
+            try:
+                from subbeats_prep_v2 import prepare_request
                 emit({"id": rid, **prepare_request(req)})
             except Exception as error:
                 emit({"id": rid, "ok": False, "error": str(error)})

@@ -160,7 +160,7 @@ const NAV_SECTIONS: NavSection[] = [
         label: 'Library',
         icon: Disc3,
         children: [
-          { href: '/admin/library/subbeats', id: 'subbeats', label: 'Sub/Beats', icon: AudioLines },
+          { href: '/admin/library/stems', id: 'stems', label: 'Stems', icon: AudioLines },
           { href: '/admin/playlists', id: 'playlists', label: 'Playlists', icon: ListMusic },
           { href: '/observatory', id: 'observatory', label: 'Observatory', icon: Telescope },
         ],
@@ -253,6 +253,12 @@ const FOOTER_LINKS: { href: string; label: string; icon: NavIcon; pill: string }
 // Playlists, DJ Doc and Stations aren't sidebar items, so they're resolved
 // explicitly; their crumb sections mirror where the rail stays lit.
 function resolveCrumb(pathname: string | null): { section?: string; page: string } {
+  if (pathname?.startsWith('/admin/library/stems')) {
+    return { section: 'Library', page: 'Stems' };
+  }
+  if (pathname?.startsWith('/admin/library/stembeats')) {
+    return { section: 'Library', page: 'Stem Beats · Preparation' };
+  }
   if (pathname?.startsWith('/admin/library/subbeats')) {
     const page = pathname.startsWith('/admin/library/subbeats/preparation') ? 'Preparation'
       : pathname.startsWith('/admin/library/subbeats/prepared') ? 'Prepared tracks'

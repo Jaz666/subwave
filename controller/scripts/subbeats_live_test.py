@@ -18,6 +18,7 @@ from subbeats_live import split_handoff
 class HTTPException(Exception):
     def __init__(self, status_code, detail):
         self.status_code = status_code
+        self.detail = detail
         super().__init__(detail)
 
 sys.modules['fastapi'] = types.SimpleNamespace(HTTPException=HTTPException)
@@ -63,7 +64,7 @@ r=json.loads(sys.stdin.readline())
 p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'])
 root=pathlib.Path(r['stateDir'])
 (root/'pid').write_text(str(p.pid))
-(root/'transitions'/('.subbeats-'+r['transitionId'])).mkdir()
+(root/'transitions'/(('.stembeats-' if r.get('version') == 2 else '.subbeats-')+r['transitionId'])).mkdir()
 (root/'transitions'/('subbeats-'+r['transitionId']+'-in.wav')).write_text('partial')
 time.sleep(30)
 ''')
@@ -87,10 +88,27 @@ time.sleep(30)
         self.assertTrue(not stat.exists() or stat.read_text().split()[2] == 'Z', 'decoder grandchild must be stopped')
 
     async def test_deadline_kills_the_entire_group_and_cleans_unpublished_parts(self):
-        with self.assertRaises(HTTPException) as error:
-            await service.render_live_request(self.body, Request(), sys.executable, str(self.root/'analyze_worker.py'))
-        self.assertEqual(error.exception.status_code, 408)
-        self.assert_clean()
+        for version in (1, 2):
+            self.body.update(version=version, deadlineMs=int(time.time()*1000)+400)
+            with self.assertRaises(HTTPException) as error:
+                await service.render_live_request(self.body, Request(), sys.executable, str(self.root/'analyze_worker.py'))
+            self.assertEqual(error.exception.status_code, 408)
+            self.assertEqual(error.exception.detail, {'code': 'timeout'})
+            self.assert_clean()
+
+    async def test_worker_rejection_preserves_only_known_safe_reason_codes(self):
+        for code in ('window-coverage', 'source-mismatch', 'vocal-conflict', 'invalid-timing', 'timeout',
+                     'https://user:secret@fixture.invalid'):
+            (self.root/'subbeats_live.py').write_text(
+                'import json,sys\njson.loads(sys.stdin.readline())\n'
+                f'print(json.dumps({{"error":{{"code":{code!r},"message":"secret"}}}}))\nsys.exit(1)\n')
+            self.body['deadlineMs'] = int(time.time()*1000)+5000
+            with self.assertRaises(HTTPException) as error:
+                await service.render_live_request(self.body, Request(), sys.executable, str(self.root/'analyze_worker.py'))
+            expected = 'render-failed' if code.startswith('https:') else code
+            self.assertEqual(error.exception.detail, {'code': expected})
+            self.assertEqual(error.exception.status_code, 408 if code == 'timeout' else 422)
+            self.assertFalse(service._busy)
 
     async def test_disconnect_kills_work_and_a_busy_request_never_queues(self):
         self.body['deadlineMs'] = int(time.time()*1000)+5000
@@ -103,9 +121,11 @@ time.sleep(30)
         with self.assertRaises(HTTPException) as error:
             await service.render_live_request(self.body, Request(), sys.executable, str(self.root/'analyze_worker.py'))
         self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(error.exception.detail, {'code': 'busy'})
         request.disconnected = True
-        with self.assertRaises(HTTPException):
+        with self.assertRaises(HTTPException) as error:
             await task
+        self.assertEqual(error.exception.detail, {'code': 'cancelled'})
         self.assert_clean()
 
 

@@ -24,7 +24,7 @@
 // (budgetVeto): a pick-time write may take a full cache a bounded way over,
 // for the hourly sweep to evict back down.
 
-import { regularStemWorkingMode } from './regular-stem-mode.js';
+import { regularStemWorkingMode, stemsEnabled } from './regular-stem-mode.js';
 import { readFile, rm } from 'node:fs/promises';
 import { config } from '../config.js';
 import * as settings from '../settings.js';
@@ -60,7 +60,7 @@ export function separationInFlight(): boolean {
 }
 
 function enabled(): boolean {
-  return !regularStemWorkingMode() && settings.get()?.transitions?.pickTimeStems === true;
+  return stemsEnabled() && !regularStemWorkingMode() && settings.get()?.transitions?.pickTimeStems === true;
 }
 
 // The tracks whose stem dirs a sweep evicts last (policy.sweepKeepLast), for
@@ -101,9 +101,9 @@ export type PickStemsOutcome =
 function stationFacts(opts: PickStemsOpts): policy.PickStemsStation {
   const s = settings.get();
   return {
-    enabled: !regularStemWorkingMode() && s?.transitions?.pickTimeStems === true,
-    stemBlends: s?.transitions?.stemBlends === true,
-    stemCache: s?.audio?.stemCache === true,
+    enabled: stemsEnabled() && !regularStemWorkingMode() && s?.transitions?.pickTimeStems === true,
+    stemBlends: s?.transitions?.stemsStyle !== 'new-style' && s?.transitions?.stemBlends === true,
+    stemCache: stemsEnabled() && s?.transitions?.stemsStyle !== 'new-style' && s?.audio?.stemCache === true,
     pairDrainActive: opts.pairDrainActive,
     held: opts.held,
     quietOnly: quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY, s?.audio),

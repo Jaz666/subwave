@@ -13,6 +13,7 @@ test('scan releases only queued preparation jobs in scope and respects the track
   assert.deepEqual(queuedSubbeatsForScan(jobs), ['selected-a', 'selected-b']);
   assert.deepEqual(queuedSubbeatsForScan(jobs, new Set(['assessment', 'selected-b'])), ['selected-b']);
   assert.deepEqual(queuedSubbeatsForScan(jobs, null, 1), ['selected-a']);
+  assert.deepEqual(queuedSubbeatsForScan(jobs, undefined, undefined, false), []);
 });
 
 test('queued Sub/Beats tracks suppress only their own regular stem writes', () => {

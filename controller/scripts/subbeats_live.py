@@ -5,6 +5,7 @@ publish two lossless parts with a 300ms identical overlap at incoming entry.
 All scratch/downloads stay in the request's owned directory for timeout cleanup.
 """
 import json
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -13,6 +14,12 @@ import signal
 import sys
 import tempfile
 import time
+
+
+class LiveRenderError(ValueError):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
 
 
 def split_handoff(audio, entry, sample_rate):
@@ -26,7 +33,155 @@ def split_handoff(audio, entry, sample_rate):
     return parts
 
 
+def _file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, 'rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_stembeats_window(window, expected, side, root):
+    import numpy as np
+    import soundfile as sf
+    directory = Path(window['directory'])
+    if (directory.is_symlink() or not directory.is_dir()
+            or not directory.resolve().is_relative_to(root.resolve())):
+        raise LiveRenderError('window-coverage', 'Stem Beats window is outside its owned workspace.')
+    stamp_path = directory / f'{side}-stembeats.json'
+    if stamp_path.is_symlink() or not stamp_path.is_file():
+        raise LiveRenderError('window-coverage', 'Stem Beats completion evidence is missing.')
+    stamp = json.loads(stamp_path.read_text())
+    if any(stamp.get(key) != value for key, value in expected.items()):
+        raise LiveRenderError('window-coverage', 'Stem Beats completion evidence does not match this pair.')
+    if (stamp.get('side') != side or stamp.get('version') != 1 or stamp.get('device') != 'cpu'
+            or stamp.get('model') != 'htdemucs' or stamp.get('sample_rate') != 44100
+            or type(stamp.get('samples')) is not int
+            or stamp['samples'] != round(expected['end_ms'] * 44.1) - round(expected['start_ms'] * 44.1)):
+        raise LiveRenderError('window-coverage', 'Stem Beats window coverage is invalid.')
+    parts = {}
+    for name in ('drums', 'bass', 'other', 'vocals'):
+        path = directory / f'{side}-{name}.flac'
+        if path.is_symlink() or not path.is_file():
+            raise LiveRenderError('window-coverage', 'Stem Beats extraction is incomplete.')
+        info = sf.info(path)
+        if (info.samplerate, info.channels, info.frames) != (44100, 2, stamp['samples']):
+            raise LiveRenderError('window-coverage', 'Stem Beats stem format or coverage is invalid.')
+        audio, sample_rate = sf.read(path, dtype='float32', always_2d=True)
+        if sample_rate != 44100 or audio.shape != (stamp['samples'], 2) or not np.isfinite(audio).all():
+            raise LiveRenderError('window-coverage', 'Stem Beats stem audio is invalid.')
+        parts[name] = audio.T
+    return parts
+
+
+def render_live_v2(req):
+    """Render a pair from source-bound V2 windows; never read V1 bundles."""
+    from subbeats_prepare import STEM_SR, decode
+    from subbeats_cue_preview import passage_plan
+    from subbeats_cue_matching import live_handoff_timing
+    from subbeats_handoff import mix_handoff, VocalConflictError
+    from analyze_worker import make_shared_dir, shared_output
+    import numpy as np
+    import soundfile as sf
+
+    transition_id = req['transitionId']
+    if req.get('version') != 2 or not re.fullmatch(r'[a-f0-9-]{36}', transition_id):
+        raise LiveRenderError('invalid-timing', 'Unsupported Stem Beats handoff request.')
+    if req.get('mixStyle') not in ('long-blend', 'short-exchange', 'bass-swap', 'drums-first'):
+        raise LiveRenderError('invalid-timing', 'Unsupported handoff mix style.')
+    root = Path(req['stemsRoot']) / 'stembeats' / 'pick-time'
+    state = Path(req['stateDir'])
+    dest = state / 'transitions'
+    if dest.is_symlink():
+        raise ValueError('Transition storage must not be a symlink.')
+    make_shared_dir(dest)
+    work = dest / f'.stembeats-{transition_id}'
+    work.mkdir()
+    paths = [dest / f'subbeats-{transition_id}-{role}.wav' for role in ('out', 'in')]
+    published = False
+    reply = dict(version=2, transitionId=transition_id, mixStyle=req['mixStyle'],
+                 evidenceFingerprint=req['evidenceFingerprint'])
+    old_temp = tempfile.tempdir
+    try:
+        tempfile.tempdir = str(work)
+        roles = req['roles']
+        if (len(roles) != 2 or [role['side'] for role in roles] != ['tail', 'head']
+                or [role['id'] for role in roles] != [req['outgoingId'], req['incomingId']]):
+            raise LiveRenderError('invalid-timing', 'Stem Beats roles do not match the selected pair.')
+        sources = []
+        for role in roles:
+            source = role['source']
+            path = Path(source['path'])
+            if path.is_symlink() or not path.is_file() or path.stat().st_size != source['bytes']:
+                raise LiveRenderError('source-mismatch', 'A complete source recording changed before rendering.')
+            if _file_sha256(path) != source['sha256']:
+                raise LiveRenderError('source-mismatch', 'A complete source recording differs from V2 preparation.')
+            audio = decode(path, STEM_SR, 2)
+            if abs(audio.shape[1] / STEM_SR - source['durationSeconds']) > .05:
+                raise LiveRenderError('source-mismatch', 'Source timing differs from V2 preparation.')
+            sources.append(audio)
+        try:
+            plan = passage_plan(roles[0]['cue'], roles[1]['cue'],
+                                roles[0]['source']['durationSeconds'], roles[1]['source']['durationSeconds'])
+            timing = live_handoff_timing(plan, roles[1]['cue']['bpm'], release_beats=16)
+        except (ValueError, KeyError, TypeError) as error:
+            raise LiveRenderError('invalid-timing', 'The saved cues cannot form a complete handoff.') from error
+        if timing['incomingResumeSample'] / STEM_SR >= roles[1]['source']['durationSeconds']:
+            raise LiveRenderError('invalid-timing', 'The incoming original recording ends before the tempo release completes.')
+        candidate = dict(outgoingCueIndex=roles[0]['cueIndex'], incomingCueIndex=roles[1]['cueIndex'],
+                         outgoingBars=None, incomingBars=None, timing=timing,
+                         originalLeadInSeconds=0., lyricEvidence=[None, None])
+        out_expected = roles[0]['window']['evidence']
+        in_expected = roles[1]['window']['evidence']
+        for index, evidence in enumerate((out_expected, in_expected)):
+            source = roles[index]['source']
+            if (evidence['side'] != roles[index]['side'] or evidence['source_sha256'] != source['sha256']
+                    or evidence['source_bytes'] != source['bytes']):
+                raise LiveRenderError('source-mismatch', 'Stem Beats window and complete source fingerprints differ.')
+        out_parts = _read_stembeats_window(roles[0]['window'], out_expected, 'tail', root)
+        in_parts = _read_stembeats_window(roles[1]['window'], in_expected, 'head', root)
+        if (round(out_expected['start_ms'] * STEM_SR / 1000) != timing['outgoingStartSample']
+                or round(out_expected['end_ms'] * STEM_SR / 1000) != round(plan['out_end'] * STEM_SR)
+                or in_expected['start_ms'] != 0
+                or round(in_expected['end_ms'] * STEM_SR / 1000) != timing['incomingResumeSample']):
+            raise LiveRenderError('window-coverage', 'Stem Beats windows do not cover the selected transition plan.')
+        out_frames = round(roles[0]['source']['durationSeconds'] * STEM_SR) - timing['outgoingStartSample']
+        out_offset = timing['outgoingStartSample'] - round(out_expected['start_ms'] * STEM_SR / 1000)
+        in_frames = timing['incomingResumeSample']
+        if (out_offset < 0 or out_frames <= 0
+                or any(part.shape[1] < out_offset + out_frames for part in out_parts.values())
+                or any(part.shape[1] < in_frames for part in in_parts.values())):
+            raise LiveRenderError('window-coverage', 'Stem Beats windows are shorter than the exact handoff sample ranges.')
+        out_parts = {name: part[:, out_offset:out_offset + out_frames] for name, part in out_parts.items()}
+        in_parts = {name: part[:, :in_frames] for name, part in in_parts.items()}
+        with tempfile.TemporaryDirectory(prefix='.handoff-', dir=work) as scratch:
+            try:
+                audio, vocal = mix_handoff(out_parts, in_parts, sources, plan, candidate, req['gainsDb'],
+                                           req['mixStyle'], Path(scratch), time.monotonic() + min(120., max(0, (req['deadlineMs'] - time.time() * 1000) / 1000)))
+            except VocalConflictError as error:
+                raise LiveRenderError('vocal-conflict', 'The measured vocals conflict at this handoff.') from error
+        if time.time() * 1000 >= req['deadlineMs']:
+            raise TimeoutError('The handoff exceeded its commitment deadline.')
+        entry = timing['incomingEntryFrame']
+        for role, data in split_handoff(audio.T, entry, STEM_SR):
+            path = paths[0 if role == 'out' else 1]
+            with shared_output(str(path)) as temporary:
+                sf.write(temporary, data, STEM_SR, subtype='FLOAT', format='WAV')
+        published = True
+        return dict(reply, status='rendered', reason='V2 windows and complete source recordings verified.',
+                    sourceVerified=True, timing=timing, vocal=vocal,
+                    clipPath=str(paths[1]), leadPath=str(paths[0]) if entry else None)
+    finally:
+        tempfile.tempdir = old_temp
+        if not published:
+            for path in paths:
+                path.unlink(missing_ok=True)
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def render_live(req):
+    if req.get('version') == 2:
+        return render_live_v2(req)
     from subbeats_prepare import require_shared_cache, STEM_SR
     from subbeats_cue_matching import plan_live_pair
     from subbeats_preview import render_preview
@@ -119,8 +274,9 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except BaseException:
-        # Stream URLs include credentials. Return a fixed error rather than
-        # serialising an arbitrary library/subprocess exception or traceback.
-        print(json.dumps({'error': 'The live handoff could not finish within its saved coverage and time budget.'}), flush=True)
+    except BaseException as error:
+        # Emit only controlled codes: arbitrary exception text can carry URLs
+        # with credentials, local paths or subprocess output.
+        code = error.code if isinstance(error, LiveRenderError) else 'timeout' if isinstance(error, TimeoutError) else 'render-failed'
+        print(json.dumps({'error': {'code': code}}), flush=True)
         sys.exit(1)

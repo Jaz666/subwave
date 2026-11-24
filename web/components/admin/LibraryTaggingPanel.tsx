@@ -195,6 +195,9 @@ interface TaggingPanelProps {
   logOpen: boolean;
   setLogOpen: (fn: (o: boolean) => boolean) => void;
   onStart: (steps?: TagSteps) => void;
+  newStylePrepAvailable: boolean;
+  legacyStemCacheAvailable: boolean;
+  onStartStemBeatsPrep: (mode: 'missing' | 'refresh', limit: Batch) => void;
   onStop: () => void;
   onRescan: (opts: RescanOpts) => void;
   // Walk Navidrome and prune library entries for tracks that no longer exist.
@@ -1371,6 +1374,9 @@ export default function TaggingPanel(p: TaggingPanelProps) {
         llmLabel={p.llmLabel}
         embedLabel={p.embedLabel}
         onStart={p.onStart}
+        newStylePrepAvailable={p.newStylePrepAvailable}
+        legacyStemCacheAvailable={p.legacyStemCacheAvailable}
+        onStartStemBeatsPrep={p.onStartStemBeatsPrep}
         onReconcile={p.onReconcile}
         onRescan={p.onRescan}
         onReset={p.onReset}

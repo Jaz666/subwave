@@ -1,20 +1,495 @@
 # Sub/Beats eligibility and pick-time preparation plan
 
-Status: policy contract implemented, 20 November 2026; preparation split and
-pick-time Sub/Beats extraction remain pending. This plan changes the
-Sub/Beats candidate and preparation flow so a recording is not held in that
+Status: V2 preparation is available in a separate store. The current priority
+is to use its saved cues for pick-time stem extraction and produce a Stem Beats
+transition on-air. Keep V1 intact and leave all changes off PR #10 until the
+station behavior is confirmed. The population comparison and cue-review work
+remain useful follow-up, but do not block this first end-to-end station trial.
+
+**Latest checkpoint, 24 November:** the owner confirms stable station playback
+of both Stem Beats and Regular Stem Blend transitions. The deployed fallback,
+grid/window fixes and longer tempo return have passed that listening check.
+Automatic airplay-triggered V2 cue preparation was deployed to the station's
+controller at 04:30 UTC. It persists and resumes its own V2 backlog, respects
+transition priority and operator pauses, records preparation duration, and
+leaves V1 data and later pick-time extraction separate. The controller is
+healthy; the first-use airplay and later matching-pick trial is still pending.
+See the handover for current checks, image ID and rollback; older deployment
+notes below are dated history. PR #10 remains unchanged.
+
+**Latest checkpoint, 23 November:** two Stem Beats transitions were confirmed
+by the owner before the latest controller rebuild. Subsequent live renders
+returned HTTP 422. Review reproduced a fractional-source-end disagreement
+between the production extraction clamp and renderer; the existing
+whole-second synthetic control still passes. The ordered recovery plan is:
+unify sample boundaries and add the regression; expose safe render rejection
+reasons; restore effective independent Regular fallback after V2 failure;
+restore single-owner grid refresh and immediate-pair priority; validate both
+Regular windows before extraction and repair genuinely short head coverage;
+then prove the production contract and investigate the audible beat offset.
+See the [current progress and next-steps handover](2026-11-20-stem-blends-subbeats-handover.md#current-checkpoint--24-november-2026)
+for evidence, exact worktrees, deployed images, validation and acceptance gates.
+That checkpoint takes precedence over older trial/status notes in this plan.
+
+Later on 23 November, the owner confirmed the sample-boundary candidate aired
+Stem Beats without mismatched beats and a Stem Blend aired fine. Steps 3–5 were
+then selectively integrated into the dirty station checkout and both
+controller and analyzer were rebuilt. The updated fallback, grid ownership,
+complete-window admission and bounded head-grid repair now await their own
+on-air check. Exact image hashes, rollback details and the two requested later
+follow-ups are in the handover above. Keep PR #10 unchanged until this latest
+station behavior is confirmed.
+
+**Local implementation follow-up, 23 November:** the sample-boundary fix and
+safe render failure codes (the first two recovery steps) are implemented and
+have passed isolated native/adjusted-tempo audio checks, including fractional
+source endings and refusal of missing samples. They were selectively integrated
+and deployed with both controller and analyzer at 18:20 UTC; health, deployed
+hashes and focused station checks passed. Normal programming has resumed, so
+a new compatible pairing is unlikely for an hour. On-air verification remains
+pending. Independent Regular fallback is now implemented and contract-tested
+locally, with 37 Regular and 103 Sub/Beats checks passing; it is not deployed. See the
+handover for exact images and rollback details. The development and station
+live wrappers still differ; keep using selective integration.
+
+This plan changes the Sub/Beats candidate and preparation flow so a recording is
+not held in that
 path merely because its genre and BPM match. Shared-grid and cue evidence
 first establishes which roles it can supply. Stem extraction and vocal
 measurement then happen for a real pair at pick time, before the transition
 type is finalized. A candidate that cannot supply the needed Sub/Beats role is
 released to the regular Stem Blend path, which makes its own pick-time decision.
 
+### First-time Stem Beats workflow — 23 November 2026
+
+Treat the standard Stem Beats preparation path as a user's first activation of
+Stems. V1 and prior V2 experiments remain available for comparison, but they do
+not supply candidates, baseline requirements, eligibility overrides or saved
+results to a fresh run. A library run uses the current Dance Candidate rule
+(dance-family genre and 90–180 BPM). A single-track run is queued automatically
+from airplay; there should be no manual track search-and-prepare control. The
+legacy Sub/Beats queue and its screens remain a separate comparison surface.
+
+The controller now exposes compact run summaries and progress so the admin
+screen can start, pause, resume and retry these independent runs without
+polling full 20,000-track job payloads. The Library admin area links to a new
+Stem Beats preparation screen for library analysis. It reports cue-ready
+head/tail counts and average prep time. It prepares analysis only; it does not
+extract stems or change pick-time playback.
+
+### Pick-time integration boundary — 23 November 2026
+
+The Stem Blend flowchart supplied by the owner describes current behavior and
+is the reference path, not a request to rebuild it. The controller already
+gates on an adjacent unsent pair, enabled transition settings and DJ/pair-drain
+mode; obtains or refreshes shared beat grids when time permits; checks tempo,
+test style, measured eight-bar windows and the handoff deadline; and prepares
+the outgoing tail/incoming head asynchronously. At drain it tries Sub/Beats,
+then gives Regular Stem Blend its independent assessment, then leaves the
+normal pair-aware crossfade. See `broadcast/regular-stem-runtime.ts`,
+`broadcast/regular-stem-needs.ts`, `broadcast/queue.ts` and
+`broadcast/subbeats.ts`.
+
+V2 is now connected to pair-time extraction/rendering, using prepared roles;
+airplay-triggered cue preparation is deployed and awaits its first station
+trial. The V2 cue-preparation queue can analyze a track after it starts playing
+and persists its results separately from V1. On a later matching pick, use
+saved V2 role cues to plan the pair-specific head/tail extraction in the
+existing asynchronous window-preparation lane. Do not make a first-time pick
+wait for full V2 analysis followed by a separate Demucs job; when cue prep is
+missing, let that transition fall through and make the aired track available
+for background preparation for a later pick. Preserve the existing
+Sub/Beats → independent Regular Stem Blend → ordinary crossfade order.
+
+The first station gate is an eligible track with no V2 record: confirm airplay
+queues and completes cue/grid preparation without holding playback, records its
+duration and leaves V1 unchanged. Then use prepared V2 records to confirm
+pick-time extraction, vocal checking, rendering and safe arming. Keep these as
+separate timing and playback observations.
+
+The former V1 live hook (`music/subbeats-airplay.ts`) wrote to the legacy
+queue behind `subbeatsOnAirCaching`. The new live hook calls the independent
+V2 preparation owner instead; the legacy helpers remain available to explicit
+comparison/scanning workflows. V1 is not V2 storage or run input.
+
+### Follow-up: independently assess Regular Stem Blend after a Stem Beats miss
+
+When a needed Stem Beats role has no cue, allow Regular Stem Blend to assess
+the pair independently under its existing 3% BPM gate and its own window,
+deadline and extraction rules. A missing Stem Beats cue is not itself a reason
+to reject the pair or to reuse Stem Beats cue timing. Keep this behavior behind
+the existing fallback while the first Stem Beats extraction and render path is
+being proved.
+
+### Progress — 20 November 2026
+
+- A read-only inventory of the station V1 queue confirms 2,983 supported
+  recordings: 154 head-only, 367 tail-only and 2,462 with both roles. The queue
+  was already paused and was not changed.
+- A protected V1 archive is complete at
+  `/media/satadrive/subwave-v1-baseline-2026-11-20`. It contains 38,386
+  selected files (101,387,328,904 bytes); its manifest records 2,983 supported
+  tracks and its archived queue hash matches the station queue. The queue
+  gained one queued, unprepared entry during the copy; that queue change and
+  the original queue bytes are retained alongside the final 6,423-job queue.
+  Existing jobs were unchanged and the queue remained paused.
+- The corrected algorithm-3 station run `ceb928bd-2833-4678-9244-3aa2a3779ef9`
+  completed all seven tracks against V1 snapshot hash
+  `23c521bfd9b93e58b11812d2787621f0b8b92991b1a14c28b1f081afb5f9b30c`. Three
+  both-role positives matched V1 cue positions exactly; Summer of Love's head
+  and Sugar Is Sweeter's tail were retained, and In Pieces stayed negative.
+  Booyah gained a V2 incoming role while retaining its V1 outgoing role. Its
+  gained head cue and Sugar Is Sweeter's additional tail alternatives were
+  reviewed by the owner and approved. Seven-track prep averaged 35.3 seconds
+  (10.8–84.7 seconds); do not extrapolate this small sample as a batch promise.
+- In the development checkout, a separate `state/subbeats/prep-v2` run and
+  artifact store, admin API, resumable worker and independent cue assessment
+  are implemented. V2 uses complete source-bound Beat This small0 grids,
+  derives each role separately, performs no Demucs or vocal measurement, and
+  does not write the V1 queue or library grids.
+- The first temporary seven-recording station run completed in separate V2 storage.
+  The V1 queue remained paused with its baseline hash unchanged. After fixing
+  shared-file permissions, the sample exposed two mismatches: V1-supported
+  roles were unavailable for several recordings, and one outgoing cue set for
+  Benediction moved about 4.1 seconds. Dario G and Rozalla retained only V2
+  tails; Booyah retained only a V2 head; the negative case remained negative.
+  Details and the run ID are in the handover. This is not parity approval.
+- Two request issues found during the station run are fixed locally: analyzer
+  access to the staged complete source, tail-grid validation when both roles
+  need refreshing, and omission of absent grids from the analyzer request.
+  Focused type checks, the V2 store tests and all 21 Sub/Beats route tests pass.
+  That sample used the original controller/analyzer images; no PR contents or
+  metadata were changed.
+- Focused controller type checks, V2 store/cue tests and all 21 Sub/Beats route
+  tests pass. The broader analyzer Python suite still has six existing
+  failures because `onnxruntime` is unavailable in this checkout; the new V2
+  suite and sidecar packaging contract pass in the full run.
+- The owner reviewed the previously disputed Booyah and Sugar Is Sweeter cues
+  and confirmed they are fine. This clears the sample audio-review gate; it
+  does not establish population parity or approve pick-time changes.
+- A second seven-track station sample completed under V2 algorithm 2. Full-grid
+  fitted cues for Sunchyme and Everybody's Free matched V1 exactly, and
+  Benediction retained both roles. Booyah's tail, Summer of Love's incoming
+  role and CJ Bolland's tail remain unexplained losses; the sample is not a
+  parity pass.
+- Algorithm 3 adds the existing Beat This-grid incoming and natural-finish
+  fallbacks. The first controller-managed run stalled on its first job; the V2
+  analyzer request was then hardened to keep its deadline active through the
+  response body and retry stale keep-alive sockets. The corrected seven-track
+  run above completed. This confirms the controller-managed path now completes
+  the sample, though it does not prove which transport condition caused the
+  earlier stall. V1 remains paused. No PR update has started.
+- The owner approved the sample cues and authorized the bounded comparison.
+  Station run `19562385-c3f5-4622-9782-a3e3ff2eca6b` contains all 2,983 V1-
+  supported recordings, algorithm 3, and baseline hash
+  `fc7b58f67197becfa20c7a30860aa5a8b3a537c6fbbd9669792d6f049d5b16c7`. At the
+  The owner paused this run after about an hour for review, then authorized
+  continuing after old-style preview testing. The latest snapshot has 169
+  complete, 1 running, 2,812 queued and 1 failed; mean prep time is 25.1
+  seconds across completed jobs (median 15.4 seconds). In those completed
+  jobs, all 166 V1-supported incoming roles remained cue-ready; outgoing roles
+  were cue-ready for 158 of 159 V1-supported roles. The one apparent loss is
+  “Bells of n Y (House 2 House MIX)” by Slo Moshun and needs review. “When the
+  Lights Are Out (garage mix)” still failed to download completely. The V1
+  queue remains paused. The protected archive has hash
+  `48ca705b5a8257e314946005e936aacf62dda3243de4d5392908d43c4f38f1d8` and 6,423
+  jobs. The current queue has 6,433 jobs: ten added queued/unprepared entries,
+  with no removed or changed existing rows versus the archive. All 2,983 V1
+  records captured in this run still match their current queue fields. The
+  controller now validates the saved V1 records and the supported population
+  before resuming, so these unprepared additions do not invalidate V2. The
+  interrupted Qattara job was recovered and the run resumed; the existing
+  failed download was not retried. Review the apparent tail loss before
+  completing the comparison or returning to pick-time work. PR #10 remains
+  untouched.
+
+### Latest checkpoint — 22 November 2026
+
+- The population run completed 2,979 of 2,983 recordings; four whole jobs
+  failed. Average preparation time was 28.81 seconds per completed recording.
+  The V1 queue remains paused and separate. Its 52 new rows are on-air cache
+  additions, not changes to the protected 2,983-record comparison baseline.
+- The role-level comparison and CSV are in
+  [`docs/investigations/2026-11-22-subbeats-v2-population-comparison.md`](../investigations/2026-11-22-subbeats-v2-population-comparison.md)
+  and its adjacent CSV. V2 cue-ready counts are 2,908 incoming and 2,724
+  outgoing among completed jobs; 18 V1 incoming and 142 V1 outgoing roles
+  returned no V2 cue, with failures reported separately.
+- The owner listened to four review examples in Navidrome. V2's Röyksopp and
+  Avicii tail cues were both about three bars later than the preferred natural
+  onset; Slo Moshun's V1 cue was wrong, while its natural outro around 02:00
+  lacks a stable terminal grid in the saved V2 evidence, despite a downbeat at
+  120.22s; Brian Eno's ambient opening was correctly judged unsuitable for
+  transitions. This keeps the parity gate open and identifies outgoing cue
+  derivation and terminal-grid coverage as the next review targets.
+- An offline replay found that algorithm 3 suppresses natural-finish
+  alternatives whenever fitted outgoing cues exist. A local-only algorithm-4
+  experiment now retains terminal alternatives as well; on Avicii's “You Make
+  Me” it adds a 193.46s candidate near the owner's 191s preference. Targeted
+  Python tests, V2 store tests and controller type checking pass. The
+  comparison population remains algorithm 3; no station scan, station change
+  or PR update has been made for algorithm 4.
+- A read-only screen of the 142 outgoing losses found 42 with a locally stable
+  eight-bar beat window ending within 16 seconds of file end; all 42 still
+  fail V2's continuous terminal-phrase rule. A second grid-only probe found
+  that 24 can satisfy a continuous terminal grid fit using saved stable-window
+  seeds, 10 have no fit, and 8 fail later grid constraints. Because the role
+  artifacts omit the optional primary-grid seed, these counts are a lower
+  bound rather than a full replay. Next, separate the audio-derived ending
+  checks from grid-fit failures on a small sample before changing cue rules.
+- The owner confirmed that tracks from the Navidrome Compilations library are
+  Sub/Beats' primary intended-use material and directed quality review to five
+  folders: 30 Years - Three Decades of Dance (2021), 90s Dance Anthems, 100
+  Hits - Club Anthems (2013), 100 Hits - Dance Anthems (2008), and 900+ House
+  Classics. Exact folder membership was joined by
+  Navidrome track ID to the V1 queue and completed V2 run. The folders contain
+  1,259 files; V2 has 1,236 complete results plus one failed job among the V1-
+  prepared tracks. All completed V1-supported incoming roles were retained.
+  Twelve supported outgoing roles were lost: Slo Moshun (already reviewed as a
+  wrong V1 cue), Marshall Jefferson, and ten 900+ House Classics tracks. All
+  twelve came from V1's estimated-phrase-grid path. Details are in the
+  compilation cohort CSV and comparison report. The broad 2,983-track totals
+  no longer serve as the primary audio-review gate. Replaying those 12 losses
+  offline with local algorithm 4 and their original files/saved grids produced
+  no outgoing cue for any of them, so the experiment does not resolve these
+  cases. On 23 November the owner auditioned the V1 cues for Marshall Jefferson,
+  Phil Jubb and Trotters Independent Traders, plus the V2 cue for S’Express, and
+  reported no audible issue with any of the four. This supports retaining those
+  cues as plausible candidates; it is not a full transition test. Slo Moshun
+  remains separately judged wrong. In the next review, Tenth Chapter, Urban
+  Hype and Movin’ Melodies V1 cues were also judged fine. For Mimmo Mix — “All
+  Your Love,” the owner preferred a more natural cue near 04:59, at the start
+  of a vocal phrase, about 12 seconds after V1's 04:47 cue. This is the first
+  reviewed cue-position improvement to carry into V2 evaluation. The owner
+  then completed the last four cue-bearing V1 losses: The Fog had no obvious
+  beat-matched outro cue; Floor Federation's closest cue was earlier around
+  06:36 rather than after V1's 07:04 point; Paradox's 05:44 cue was suitable;
+  and Greed's more suitable point was around 06:30, slightly earlier than
+  V1's 06:36. The listening pass is complete. A read-only comparison with the
+  saved source-matched V2 grids found the identified points near V2 downbeats
+  for Floor Federation (396.20s) and Paradox (343.84s); Greed's 390s point is
+  near a beat at 390.06s but not the nearest downbeat (390.56s). The current
+  V1 cue for The Fog is almost exactly on a V2 downbeat (451.08s), even though
+  the owner hears no suitable beat-matched outro. Mimmo Mix's 299s point is
+  near a predicted downbeat (298.78s), but the local beat sequence is
+  irregular. A source-hash-verified, read-only replay of all five reviewed
+  source files found that each had an initial entry window, but none passed
+  the full-track constant-period fit: their inlier fractions were 21.2%,
+  22.3%, 34.3%, 25.5% and 82.2%, below the 85% threshold. No fitted grid or
+  ending was produced, and the terminal fallback returned no cue. This points
+  to global-grid consistency as the immediate rejection stage; it does not
+  establish why each grid drifts. A read-only run of V1's existing closing
+  routine generated cues for all five, including The Fog and the later
+  Floor Federation cue that the owner did not prefer. Treat it as a comparison,
+  not a drop-in replacement. Keep the next step simple: compare V1 output, V2
+  output and owner judgment on this small set, then consider only a clearly
+  supported narrow change. Keep V1 intact; do not run a broad batch or relax
+  population-wide guards.
+- No station behavior or PR contents were changed during this review.
+
+## Revised action plan — 20 November: preserve V1, prove V2 preparation first
+
+The owner reports **2,983 scanned tracks with Sub/Beats support in the head,
+tail, or both**. Preserve that work as V1. V2 is a separate preparation workflow
+with separate persisted results; running it must not overwrite, migrate,
+invalidate or delete V1 entries, cue data, reviewed corrections, vocal evidence,
+prepared stems or supporting artifacts. This instruction supersedes the earlier
+clean-reset permission. A failure or an unsupported role in V2 must leave V1
+available for comparison.
+
+V1/V2 here name preparation workflows. They are not the existing cache folder
+version, cue algorithm version or `classic`/`small0` method. Inventory those
+actual methods rather than assuming all 2,983 entries use the same one.
+
+### 1. Capture and protect the V1 comparison baseline
+
+- Inventory the exact recording IDs behind the reported 2,983 supported tracks,
+  recording head-only, tail-only and both counts. Also inventory the remaining
+  scanned tracks, so later comparisons can detect false positives as well as
+  recovered roles. Reconcile any count difference explicitly; the owner count
+  is the starting expectation, not a count verified by this documentation edit.
+- Save a consistent baseline of V1 records, source identities, methods/versions,
+  cue choices, timing, coverage, vocal/lyric evidence and reviewed corrections.
+  Record artifact references and integrity information, and preserve the
+  referenced files with a recoverable snapshot or backup before a trial scan.
+  A metadata export alone does not preserve prepared audio.
+- Trace the previous successful preparation and playback path and record known
+  successful examples. Keep file presence, V1 role support and a successful pair
+  distinct: Rozalla's exit files alone did not establish a valid pair with
+  Booyah under the rebuilt controller.
+- Ensure V2 scheduling, cache budgets, cleanup and invalidation cannot evict or
+  rewrite V1 artifacts indirectly. Do not send V2 jobs through the V1 enqueue
+  operation, which replaces a previous entry's preparation fields.
+
+Deliverable: a reproducible V1 reference set and a checked preservation boundary.
+This step does not switch live playback or roll back the station automatically.
+
+### 2. Add a separate, versioned V2 preparation store
+
+- Give V2 its own job queue, results and artifact namespace, for example
+  `state/subbeats/prep-v2/`; keep all V1 readers and writers explicit. V2 retries,
+  pause/resume and failures affect V2 records only. Publish completed results
+  atomically and retain the prior comparison run when the algorithm changes.
+- Identify results by exact recording and source revision. Save checksum, byte
+  size, decoded duration, grid model/preprocessing version, cue algorithm
+  version and preparation run identity. A changed recording is a source-change
+  case, not a V1/V2 quality regression for the same audio.
+- Store independent head and tail outcomes, each with its grid/coverage,
+  candidate cues and stable reason. Distinguish not scanned, running, failed,
+  no usable cue and cue-ready. Missing tail evidence must not erase a good head.
+- Keep V2 results out of automatic live admission during this comparison phase.
+  In particular, do not relabel V1 as stale or unsuitable merely because it does
+  not contain the new V2 fields.
+
+Deliverable: V1 and V2 can coexist for the same recording without either being
+silently selected, replaced or merged into the other.
+
+### 3. Implement the proposed V2 prep stages, without separation
+
+Run these stages in order, reusing existing analysis helpers where they fit:
+
+1. **Candidate/source check:** use Dance Candidate as discovery only. Explicitly
+   include every V1-supported recording in the comparison even if today's
+   discovery filter would exclude it. Validate the complete current source;
+   downloading/decoding may be needed, and a capped prefix cannot prove a tail.
+2. **Shared-grid analysis:** reuse complete, source-matching Beat This `small0`
+   head/tail evidence where sufficient. Refresh missing or insufficient windows
+   independently, with enough measured span to evaluate the candidate passages.
+   Keep newly calculated grids in V2 during comparison so they do not replace
+   V1's inputs or alter the live library grids. Do not use legacy Librosa timing
+   as fallback V2 authority.
+3. **Cue derivation:** derive incoming and outgoing candidates from those grids
+   and the recording's arrangement. Preserve useful existing cue behaviour,
+   including phrase timing, alternatives, natural starts and natural finishes;
+   retain measured coverage and validation/confidence for each candidate. Reuse
+   cue logic, but do not blindly copy V1 outcomes or substitute arbitrary
+   eight-bar windows just to increase the supported count.
+4. **Independent role assessment:** record usable incoming head, outgoing tail,
+   both or neither, with cue positions, BPM, phrase/interval bounds and reasons.
+   Require source identity, sufficient measured coverage and true tail placement.
+   Mark usable results as cue-ready, not stem-ready or approved for a pair.
+5. **Durable completion:** save the evidence and timings, then report completion
+   into the V2 queue. Interrupted, failed and source-changed jobs remain
+   retryable without repeating completed, unchanged work.
+
+V2 prep runs no Demucs, stem extraction or new vocal measurement. Existing V1
+vocal/lyric evidence remains comparison material; it cannot count as newly
+measured V2 vocal evidence. Vocal approval still belongs after extraction in
+the later pick-time phase. Pair tempo, harmonic style and vocal compatibility
+also remain separate from per-track role support.
+
+### 4. Prove the prep contract on a small representative set
+
+Start with V1-supported head-only, tail-only and both-role examples, plus
+scanned negatives and difficult endings. Include tracks from known successful
+pre-rebuild transitions and the recent station trial tracks where useful.
+Select by exact recording ID, not artist/title alone.
+
+Check V1 preservation, no separation calls, independent head/tail failures,
+source-change refusal, incomplete-source/tail refusal, interrupted/resumed work
+and deterministic results for unchanged inputs. Compare cue timing against
+waveforms and listen to original passages where the two versions disagree.
+Keep these checks independent of automatic queue selection or a new live render.
+
+Deliverable: trustworthy V2 prep on a small set before spending time on a batch.
+
+### 5. Review the owner-prioritized Compilations cohort first
+
+The algorithm-3 run over all 2,983 V1-supported recordings is complete, but its
+aggregate is exploratory because V1 admission was broad and many recordings
+have not been tried on air. First review the exact Navidrome track IDs in these
+five Compilations folders: 30 Years - Three Decades of Dance (2021), 90s Dance
+Anthems, 100 Hits - Club Anthems (2013), 100 Hits - Dance Anthems (2008), and
+900+ House Classics. Reuse the saved V2 results; do not rescan tracks already
+prepared. Prioritize outgoing losses and changed/gained cues, checking original
+audio and sustained-beat suitability. The full folder membership and current
+V1/V2 status are exported in
+`docs/investigations/2026-11-22-subbeats-compilations-cohort.csv`.
+
+Once this focused review establishes the useful V2 behavior and any needed
+algorithm changes, return to the wider V1-supported population and scanned V1
+negatives. Keep failures and unprocessed tracks separate from role losses;
+reuse current source/grid evidence, bound concurrency and retain per-stage
+timings. Do not expand into a whole-library scan by default.
+
+Produce an operator-readable per-track comparison and an export containing:
+
+- V1 and V2 head/tail support, including unprocessed/error counts separately;
+- retained, gained and lost roles, and movements between head-only, tail-only,
+  both and neither;
+- cue positions/alternatives, BPM, phrase timing, natural-tail placement,
+  measured coverage, source identity and reason for each difference;
+- preparation time and work reused, with unsupported-by-policy distinguished
+  from failed processing or unavailable source, plus the average elapsed time
+  per completed recording for future batch estimates;
+- review outcome for disagreements, linked to the evidence used to settle them.
+
+Preserve raw V1 fields in the comparison. A normalized comparison view may map
+older suitability formats to role support, but must retain the mapping/version
+and must not invent equivalent cues where V1 never stored them.
+
+### 6. Keep the preparation comparison as follow-up work
+
+The focused compilation review and remaining population review still matter
+before treating V2 as a broadly validated replacement for V1. They do not block
+the first end-to-end pick-time trial, which will use already prepared V2
+records and confirm source identity before use. Continue to preserve V1 and
+record the comparison evidence. Before broad rollout, establish that:
+
+- V1 records and referenced artifacts are preserved and remain readable;
+- every baseline recording is accounted for, including failures/source changes;
+- head and tail are assessed separately, with no unexplained loss of a
+  previously supported role on the same recording;
+- differences are checked for timing and musical usefulness. A genuine V1
+  false positive may be corrected with documented evidence and owner review;
+  a higher total supported count alone is not evidence of improvement;
+- representative retained, gained and changed passages have been reviewed,
+  with no relaxed source, timing or tail-placement guards;
+- the owner agrees that V2 prep matches or improves upon V1 for the intended
+  role/cue behaviour. Prep parity does not claim vocal or final-render parity.
+
+### 7. Reach the first on-air Stem Beats transition
+
+Use a small set of already prepared V2 tracks to prove the complete path:
+
+1. Read only complete V2 jobs whose saved source identity still matches the
+   current recording; require the outgoing tail and incoming head roles for
+   the actual pair.
+2. Apply the existing Sub/Beats pair, tempo and handoff-deadline checks, then
+   extract only the required source windows through the bounded CPU stem
+   worker. Keep these outputs in a Stem Beats working area, separate from V1
+   and regular Stem Blend caches.
+3. Measure vocal activity on the extracted vocal stems, run the existing
+   Sub/Beats render checks, and publish the lossless handoff only after the
+   queue occurrence, source identity and deadline still match.
+4. Exercise failures and ordinary fallback locally, then confirm the result
+   with station listening. Keep all work off PR #10 until station behavior is
+   confirmed and preserve the testing branches and their pre-rebuild state.
+
+The first trial can use the existing comparison run; it does not claim that
+the wider V2 population has passed review. Airplay-triggered preparation for
+unprepared tracks follows after the saved-cue pick-time path works. The
+independent Regular Stem Blend assessment remains the fallback and is not a
+mixed renderer.
+
 ## Implementation checkpoint — 20 November: role policy and regular fallback
+
+Historical checkpoint. The V2-first action plan above now controls sequencing
+and data preservation. The station trial is recorded in the
+[current handover](2026-11-20-stem-blends-subbeats-handover.md).
 
 The owner confirmed that a declined Sub/Beats pair must always be offered to
 Regular Stem Blend under its independent rules. Both regular roles use the
 regular renderer; there is no mixed Sub/Beats/regular renderer. This supersedes
 the candidate reservation and crossover rules in the 17 November regular plan.
+
+The first seven-track V2 station sample revealed that V2 was assessing
+role-windowed grids rather than the full-recording Beat This grid used by V1.
+V2 now predicts or reuses a complete source-bound grid, evaluates incoming and
+outgoing roles from that shared grid, and saves it only under V2 artifacts.
+This correction is algorithm version 2; no V1 state is changed. Local tests
+pass. Next, repeat the seven-track station sample and review retained, gained,
+lost and shifted roles against V1, including audio timing, before starting a
+larger comparison. Do not update PR #10 until station behavior is confirmed.
 
 `music/subbeats-role-policy.ts` now screens the requested head or tail separately
 using current small0 shared-grid provenance, complete-source size, cue timing and
@@ -261,13 +736,12 @@ occurrence before rendering; a late job may finish but cannot arm a stale pair.
 
 ## 6. Migration and compatibility
 
-- A clean Sub/Beats rebuild on the test station is approved. The rollout may
-  discard existing Sub/Beats-specific cue, eligibility, coverage and prepared
-  stem state, then regenerate it under the new flow; it does not need to carry
-  forward old Sub/Beats readiness or saved coverage.
-- Scope that reset to Sub/Beats preparation state. Keep shared Beat This grids,
-  library metadata and unrelated analysis. Leave old standard stem-cache files
-  untouched; they are not inputs to either new pick-time workflow.
+- Preserve V1 alongside the separate V2 preparation store. The owner's latest
+  instruction supersedes the earlier clean-reset approval: do not discard or
+  overwrite V1 cue, eligibility, coverage, prepared stems or supporting evidence.
+- Keep shared Beat This grids, library metadata and unrelated analysis. V2 can
+  read source-matching shared evidence; newly measured comparison grids remain
+  in V2. Leave old standard stem-cache files untouched.
 - Version the new role-readiness and pick-time evidence. Old broad eligibility
   rows are candidate hints only until refreshed; do not silently reinterpret
   them as current head/tail readiness.
@@ -331,25 +805,11 @@ library-wide Demucs pass.
 
 ## Implementation order and completion gates
 
-1. **Policy contract:** define candidate, role and pair readiness plus stable
-   reasons; remove broad genre/BPM eligibility as a regular-stem reservation.
-2. **Grid/cue screen:** refresh shared head/tail grids and cue candidates
-   independently; report role coverage counts and release no-cue roles without
-   separation.
-3. **Preparation split:** keep pre-pair work to grid/cues; make extraction and
-   vocal measurement demand-driven after pair selection.
-4. **Pick-time worker integration:** extract exact CPU-only Sub/Beats windows,
-   validate source and queue identity, reuse only verified compatible results.
-5. **Routing and fallback:** finalize Sub/Beats after vocal checks, then give
-   Regular Stem Blend its independent pick-time opportunity, then ordinary
-   fallback.
-6. **Diagnostics and operator status:** expose per-role and per-pair states;
-   keep user-facing icons as a follow-up on the agreed Mixing Desk status
-   contract.
-7. **Test-station rollout:** verify contrasting recent tracks from cold and
-   warm working state after a clean Sub/Beats preparation reset; review timing
-   and logs, listen to aired results, and preserve a rollback route before
-   widening candidate refresh.
+Follow the revised seven-step V2 action plan at the top: preserve and inventory
+V1; add separate V2 storage; implement grid/cue prep; validate on a small set;
+review the owner-prioritized Compilations cohort; then review the wider
+supported population and scanned negatives before passing owner review of prep
+parity and resuming pick-time integration and station listening.
 
 Do not remove the Sub/Beats tempo/pair checks, relax source-completeness or
 tail-placement guards, force a transition style, run whole-track Demucs just
@@ -372,3 +832,56 @@ for candidate classification, or delete old caches as part of this work.
   before the queue handoff deadline; a job that cannot finish in time should
   release immediately.
 
+## Stem Beats preparation storage and entry points — 23 November
+
+The development name for V2 preparation and future pick-time work is **Stem
+Beats**. New persistent preparation data belongs under the shared stems root in
+`stembeats/`; regular Stem Blend data uses `stemblends/`. V1 data and its
+existing preparation queue remain in their current locations and are not
+rewritten by V2.
+
+The V2 store writes new runs and source-bound grid artifacts to
+`<stems-root>/stembeats/runs/`, alongside `tmp/` and `pick-time/`. It still
+reads runs from the former `<stems-root>/stembeats/prep-v2/` and
+`state/subbeats/prep-v2/` locations so existing comparison work remains
+available. Temporary downloaded recordings are removed from
+`<stems-root>/stembeats/tmp/` after each job. Cache sizing, sweeping, orphan
+cleanup and Sub/Beats cleanup treat the feature directories as reserved
+namespaces, never as track folders.
+
+V1-backed batch runs retain their immutable V1 snapshot for explicit
+comparison. A fresh library-analysis run uses the existing Dance Candidate
+discovery rule (90–180 BPM and a dance-family genre), without extending its
+scope from saved V1/V2 results. It can start when no V1 queue exists. The
+planned airplay queue is a separate single-track route into V2, not a manual
+search action. The older records remain available through their explicit
+comparison path and do not change fresh-user eligibility or scan behavior.
+Library runs are capped at 20,000 recordings. Keep the current 2,983-track
+comparison available until the fresh scan has been reviewed.
+
+No station rebuild or PR update is part of this change. At the next station
+rebuild, confirm the controller and analyzer both see the configured shared
+stems root before starting V2 work; the previous station images had the
+controller and analyzer mounted to `/media/ssd/stems` while the default root was
+empty.
+
+The first pick-time implementation step now reads source-bound V2 outgoing-tail
+and incoming-head roles, retains the existing 8% Sub/Beats cue-tempo gate, and
+plans exact bounded stem windows for the selected cue pair. A versioned
+CPU-only analyzer contract writes those windows under a temporary
+`stembeats/pick-time/` workspace with its own marker and completion evidence;
+the workspace protects an analyzer job after a client timeout and removes
+completed files after use. A pair staging coordinator now acquires complete
+source leases against each V2 SHA-256/size fingerprint, extracts both windows,
+and holds their source and workspace leases through rendering. The pair-drain
+path now prefers this route when both V2 roles and a bounded pair plan are
+available. A separate V2 render request verifies the completion stamps and
+complete source hashes, then reuses the existing vocal-conflict assessment,
+native-tempo return and lossless seam checks without reading V1 bundle data.
+The V1 route remains a comparison surface; live pair drain does not fall back
+to V1 bundles when V2 has no usable pair plan. The original synthetic CPU render
+passed inside the analyzer image, including source verification, V2 window
+loading, vocal assessment and lossless clip publication. The owner subsequently
+confirmed two transitions on-air, then the 23 November review reproduced a
+fractional-endpoint failure missed by that whole-second fixture. Follow the
+current handover's recovery plan before further deployment or any PR update.

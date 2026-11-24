@@ -37,6 +37,12 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       setTimeout(() => { if (!res.destroyed) res.end('late'); }, 1_000);
       return;
     }
+    if (path.startsWith('/partial')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.write('{"partial":');
+      setTimeout(() => { if (!res.destroyed) res.end('true}'); }, 1_000);
+      return;
+    }
     if (path.startsWith('/late-drop')) {
       // The server took the request and was working on it when the connection
       // went: a resend would run it a second time.
@@ -143,6 +149,12 @@ test('a timeout is never resent', async () => {
     return true;
   });
   assert.equal(seen.get('/slow'), 1);
+});
+
+test('bodyDeadline remains active while the response body is being read', async () => {
+  const res = await post('/partial', { timeoutMs: 100 });
+  await assert.rejects(res.json(), (err: unknown) => (err as Error).name === 'AbortError');
+  assert.equal(seen.get('/partial'), 1);
 });
 
 test('the warning names the real cause', () => {

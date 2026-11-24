@@ -67,6 +67,14 @@ test('an orphan is moved into the quarantine, and it leaves the cache root', asy
   assert.ok(existsSync(join(ROOT, kept)));
 });
 
+test('Stem Beats feature data is never treated as an orphan track folder', async () => {
+  const featureDir = join(ROOT, 'stembeats', 'runs', 'retained');
+  mkdirSync(featureDir, { recursive: true });
+  writeFileSync(join(featureDir, 'run.json'), 'keep');
+  await purge.runOrphanPurge({ knownIds: ['_sentinel'], confirm: true, now: NOW_BASE + DAY });
+  assert.equal(readFileSync(join(featureDir, 'run.json'), 'utf8'), 'keep');
+});
+
 test('the quarantine is shared 777 like the cache root, whatever the umask', async () => {
   // mkdir({ mode: 0o777 }) alone comes out 755 under umask 022; a 755 left by
   // an older controller is opened up on the next move.

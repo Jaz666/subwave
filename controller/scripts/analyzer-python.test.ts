@@ -23,6 +23,8 @@ const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const SUITES = [
   'subbeats_coverage_test.py', // persistent cue coverage, budget/source binding and cache/model reuse
   'subbeats_cues_test.py', // cue evidence, integrity, source-prefix and vocal-tail preservation
+  'subbeats_prep_v2_test.py', // separate V2 cue decisions on complete source-matched shared grids
+  'subbeats_live_v2_integration_test.py', // real decode/extraction and extended V2 tempo-return rendering
   'subbeats_vocal_plan_test.py', // provisional complete-passage handovers; rendering unchanged
   'subbeats_suitability_test.py', // cached role capability, preview coverage and no-model reassessment
   'subbeats_reference_preview_test.py', // sustained rhythm, source verification and credential-free preview cache
@@ -52,6 +54,12 @@ const SUITES = [
   'analyzer_device_test.py', // cuda self-test + cpu fallback (#2280)
   'analyzer_stem_provenance_test.py', // a stem window rewrite never leaves another recording's window (#2238)
 ];
+const requestedSuite = process.env.SUBWAVE_PYTHON_TEST_SUITE;
+const suitesToRun = requestedSuite ? SUITES.filter(file => file === requestedSuite) : SUITES;
+if (requestedSuite && suitesToRun.length === 0) {
+  console.error(`Unknown Python test suite: ${requestedSuite}`);
+  process.exit(1);
+}
 
 const probe = spawnSync('python3', ['--version'], { stdio: 'ignore' });
 if (probe.error || probe.status !== 0) {
@@ -80,7 +88,7 @@ if (numpyProbe.status !== 0) {
 
 const failed: string[] = [];
 try {
-  for (const file of SUITES) {
+  for (const file of suitesToRun) {
     console.log(`— ${file}`);
     const { status } = spawnSync('python3', [join(scriptsDir, file)], { stdio: 'inherit', env: pythonEnv });
     if (status !== 0) failed.push(file);

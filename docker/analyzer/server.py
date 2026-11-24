@@ -666,8 +666,28 @@ class SubbeatsLiveRequest(BaseModel):
     evidenceFingerprint: str = Field(pattern=r'^[a-f0-9]{64}$')
 
 
+class StemBeatsLiveRequest(BaseModel):
+    version: Literal[2]
+    transitionId: str = Field(pattern=r'^[a-f0-9-]{36}$')
+    deadlineMs: int = Field(gt=0)
+    stateDir: str
+    stemsRoot: str
+    outgoingId: str
+    incomingId: str
+    roles: list[dict[str, Any]] = Field(min_length=2, max_length=2)
+    gainsDb: list[float] = Field(min_length=2, max_length=2)
+    mixStyle: Literal['long-blend', 'short-exchange', 'bass-swap', 'drums-first']
+    evidenceFingerprint: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
 @app.post('/render-subbeats-transition')
 async def render_subbeats_transition(req: SubbeatsLiveRequest, request: Request):
+    from subbeats_live_service import render_live_request
+    return await render_live_request(req.model_dump(), request, ANALYZE_PYTHON, ANALYZE_WORKER)
+
+
+@app.post('/render-stembeats-transition')
+async def render_stembeats_transition(req: StemBeatsLiveRequest, request: Request):
     from subbeats_live_service import render_live_request
     return await render_live_request(req.model_dump(), request, ANALYZE_PYTHON, ANALYZE_WORKER)
 
@@ -779,6 +799,7 @@ async def health():
         # How many whole-file requests this host runs at once (its own lane).
         "analyze_whole_file_concurrency": WHOLE_FILE_CONCURRENCY,
         "analyze_regular_stems_version": (2 if analyzer_pool.ready_workers and all(w.ready_meta.get("regular_stems_version") == 2 for w in analyzer_pool.ready_workers) else None),
+        "analyze_stembeats_stem_windows_version": (1 if analyzer_pool.ready_workers and all(w.ready_meta.get("stembeats_stem_windows_version") == 1 for w in analyzer_pool.ready_workers) else None),
         "analyze_subbeats_suitability_version": (1 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_suitability_version") == 1 for w in analyzer_pool.ready_workers) else None),
         "analyze_subbeats_capable": analyzer_pool.capability("subbeats_capable", "vocal_activity"),
         "analyze_subbeats_cache_version": (2 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_cache_version") == 2 for w in analyzer_pool.ready_workers) else None),
@@ -862,7 +883,9 @@ class AnalyzeRequest(BaseModel):
     source_size: Any = None
     stems_device: str | None = None
     regular_stem_window: dict[str, Any] | None = None
+    stembeats_window: dict[str, Any] | None = None
     tail_grid_seconds: int | None = None
+    head_grid_seconds: int | None = None
 
 
 @app.post("/analyze")
@@ -910,8 +933,12 @@ async def analyze(req: AnalyzeRequest):
         payload["facets"] = facets
         if req.tail_grid_seconds is not None:
             payload["tail_grid_seconds"] = req.tail_grid_seconds
+        if req.head_grid_seconds is not None:
+            payload["head_grid_seconds"] = req.head_grid_seconds
         if req.regular_stem_window is not None:
             payload["regular_stem_window"] = req.regular_stem_window
+        if req.stembeats_window is not None:
+            payload["stembeats_window"] = req.stembeats_window
         if req.stems_device is not None:
             payload["stems_device"] = req.stems_device
         if req.tail_vocals:
@@ -982,6 +1009,24 @@ async def prepare_subbeats(req: SubbeatsPrepareRequest):
     if not msg.get("ok"):
         raise HTTPException(422, msg.get("error") or "Sub/Beats preparation failed")
     return {"ok": True, "subbeats_result": msg.get("subbeats_result"), "cache_added_bytes": msg.get("cache_added_bytes")}
+
+
+class SubbeatsPrepV2Request(BaseModel):
+    path: str
+    complete: bool
+    source_sha256: str = Field(pattern="^[a-f0-9]{64}$")
+    source_bytes: int = Field(gt=0)
+    grid: dict[str, Any] | None = None
+
+
+@app.post("/prepare-subbeats-v2")
+async def prepare_subbeats_v2(req: SubbeatsPrepV2Request):
+    if req.complete is not True:
+        raise HTTPException(422, "V2 preparation requires the complete recording")
+    msg = await analyzer_pool.request({"id": "1", "op": "prepare_subbeats_v2", **req.model_dump()})
+    if not msg.get("ok"):
+        raise HTTPException(422, msg.get("error") or "V2 Sub/Beats preparation failed")
+    return {"ok": True, "subbeats_prep_v2_result": msg.get("subbeats_prep_v2_result")}
 
 
 class SubbeatsMatchRequest(BaseModel):

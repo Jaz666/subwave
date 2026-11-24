@@ -6,6 +6,7 @@ export type StemName = typeof STEM_NAMES[number];
 export type StemLanes = Record<StemName, { outgoing: number[]; incoming: number[] }>;
 export type StemTransition = {
   regular?: { id: string; gainsDb: [number, number]; style: 'drums-late' | 'rhythm-late' | 'vocals-late'; outgoingStartSec: number; incomingStartSec: number };
+  version?: 1 | 2; transitionId?: string;
   kind: 'stem-blend' | 'subbeats'; durationSec: number; incomingAtSec: number;
   incomingAiredAt?: string; outgoingUntilSec: number; outgoingId?: string; incomingId?: string;
   mixStyle?: 'long-blend' | 'short-exchange' | 'bass-swap' | 'drums-first';
@@ -93,12 +94,13 @@ export function stemVolumes(transition: StemTransition, stem: StemName, seconds:
     } else if (timing) {
       const sr = timing.sampleRate;
       const arrival = timing.handoverFrame/sr;
-      // The handoff has an eight-beat release, or (at native tempo) a final
-      // four-beat bar. Saved cues are 60–190 BPM, so its one-second minimum
+      // V1 has an eight-beat release; V2 uses sixteen beats. At native tempo,
+      // a four-beat bar remains. Saved cues are 60–190 BPM, so its one-second minimum
       // never clips that native bar. This recovers the renderer's beat period
       // to sample-rounding precision without inventing a generic crossfade.
       const release = timing.releaseEndFrame-timing.releaseStartFrame;
-      const period = release > 0 ? release/sr/8 : (timing.clipFrames-timing.releaseEndFrame)/sr/4;
+      const releaseBeats = transition.version === 2 ? 16 : 8;
+      const period = release > 0 ? release/sr/releaseBeats : (timing.clipFrames-timing.releaseEndFrame)/sr/4;
       let rhythmStart = Math.max(transition.incomingAtSec,arrival-(transition.mixStyle === 'drums-first' ? 32 : 4)*period);
       if (timing.loop) rhythmStart = Math.min(rhythmStart,
         transition.incomingAtSec+timing.loop.startSample/sr/timing.incomingRate);

@@ -2,7 +2,7 @@
 // lack them, resumably. Shared by the `npm run tag` phase and `npm run analyze`.
 // The DSP lives in music/analyzer.ts; with no backend this is a clean no-op.
 
-import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
+import { regularStemWorkingMode, stemBeatsEnabled, stemsEnabled } from '../broadcast/regular-stem-mode.js';
 import { readFile, rm } from 'node:fs/promises';
 import * as db from './library-db.js';
 import * as analyzer from './analyzer.js';
@@ -31,7 +31,6 @@ import { planAcoustics, type AcousticsPlan, type WorkRequest } from './acoustics
 import { SUBBEATS_SCAN_PREFIX } from '../schemas/subbeats.js';
 import { readSubbeatsQueue } from './subbeats-store.js';
 import { queuedSubbeatsForScan, suppressRegularStems } from './subbeats-scan-policy.js';
-import { queueRecentAiredTracks } from './subbeats-airplay.js';
 
 // Status events for the panel, mirrored to the `[analyze] …` console line.
 const logEvent = makeEventLogger('analyze');
@@ -342,7 +341,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   // Snapshot before this pass starts. Selections added during the scan wait for
   // the next one and cannot change its regular-stem admission decisions.
   let queuedSubbeatsJobs: ReturnType<typeof readSubbeatsQueue>['jobs'] = [];
-  try { queuedSubbeatsJobs = readSubbeatsQueue(config.stateDir).jobs; }
+  if (stemBeatsEnabled()) try { queuedSubbeatsJobs = readSubbeatsQueue(config.stateDir).jobs; }
   catch { logEvent('warning', 'Sub/Beats selections could not be read; regular analysis will continue'); }
   logEvent('info', `Audio engine: ${backend}`);
 
@@ -361,7 +360,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   // disk, LRU-swept below. Same three-way capability question as audio/vocal.
   const stemDecision = backfillDecision({
     dimension: 'stem',
-    wanted: !workingStems && (opts.stemBackfill ?? settings.get()?.audio?.stemCache === true),
+    wanted: stemsEnabled() && !workingStems && (opts.stemBackfill ?? settings.get()?.audio?.stemCache === true),
     capable: analyzer.vocalActivityAvailable(),
     error: analyzer.vocalActivityError(),
     backend,
@@ -400,20 +399,13 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   }
 
   const cap = opts.limit && opts.limit > 0 ? opts.limit : undefined;
-  const selectedSubbeatsScan = workingStems && (opts.stemOnly || opts.stemBackfill === true)
+  const selectedSubbeatsScan = stemBeatsEnabled() && (opts.stemOnly || opts.stemBackfill === true)
     && analyzer.vocalActivityAvailable() !== false;
   const demucsScan = opts.stemBackfill !== false && (selectedSubbeatsScan || (plan
     ? plan.facets.some(facet => facet === 'stems' || facet === 'vocal') && analyzer.vocalActivityAvailable() !== false
     : stemCache || vocalBackfill));
-  // Make the opt-in's existing six-month airplay history eligible in this
-  // scan, before the queued set also suppresses regular-stem duplication.
-  if (demucsScan && settings.get()?.transitions?.subbeatsOnAirCaching === true) {
-    queueRecentAiredTracks();
-    try { queuedSubbeatsJobs = readSubbeatsQueue(config.stateDir).jobs; }
-    catch { logEvent('warning', 'Sub/Beats selections could not be refreshed; regular analysis will continue'); }
-  }
   const queuedForSubbeats = new Set(demucsScan
-    ? queuedSubbeatsForScan(queuedSubbeatsJobs, opts.subbeatsScopeIds ? new Set(opts.subbeatsScopeIds) : null, opts.limit)
+    ? queuedSubbeatsForScan(queuedSubbeatsJobs, opts.subbeatsScopeIds ? new Set(opts.subbeatsScopeIds) : null, opts.limit, stemBeatsEnabled())
     : []);
   const reportSubbeatsReady = () => {
     if (queuedForSubbeats.size) console.log(SUBBEATS_SCAN_PREFIX + JSON.stringify([...queuedForSubbeats]));

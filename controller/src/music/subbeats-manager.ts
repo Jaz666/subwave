@@ -8,6 +8,7 @@ import { createSubbeatsStore } from './subbeats-store.js';
 import { startSubbeats, tagger } from '../broadcast/tagger.js';
 import { queue } from '../broadcast/queue.js';
 import { isPidAlive, readPidfile } from './tagger-lock.js';
+import { stemBeatsEnabled } from '../broadcast/regular-stem-mode.js';
 
 export const subbeatsStore = createSubbeatsStore(config.stateDir);
 let migrationAttempted = false;
@@ -15,6 +16,7 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 const libraryReady = new Set<string>();
 
 export function kickSubbeats(delayMs = 0, scanIds: readonly string[] = []): void {
+  if (!stemBeatsEnabled()) return;
   for (const id of scanIds) libraryReady.add(id);
   if (delayMs === 0) migrationAttempted = false; // A manual queue/resume also retries a failed migration.
   if (timer) return;
@@ -50,6 +52,7 @@ export function kickSubbeats(delayMs = 0, scanIds: readonly string[] = []): void
 }
 
 export function recoverSubbeats(): void {
+  if (!stemBeatsEnabled()) return;
   // Failed/interrupted tracks require an explicit retry; queued tracks resume.
   subbeatsStore.interrupted('Preparation stopped during restart. Queue this track again to retry.');
   // Existing maintenance recovery allows five seconds to kill its old group.

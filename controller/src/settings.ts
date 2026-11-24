@@ -1282,6 +1282,10 @@ export async function load() {
         : DEFAULTS.audio.analyzeQuietMinutes,
     },
     transitions: {
+      stemsEnabled: typeof stored.transitions?.stemsEnabled === 'boolean' ? stored.transitions.stemsEnabled : DEFAULTS.transitions.stemsEnabled,
+      stemsStyle: stored.transitions?.stemsStyle === 'new-style' ? 'new-style' : 'legacy',
+      newStyleStemBlends: typeof stored.transitions?.newStyleStemBlends === 'boolean' ? stored.transitions.newStyleStemBlends : DEFAULTS.transitions.newStyleStemBlends,
+      newStyleStemBeats: typeof stored.transitions?.newStyleStemBeats === 'boolean' ? stored.transitions.newStyleStemBeats : DEFAULTS.transitions.newStyleStemBeats,
       pairDrain: typeof stored.transitions?.pairDrain === 'boolean' ? stored.transitions.pairDrain : DEFAULTS.transitions.pairDrain,
       stemBlends: typeof stored.transitions?.stemBlends === 'boolean' ? stored.transitions.stemBlends : DEFAULTS.transitions.stemBlends,
       subbeatsLive: typeof stored.transitions?.subbeatsLive === 'boolean' ? stored.transitions.subbeatsLive : DEFAULTS.transitions.subbeatsLive,
@@ -2560,7 +2564,7 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
     // fadeAudibleEnd(Db) are controller-side cue points read per queued track
     // (music/silence-trim.ts), and tailFromCurve picks which measurement the
     // queue reads (music/tail-levels.ts), so they need no mixer restart.
-    for (const k of ['pairDrain', 'stemBlends', 'subbeatsLive', 'subbeatsOnAirCaching', 'pickTimeStems', 'fadeAudibleEnd', 'fadeAudibleEndDb', 'tailFromCurve'] as const) {
+    for (const k of ['stemsEnabled', 'stemsStyle', 'newStyleStemBlends', 'newStyleStemBeats', 'pairDrain', 'stemBlends', 'subbeatsLive', 'subbeatsOnAirCaching', 'pickTimeStems', 'fadeAudibleEnd', 'fadeAudibleEndDb', 'tailFromCurve'] as const) {
       if (tr[k] !== undefined) (next.transitions as Record<string, unknown>)[k] = tr[k];
     }
     // Read once by the mixer at startup (liquidsoap_equal_power_crossfade.txt),

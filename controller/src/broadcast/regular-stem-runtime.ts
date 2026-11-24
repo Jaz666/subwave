@@ -16,6 +16,10 @@ import { RegularStemPreparation } from './regular-stem-preparation.js';
 import { regularStemNeeds, type RegularStemQueueEvidence, type RegularStemWindowNeed } from './regular-stem-needs.js';
 import { regularStemPairDecision } from './regular-stem-policy.js';
 import { RegularStemWorkingCache } from './regular-stem-working-cache.js';
+import { upgradePending } from '../music/beat-grid-upgrade.js';
+import { regularTailGridPending } from '../music/regular-tail-grid.js';
+
+const gridWorkRunning = () => upgradePending() || regularTailGridPending();
 
 export class RegularStemRuntime {
   constructor(private readonly requireSpace = requireRegularStemSpace) {}
@@ -28,6 +32,7 @@ export class RegularStemRuntime {
   private pairRevisions = new Map<string,{ occurrence: string; revision: number }>();
   private nextPairRevision = 0;
   private renderPair: [string, string] | null = null;
+  private preparationDeferred = false;
   private wake: () => void = () => {};
   private log: (message: string) => void = () => {};
   readonly lane = new RegularStemPreparation({
@@ -35,16 +40,17 @@ export class RegularStemRuntime {
     ready: () => this.wake(),
     failed: (need, error) => { this.log(`Regular stems preparation skipped for ${need.label ?? need.trackId} (${need.side}): ${error instanceof Error ? error.message : String(error ?? 'not ready')}`); this.wake(); },
     available: () => {
-      if (bulkPassRunning()) return false;
+      if (this.preparationDeferred || gridWorkRunning() || bulkPassRunning()) return false;
       const pair = this.renderPair && this.pair(...this.renderPair);
       return !pair || ![pair.tail, pair.head].every(need => this.lane.state(need.key) === 'ready');
     },
   });
 
   update(currentId: string | null, queue: readonly RegularStemQueueEvidence[],
-    wake: () => void, log: (message: string) => void): void {
+    wake: () => void, log: (message: string) => void, deferPreparation = false): void {
     this.wake = wake; this.log = log;
     const first = queue.findIndex(item => !item.sent);
+    this.preparationDeferred = deferPreparation || queue[first]?.pairPreparationDeferred === true;
     this.renderPair = first >= 0 && queue[first+1] ? [queue[first].id,queue[first+1].id] : null;
     const pairs = new Map<string,{ occurrence: string; revision: number }>();
     for (let index=0; index<queue.length-1; index++) {
@@ -74,7 +80,11 @@ export class RegularStemRuntime {
     retainRegularStemSources(currentId, queue.map(item => item.id));
     // Rejection is handled here as well as by the job waiting on membership.
     void this.membership.catch(error => this.log(`Regular stems working cache unavailable: ${String(error)}`));
-    this.lane.update(needs);
+    // Keep deferred pairs' windows admitted/retained, without starting their
+    // extraction early. Shared windows can still serve another released pair.
+    const activeKeys = new Set(regularStemNeeds(queue.map(item => item.pairPreparationDeferred
+      ? { ...item, pairToNextAllowed: false } : item), Date.now()).map(need => need.key));
+    this.lane.update(needs.filter(need => activeKeys.has(need.key)));
   }
 
   /** In-memory operator diagnostics only: no disk walk or preparation on read. */
@@ -151,6 +161,7 @@ export class RegularStemRuntime {
   }
   private async prepare(key: string): Promise<boolean | 'deferred'> {
     await this.membership;
+    if (this.preparationDeferred || gridWorkRunning()) return 'deferred';
     const need = this.wanted.get(key);
     if (!need || quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)
         || !await analyzer.regularStemsAvailable()) return false;
@@ -173,7 +184,7 @@ export class RegularStemRuntime {
       staged = await acquireRegularStemSource(need.trackId, { expectedBytes: need.sourceBytes,
         expectedSha256: need.sourceSha256, deadlineMs: need.deadlineMs, log: this.log });
       if (quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)) return false;
-      if (bulkPassRunning()) return 'deferred';
+      if (this.preparationDeferred || gridWorkRunning() || bulkPassRunning()) return 'deferred';
       if (Date.now() >= need.deadlineMs || !this.wanted.has(key)) return false;
       await this.requireSpace([{ directory: lease.directory, bytes: windowBytes }]);
       await writeFile(path.join(lease.directory, '.subwave-regular-stems'), '1');

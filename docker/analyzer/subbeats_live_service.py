@@ -15,15 +15,17 @@ import time
 from fastapi import HTTPException
 
 _busy = False
+_FAILURE_CODES = {'window-coverage', 'source-mismatch', 'vocal-conflict',
+                  'invalid-timing', 'busy', 'timeout', 'cancelled', 'render-failed'}
 
 
 async def render_live_request(body, request, python, worker):
     global _busy
     if _busy:
-        raise HTTPException(409, 'The live handoff renderer is busy.')
+        raise HTTPException(409, {'code': 'busy'})
     budget = min(120., (body['deadlineMs'] - time.time() * 1000) / 1000)
     if budget <= 0:
-        raise HTTPException(408, 'The live handoff deadline has passed.')
+        raise HTTPException(408, {'code': 'timeout'})
     deadline = time.monotonic() + budget
     _busy = True
     proc = None
@@ -40,13 +42,21 @@ async def render_live_request(body, request, python, worker):
         proc = await asyncio.shield(creation)
         communication = asyncio.create_task(proc.communicate((json.dumps(body) + '\n').encode()))
         while not communication.done():
-            if time.monotonic() >= deadline or await request.is_disconnected():
-                raise HTTPException(408, 'The live handoff deadline or request ended.')
+            if time.monotonic() >= deadline:
+                raise HTTPException(408, {'code': 'timeout'})
+            if await request.is_disconnected():
+                raise HTTPException(408, {'code': 'cancelled'})
             await asyncio.wait({communication}, timeout=min(.1, max(0., deadline - time.monotonic())))
         out, _ = await communication
-        if proc.returncode or len(out) > 128 * 1024:
-            raise HTTPException(422, 'The live handoff could not be rendered.')
-        result = json.loads(out.decode().strip().splitlines()[-1])
+        try:
+            result = json.loads(out.decode().strip().splitlines()[-1]) if len(out) <= 128 * 1024 else None
+        except (ValueError, IndexError):
+            result = None
+        if proc.returncode or not isinstance(result, dict) or 'error' in result:
+            failure = result.get('error') if isinstance(result, dict) else None
+            code = failure.get('code') if isinstance(failure, dict) else None
+            code = code if isinstance(code, str) and code in _FAILURE_CODES else 'render-failed'
+            raise HTTPException(408 if code == 'timeout' else 422, {'code': code})
         completed = True
         return result
     finally:
@@ -66,7 +76,8 @@ async def render_live_request(body, request, python, worker):
             if communication:
                 await asyncio.gather(communication, return_exceptions=True)
             root = Path(body['stateDir']) / 'transitions'
-            shutil.rmtree(root / f".subbeats-{body['transitionId']}", ignore_errors=True)
+            prefix = '.stembeats-' if body.get('version') == 2 else '.subbeats-'
+            shutil.rmtree(root / f"{prefix}{body['transitionId']}", ignore_errors=True)
             if not completed:
                 for role in ('out', 'in'):
                     (root / f"subbeats-{body['transitionId']}-{role}.wav").unlink(missing_ok=True)

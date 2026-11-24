@@ -207,12 +207,47 @@ export const subbeatsLiveRenderResultSchema = z.discriminatedUnion('status',[
   z.object({...subbeatsLiveResultFields,status:z.literal('rendered'),sourceVerified:z.literal(true),
     candidate:subbeatsLiveCandidateSchema,clipPath:z.string().min(1),leadPath:z.string().min(1).nullable()}),
 ]);
+export const stemBeatsWindowEvidenceSchema = z.object({
+  version:z.literal(1),side:z.enum(['head','tail']),start_ms:z.number().finite().nonnegative(),
+  end_ms:z.number().finite().positive(),key:z.string().regex(/^[a-f0-9]{64}$/),
+  source_sha256:z.string().regex(/^[a-f0-9]{64}$/),source_bytes:z.number().int().positive(),model:z.literal('htdemucs'),
+});
+const stemBeatsLiveRoleSchema = z.object({
+  id:z.string().min(1).max(200),side:z.enum(['tail','head']),cueIndex:z.number().int().min(0).max(7),
+  cue:z.union([subbeatsCuePointsSchema.shape.outgoing.element,subbeatsCuePointsSchema.shape.incoming.element]),
+  source:z.object({path:z.string().min(1),sha256:z.string().regex(/^[a-f0-9]{64}$/),
+    bytes:z.number().int().positive(),durationSeconds:z.number().finite().positive().max(1200)}),
+  window:z.object({directory:z.string().min(1),evidence:stemBeatsWindowEvidenceSchema}),
+});
+export const stemBeatsLiveRenderRequestSchema = z.object({
+  version:z.literal(2),transitionId:z.string().uuid(),deadlineMs:z.number().int().positive(),
+  stateDir:z.string().min(1),stemsRoot:z.string().min(1),outgoingId:z.string().min(1),incomingId:z.string().min(1),
+  roles:z.tuple([stemBeatsLiveRoleSchema,stemBeatsLiveRoleSchema]),
+  gainsDb:z.array(z.number().finite().min(-120).max(40)).length(2),mixStyle:subbeatsMixStyleSchema,
+  evidenceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),
+}).refine(value => value.roles[0].side === 'tail' && value.roles[1].side === 'head'
+  && value.roles[0].id === value.outgoingId && value.roles[1].id === value.incomingId,
+'Stem Beats role order must match the selected pair');
+const stemBeatsLiveResultFields = {
+  version:z.literal(2),transitionId:z.string().uuid(),mixStyle:subbeatsMixStyleSchema,
+  evidenceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),reason:z.string().min(1),
+};
+export const stemBeatsLiveRenderResultSchema = z.discriminatedUnion('status',[
+  z.object({...stemBeatsLiveResultFields,status:z.literal('unavailable')}),
+  z.object({...stemBeatsLiveResultFields,status:z.literal('rendered'),sourceVerified:z.literal(true),
+    timing:subbeatsLiveTimingSchema,vocal:subbeatsCueVocalFitSchema,
+    clipPath:z.string().min(1),leadPath:z.string().min(1).nullable()}),
+]);
 export const subbeatsPlaybackSchema = z.object({
-  version:z.literal(1),transitionId:z.string().uuid(),outgoingId:z.string(),incomingId:z.string(),
+  version:z.union([z.literal(1),z.literal(2)]),transitionId:z.string().uuid(),outgoingId:z.string(),incomingId:z.string(),
   evidenceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),mixStyle:subbeatsMixStyleSchema,
   timing:subbeatsLiveTimingSchema,loudnessSettings:z.string(),
   gainsDb:z.array(z.number().finite().min(-120).max(40)).length(2),
   clipPath:z.string().min(1),leadPath:z.string().nullable(),incomingDurationSeconds:z.number().positive(),
+  previewWindows:z.object({
+    outgoing:z.object({directory:z.string().min(1),startSeconds:z.number().finite().nonnegative(),endSeconds:z.number().finite().positive(),evidence:stemBeatsWindowEvidenceSchema}),
+    incoming:z.object({directory:z.string().min(1),startSeconds:z.number().finite().nonnegative(),endSeconds:z.number().finite().positive(),evidence:stemBeatsWindowEvidenceSchema}),
+  }).optional(),
 });
 export const subbeatsPairPlanSchema = z.object({
   version:z.literal(1),method:z.literal('live-pair'),outgoingId:z.string(),incomingId:z.string(),

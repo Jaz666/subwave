@@ -9,7 +9,7 @@ from subbeats_cue_preview import passage_plan
 from subbeats_vocal_confidence import assess_pair as assess_vocal_pair, shift_lyrics
 
 
-def live_handoff_timing(plan, incoming_bpm, loop=None):
+def live_handoff_timing(plan, incoming_bpm, loop=None, release_beats=8):
     """Propose sample positions for a linear tempo release, not rendered audio.
 
     Source zero is retained. The source clock includes inserted drum-loop audio
@@ -32,7 +32,7 @@ def live_handoff_timing(plan, incoming_bpm, loop=None):
         loop_end = entry + math.ceil((start + length + inserted) / rate)
         loop_samples = dict(startSample=start, lengthSamples=length, repeats=loop['repeats'])
     release_start = max(outgoing_end, arrival + round(2 * plan['period'] * sample_rate), loop_end)
-    release_frames = round(8 * plan['period'] * sample_rate) if rate != 1. else 0
+    release_frames = round(release_beats * plan['period'] * sample_rate) if rate != 1. else 0
     release_end = release_start + release_frames
     # A native-tempo bar (at least one second) leaves room for the final
     # original-audio join and the existing 300ms Liquidsoap seam overlap.

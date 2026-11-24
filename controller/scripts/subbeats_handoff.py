@@ -15,6 +15,10 @@ VERSION = 1
 RENDERER_VERSION = 2
 
 
+class VocalConflictError(ValueError):
+    """A measured vocal conflict, distinct from a timing or decode failure."""
+
+
 def cache_identity(timing):
     if timing['incomingRate'] == 1.:
         return dict(version=RENDERER_VERSION, engine='native')
@@ -71,12 +75,14 @@ def stretch_parts(parts, timing, scratch, deadline):
     map_file.write_text(''.join(f'{a} {b}\n' for a, b in anchors))
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        raise ValueError('The handoff render exceeded its time budget.')
+        raise TimeoutError('The handoff render exceeded its time budget.')
     try:
         process = subprocess.run([shutil.which('rubberband') or 'rubberband', '-q', '-3', '--no-threads',
                         '--ignore-clipping', '--time', format(total / source_frames, '.17g'),
                         '--timemap', str(map_file), str(input_file), str(output_file)],
                        capture_output=True, check=True, timeout=remaining)
+    except subprocess.TimeoutExpired as error:
+        raise TimeoutError('The pitch-preserving handoff exceeded its time budget.') from error
     except (subprocess.SubprocessError, OSError) as error:
         raise ValueError('The pitch-preserving handoff render failed or exceeded its time budget.') from error
     messages = process.stderr.decode(errors='replace')
@@ -119,7 +125,7 @@ def mix_handoff(out_parts, in_parts, sources, plan, candidate, gains, mix_style,
     vocal = assess_pair(outgoing_vocals, measure_vocals(in_parts, STEM_SR), plan,
                         evidence[0], shift_lyrics(evidence[1], loop_plan) if loop_plan else evidence[1])
     if vocal['status'] == 'conflict':
-        raise ValueError('The actual audio has a supported lyric conflict. Choose another handoff plan.')
+        raise VocalConflictError('The actual audio has a supported lyric conflict. Choose another handoff plan.')
     incoming = stretch_parts(in_parts, timing, scratch, deadline)
     levels = [10 ** (gain / 20) for gain in gains]
     live_plan = dict(plan, first=first / STEM_SR,

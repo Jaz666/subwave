@@ -63,7 +63,7 @@ async function coverage(...ids: string[]) {
   const response = await fetch(`${http.url}/stem-cache/coverage?ids=${encodeURIComponent(ids.join(','))}`, { headers: auth });
   assert.equal(response.status, 200);
   return (await response.json() as { coverage: Record<string, {
-    regular: { head: boolean; tail: boolean }; subbeats: { head: boolean; exit: boolean };
+    regular: { head: boolean; tail: boolean }; stemBeats: { incoming: string; outgoing: string };
   }> }).coverage;
 }
 
@@ -71,40 +71,46 @@ test('Queue tooltip reports full cue coverage and independent regular stems', as
   seed('cue-track');
   for (const stem of cache.STEM_NAMES) writeFileSync(join(cache.dirFor('cue-track'), `head-${stem}.flac`), 'regular');
   assert.deepEqual((await coverage('cue-track'))['cue-track'], {
-    regular: { head: true, tail: false }, subbeats: { head: true, exit: true },
+    regular: { head: true, tail: false }, stemBeats: { incoming: 'unavailable', outgoing: 'unavailable' },
   });
-  assert.equal(await cache.subbeatsBundleSource('cue-track', 'head'), null, 'tooltip coverage does not authorise a regular blend');
+  assert.equal(await cache.subbeatsBundleSource('cue-track', 'head'), null, 'V1 bundles do not count as V2 readiness');
 });
 
-test('classic and unmigrated Sub/Beats bundles are still reported', async () => {
+test('V1 bundles are not presented as Stem Beats V2 preparation', async () => {
   seed('classic', { classic: true });
   seed('legacy', { legacy: true });
   const result = await coverage('classic', 'legacy', 'not-cached');
-  for (const id of ['classic', 'legacy']) assert.deepEqual(result[id].subbeats, { head: true, exit: true });
-  assert.deepEqual(result['not-cached'].subbeats, { head: false, exit: false });
+  for (const id of ['classic', 'legacy']) assert.deepEqual(result[id].stemBeats,
+    { incoming: 'unavailable', outgoing: 'unavailable' });
+  assert.deepEqual(result['not-cached'].stemBeats, { incoming: 'unavailable', outgoing: 'unavailable' });
 });
 
-test('missing or truncated cue stems are reported per window', async () => {
+test('missing or truncated V1 cue stems do not affect V2 prep status', async () => {
   const { target } = seed('damaged');
   unlinkSync(join(target, 'head-drums.flac'));
-  assert.deepEqual((await coverage('damaged')).damaged.subbeats, { head: false, exit: true });
+  assert.deepEqual((await coverage('damaged')).damaged.stemBeats,
+    { incoming: 'unavailable', outgoing: 'unavailable' });
   writeFileSync(join(target, 'exit-vocals.flac'), 'short');
-  assert.deepEqual((await coverage('damaged')).damaged.subbeats, { head: false, exit: false });
+  assert.deepEqual((await coverage('damaged')).damaged.stemBeats,
+    { incoming: 'unavailable', outgoing: 'unavailable' });
 });
 
-test('coverage must still match its source and cue manifests', async () => {
+test('stale V1 manifests do not become V2 readiness', async () => {
   const { cue } = seed('stale-cues');
   writeFileSync(join(cue, 'manifest.json'), readFileSync(join(cue, 'manifest.json'), 'utf8') + '\n');
-  assert.deepEqual((await coverage('stale-cues'))['stale-cues'].subbeats, { head: false, exit: false });
+  assert.deepEqual((await coverage('stale-cues'))['stale-cues'].stemBeats,
+    { incoming: 'unavailable', outgoing: 'unavailable' });
   seed('replaced');
   invalidateSubbeatsBundles(stateDir, ['replaced']);
-  assert.deepEqual((await coverage('replaced')).replaced.subbeats, { head: false, exit: false });
+  assert.deepEqual((await coverage('replaced')).replaced.stemBeats,
+    { incoming: 'unavailable', outgoing: 'unavailable' });
 });
 
-test('existing coverage remains visible while a cache-only assessment is queued', async () => {
+test('V1 cache-only assessments are not exposed as V2 preparation', async () => {
   seed('assessing');
   store.assess(['assessing']);
-  assert.deepEqual((await coverage('assessing')).assessing.subbeats, { head: true, exit: true });
+  assert.deepEqual((await coverage('assessing')).assessing.stemBeats,
+    { incoming: 'unavailable', outgoing: 'unavailable' });
 });
 
 test('coverage remains admin-only and limited to eight queue tracks', async () => {
@@ -165,6 +171,69 @@ test('expanded live waveforms read cue stems before and throughout the buffered 
     assert.equal((await get('/now-playing/stem-audio?side=outgoing&stem=drums&outgoingId=unrelated')).status, 409);
     incoming.startedAt = new Date(Date.now() - 96_000).toISOString();
     assert.equal((await get('/now-playing/visual-events?id=wave-out')).status, 409, 'expired handoffs cannot expose old tracks');
+  } finally {
+    queue.current = saved.current; queue.upcoming = saved.upcoming; queue.history = saved.history;
+    await live.close();
+  }
+});
+
+test('Stem Beats preview reads the active V2 pick-time windows and refuses an expired workspace', async () => {
+  const { queue } = await import('../src/broadcast/queue.js');
+  const { createNowPlayingFileRouter, nowPlayingStemTransition } = await import('../src/routes/now-playing-file.js');
+  type Item = NonNullable<typeof queue.current>;
+  seed('v2-preview-out'); seed('v2-preview-in'); // tempting V1 bundles must never be used here
+  const transitionId = '22222222-2222-4222-8222-222222222222';
+  const workspace = join(cache.stemsRoot(), 'stembeats', 'pick-time', '.pick-preview-test');
+  const outDir = join(workspace, 'outgoing'), inDir = join(workspace, 'incoming');
+  mkdirSync(outDir, { recursive: true }); mkdirSync(inDir, { recursive: true });
+  const outEvidence = { version: 1 as const, side: 'tail' as const, start_ms: 100000, end_ms: 120000,
+    key: 'e'.repeat(64), source_sha256: 'd'.repeat(64), source_bytes: 1000, model: 'htdemucs' as const };
+  const inEvidence = { ...outEvidence, side: 'head' as const, start_ms: 0, end_ms: 35000, key: 'f'.repeat(64) };
+  writeFileSync(join(workspace, '.stembeats-preview.json'), JSON.stringify({ until: Date.now() + 60_000 }));
+  writeFileSync(join(outDir, 'tail-stembeats.json'), JSON.stringify(outEvidence));
+  writeFileSync(join(inDir, 'head-stembeats.json'), JSON.stringify(inEvidence));
+  writeFileSync(join(outDir, 'tail-drums.flac'), Buffer.alloc(128, 7));
+  writeFileSync(join(inDir, 'head-drums.flac'), Buffer.alloc(128, 8));
+  const sr = 44100;
+  const playback = { version: 2 as const, transitionId, outgoingId: 'v2-preview-out', incomingId: 'v2-preview-in',
+    evidenceFingerprint: 'e'.repeat(64), mixStyle: 'long-blend' as const, loudnessSettings: '{}', gainsDb: [0, 0] as [number, number],
+    clipPath: join(stateDir, 'v2-in.wav'), leadPath: join(stateDir, 'v2-out.wav'), incomingDurationSeconds: 120,
+    previewWindows: {
+      outgoing: { directory: outDir, startSeconds: 100, endSeconds: 120, evidence: outEvidence },
+      incoming: { directory: inDir, startSeconds: 0, endSeconds: 35, evidence: inEvidence },
+    },
+    timing: { sampleRate: 44100 as const, outgoingStartSample: 100 * sr, incomingEntryFrame: 4 * sr,
+      handoverFrame: 18 * sr, outgoingEndFrame: 34 * sr, incomingRate: 1.03, releaseCurve: 'linear-rate' as const,
+      releaseStartFrame: 34 * sr, releaseEndFrame: 37 * sr, clipFrames: 39 * sr, incomingResumeSample: 35 * sr } };
+  const outgoing: Item = { track: { id: playback.outgoingId, duration: 120 }, sent: true,
+    startedAt: new Date(Date.now() - 10_000).toISOString(),
+    stemBlend: { clipPath: playback.clipPath, clipSec: 39, subbeats: playback, outCueSec: 100.3, inCueSec: 34.7 } };
+  const incoming: Item = { track: { id: playback.incomingId, duration: 120 }, stemSeam: true, subbeatsHandoff: playback };
+  const saved = { current: queue.current, upcoming: queue.upcoming, history: queue.history };
+  const app = express();
+  app.use(createNowPlayingFileRouter({ nowPlaying: async () => ({ subsonic_id: playback.outgoingId }), lookup: async () => null,
+    nextTrackId: () => queue.upcoming[0]?.track.id ?? null, stemTransition: nowPlayingStemTransition,
+    stemWaveformPeaks: async source => {
+      assert.equal(source.path, join(inDir, 'head-drums.flac'));
+      return { durationSec: 35, peaks: [0.5, 0.25] };
+    } }));
+  const live = await listen(app);
+  const get = (url: string) => fetch(live.url + url, { headers: auth });
+  try {
+    queue.current = outgoing; queue.upcoming = [incoming]; queue.history = [];
+    const events = await get(`/now-playing/visual-events?id=${playback.outgoingId}`);
+    assert.equal(events.status, 200);
+    const transition = (await events.json() as { stemTransition: { version: number; sources?: { outgoing: { startSec: number }; incoming: { startSec: number } } } }).stemTransition;
+    assert.equal(transition.version, 2);
+    assert.equal(transition.sources?.outgoing.startSec, 100);
+    assert.equal(transition.sources?.incoming.startSec, 0);
+    const response = await get(`/now-playing/stem-audio?side=outgoing&stem=drums&outgoingId=${playback.outgoingId}`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), Buffer.alloc(128, 7));
+    const peaks = await get(`/now-playing/stem-waveform-peaks?side=incoming&stem=drums&outgoingId=${playback.outgoingId}`);
+    assert.equal(peaks.status, 200);
+    writeFileSync(join(workspace, '.stembeats-preview.json'), JSON.stringify({ until: Date.now() - 1 }));
+    assert.equal((await get(`/now-playing/stem-audio?side=incoming&stem=drums&outgoingId=${playback.outgoingId}`)).status, 404);
   } finally {
     queue.current = saved.current; queue.upcoming = saved.upcoming; queue.history = saved.history;
     await live.close();

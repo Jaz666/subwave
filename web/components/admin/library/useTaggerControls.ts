@@ -88,6 +88,10 @@ export function useTaggerControls() {
     : null;
   // Absent on an old controller → the modal omits the tier.
   const budgetMode: BudgetMode | null = settings?.budget?.mode ?? null;
+  const showStemBeatsPreparation = settings?.values?.transitions?.stemsEnabled !== false
+    && settings?.values?.transitions?.stemsStyle === 'new-style';
+  const showLegacyStemCache = settings?.values?.transitions?.stemsEnabled !== false
+    && settings?.values?.transitions?.stemsStyle !== 'new-style';
 
   // Which provider each tagging cost bills to (#1162). A blank embedding
   // provider follows the LLM provider; the embedding model shows only when set.
@@ -183,6 +187,22 @@ export function useTaggerControls() {
   const rescanM = useAdminMutation<void, RescanOpts>({
     request: (opts, fetcher) => startRun('/tag-library', opts, 're-scan failed')(fetcher),
     onDone: () => { notify.ok('re-scan started…'); setLogOpen(true); void reloadTagger(); },
+  });
+
+  const stemBeatsLibraryPrepM = useAdminMutation<{ runId: string }, { mode: 'missing' | 'refresh'; limit: Batch }>({
+    request: async ({ mode, limit }, fetcher) => {
+      const created = await adminJson<{ runId: string }>(fetcher, '/library/subbeats/prep-v2/runs', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'library', mode, ...(limit === 'all' ? {} : { limit: Number(limit) }) }),
+      });
+      await adminJson(fetcher, `/library/subbeats/prep-v2/runs/${created.runId}/start`, { method: 'POST' });
+      return created;
+    },
+    onDone: (_data, { mode }) => {
+      notify.ok(mode === 'missing'
+        ? 'New Style library preparation started — existing results are kept.'
+        : 'New Style preparation refresh started — previous results are kept.');
+    },
   });
 
   // Prunes library entries whose tracks are gone from Navidrome. No LLM cost;
@@ -304,18 +324,21 @@ export function useTaggerControls() {
 
   // One shared busy flag: the panel disables every control while any is in flight.
   const busy = [
-    startM, stopM, rescanM, reconcileM, analyzeM, vocalBackfillM, resetM,
+    startM, stopM, rescanM, stemBeatsLibraryPrepM, reconcileM, analyzeM, vocalBackfillM, resetM,
     toggleAudioM, toggleVocalM, toggleQuietM, saveQuietMinutesM,
   ].some(m => m.isPending);
 
   return {
-    coverage, remaining, tagger, libStats, failures,
+    coverage, remaining, tagger, libStats, failures, showStemBeatsPreparation, showLegacyStemCache,
     batch, setBatch, busy, logOpen, setLogOpen,
     audioEnabled, vocalEnabled, quietEnabled, quietMins, budgetMode,
     llmLabel, embedLabel,
     startTagger: (steps?: TagSteps) => { startM.mutate(steps); },
     stopTagger: () => { stopM.mutate(); },
     rescanTagger: (opts: RescanOpts) => { rescanM.mutate(opts); },
+    startStemBeatsLibraryPrep: (mode: 'missing' | 'refresh', limit: Batch) => {
+      stemBeatsLibraryPrepM.mutate({ mode, limit });
+    },
     reconcile: () => { reconcileM.mutate(); },
     resetLibrary: () => { resetM.mutate(); },
     analyzeAudio: () => { analyzeM.mutate(); },

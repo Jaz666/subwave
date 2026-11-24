@@ -3,7 +3,7 @@
 // docs/stem-transitions-research.md.
 
 import path from 'node:path';
-import { regularStemWorkingMode } from './regular-stem-mode.js';
+import { regularStemBlendsEnabled, regularStemWorkingMode } from './regular-stem-mode.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { readRegularStemPreview, type RegularStemPreview } from './regular-stem-preview.js';
 import { readdir, stat, unlink } from 'node:fs/promises';
@@ -104,7 +104,7 @@ async function renderBlend(
     return null;
   };
   const s = settings.get();
-  if (s?.transitions?.stemBlends !== true) return reject('stem blends are disabled');
+  if (!regularStemBlendsEnabled()) return reject('stem blends are disabled');
   if (s?.transitions?.pairDrain === false) return reject('pair drain is disabled');
   if (!settings.getEffectivePersona()?.djMode) return reject('DJ mode is disabled');
   if (!outTrack?.id || !inTrack?.id) return reject('track identity is missing');

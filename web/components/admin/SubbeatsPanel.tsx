@@ -12,14 +12,15 @@ import { useDebounceValue } from 'usehooks-ts';
 import { z } from 'zod';
 import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music, HardDrive, Download } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
-import { AdminResponseError, adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
+import { AdminResponseError, adminJson, useAdminMutation, useAdminQuery, type AdminFetch } from '../../lib/admin-query';
 import type { StationState } from '../../lib/types';
 import { SUBBEATS_BATCH_LIMIT, SUBBEATS_QUEUE_LIMIT, SUBBEATS_PAGE_SIZE, subbeatsCandidatePageSchema, subbeatsViewSchema, subbeatsMixStyleSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
 import { V3AlertDialog } from '../ui/alert-dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { libraryKeys } from './library/queries';
-import type { PlaylistSummary } from './library/types';
+import { settingsKeys } from './settings/queries';
+import type { PlaylistSummary, SettingsResponse } from './library/types';
 import { useJoinPreview } from './library/useJoinPreview';
 import { Checkbox } from '../ui/checkbox';
 import { liveSubbeatsPair, selectPreparationIds, selectSubbeatsRows, subbeatsCanSelect, subbeatsOutgoingCues, subbeatsIncomingCues, type SubbeatsCandidate } from './library/subbeats-selection';
@@ -53,6 +54,22 @@ const PAGES = [
 export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPage }) {
   const { adminFetch, hydrated, needsAuth } = useAdminAuth();
   const ready = hydrated && !needsAuth;
+  const settings = useAdminQuery<SettingsResponse>({
+    key: settingsKeys.detail(), adminFetch, enabled: ready, refetchInterval: 3_000,
+    request: (fetcher, signal) => adminJson(fetcher, '/settings', undefined, signal),
+    toastOnError: false,
+  });
+  const transitions = settings.data?.values?.transitions;
+  if (!ready || settings.isPending) return null;
+  if (transitions?.stemsEnabled === false || transitions?.stemsStyle !== 'new-style') {
+    return <div className="mx-auto max-w-xl p-6 text-sm text-muted">
+      This page is available when Stems is enabled in New Style. <Link className="underline" href="/admin/library">Return to Library</Link>.
+    </div>;
+  }
+  return <SubbeatsPanelContent page={page} adminFetch={adminFetch} ready={ready} />;
+}
+
+function SubbeatsPanelContent({ page, adminFetch, ready }: { page: SubbeatsPage; adminFetch: AdminFetch; ready: boolean }) {
   const cache = useSubbeatsCache();
   const regularIds = new Set(cache.query.data?.policy.regularIds ?? []);
   const { preparationMethod, setPreparationMethod, mixStyle, setMixStyle, outCueIndex, setOutCueIndex, inCueIndex, setInCueIndex, browseRestored, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,

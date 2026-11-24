@@ -3,7 +3,7 @@
 //
 // Part of the doctor/ split - see ../doctor.ts for the section runner.
 
-import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
+import { regularStemBlendsEnabled, regularStemWorkingMode, stemsEnabled } from '../broadcast/regular-stem-mode.js';
 import { recentCalls } from '../llm/log.js';
 import { searchKeyProblem, searchReady, searchWeb } from '../skills/web-search.js';
 import * as system from '../system.js';
@@ -270,8 +270,8 @@ export async function checkTuning(s: StationSettings | null): Promise<Finding[]>
     }
     // Stem cache / stem blends need the same Demucs stack.
     const workingStems = regularStemWorkingMode();
-    const wantStems = (!workingStems && !!s?.audio?.stemCache) || !!s?.transitions?.stemBlends;
-    if (workingStems && s?.transitions?.stemBlends && !await analyzer.regularStemsAvailable()) {
+    const wantStems = stemsEnabled() && ((!workingStems && !!s?.audio?.stemCache) || regularStemBlendsEnabled());
+    if (workingStems && regularStemBlendsEnabled() && !await analyzer.regularStemsAvailable()) {
       out.push({ label: 'stem transitions', status: 'warn', detail: 'the analyzer does not support CPU working-window preparation',
         hint: 'Update the analyzer alongside the controller. Regular blends use ordinary transitions until the required window protocol is available.' });
     }
@@ -356,7 +356,7 @@ export async function checkTuning(s: StationSettings | null): Promise<Finding[]>
     }
     // Stem blends ride the pair-drain scheduling — without it no seam is ever
     // pair-annotated and a blend can never be inserted.
-    if (s?.transitions?.stemBlends && s?.transitions?.pairDrain === false) {
+    if (stemsEnabled() && regularStemBlendsEnabled() && s?.transitions?.pairDrain === false) {
       out.push({
         label: 'stem transitions',
         status: 'warn',
@@ -399,5 +399,4 @@ export async function checkTuning(s: StationSettings | null): Promise<Finding[]>
 
   return out;
 }
-
 

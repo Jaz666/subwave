@@ -38,6 +38,9 @@ test('on-air demand queues qualifying tracks only when the opt-in is enabled', a
   assert.equal(store.read().jobs.length, 0);
   await settings.update({ transitions: { subbeatsOnAirCaching: true } });
   queueAiredTrack('eligible');
+  assert.equal(store.read().jobs.length, 0, 'the retained V1 control is ignored in Legacy mode');
+  await settings.update({ transitions: { stemsStyle: 'new-style', newStyleStemBeats: true } });
+  queueAiredTrack('eligible');
   queueAiredTrack('wrong-tempo');
   queueAiredTrack('wrong-genre');
   assert.deepEqual(store.read().jobs.map(job => job.id), ['eligible']);

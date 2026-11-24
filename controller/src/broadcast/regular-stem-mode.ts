@@ -1,8 +1,26 @@
-/** Internal rollout switch for the complete working-cache path. The existing
- * exact-pair auditions remain the default until migration checks are complete.
- * This is not a second operator cache mode; remove the switch before release.
- */
-import { envEnum } from '../util/env.js';
+import * as settings from '../settings.js';
+
+export function stemsEnabled(): boolean {
+  return settings.get()?.transitions?.stemsEnabled !== false;
+}
+
+export function newStyleStemsSelected(): boolean {
+  return settings.get()?.transitions?.stemsStyle === 'new-style';
+}
+
 export function regularStemWorkingMode(): boolean {
-  return envEnum('SUBWAVE_REGULAR_STEMS_ROLLOUT', ['audition', 'working'], 'audition') === 'working';
+  return stemsEnabled() && newStyleStemsSelected();
+}
+
+export function regularStemBlendsEnabled(): boolean {
+  const transitions = settings.get()?.transitions;
+  return transitions?.stemsEnabled !== false && (transitions?.stemsStyle === 'new-style'
+    ? transitions?.newStyleStemBlends === true
+    : transitions?.stemBlends === true);
+}
+
+export function stemBeatsEnabled(): boolean {
+  const transitions = settings.get()?.transitions;
+  return transitions?.stemsEnabled !== false && transitions?.stemsStyle === 'new-style'
+    && transitions?.newStyleStemBeats === true;
 }

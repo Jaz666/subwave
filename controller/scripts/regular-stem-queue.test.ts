@@ -15,10 +15,10 @@ const { config } = await import('../src/config.js');
 test('queue snapshots prepare in background, pending work holds only before deadline, force bypasses hold', async () => {
   await settings.load(); await library.load();
   await settings.update({ personas: settings.get().personas.map(p=>({...p,djMode:true})),
-    transitions:{pairDrain:true,stemBlends:true,pickTimeStems:true} });
+    transitions:{pairDrain:true,stemsStyle:'new-style',newStyleStemBlends:true,pickTimeStems:true} });
   for (const id of ['a','b']) {
     db.upsertTrackMeta(id,{title:id,artist:id,genres:id==='a'?['House']:['Rock'],duration:240});
-    db.upsertTrackAnalysis(id,{bpm:id==='a'?63:143.6,beats:[500,1000],bars:[1000],gridProvenance:{
+    db.upsertTrackAnalysis(id,{bpm:id==='a'?63:143.6,beats:[500,1000],bars:Array.from({length:12},(_,i)=>1000+i*3000),gridProvenance:{
       version:1,backend:'beat-this-onnx',model:'small0',modelSha256:'a'.repeat(64),
       preprocessingVersion:1,windowStartMs:0,windowEndMs:40000,
       evidence:{medianBpm:80,intervalSupport:1,librosaBeatSupport:null},
@@ -74,11 +74,11 @@ test('queue snapshots prepare in background, pending work holds only before dead
     assert.equal(snapshots[0].label,'a — a','preparation logs receive the queued title and artist');
     assert.equal(snapshots[0].pairToNextAllowed,true,'legacy BPM differences do not affect regular blend admission');
     const originalGrid=db.getTrack('b')!.gridProvenance!;
-    db.upsertTrackAnalysis('b',{bpm:143.6,beats:[500,1000],bars:[1000],gridProvenance:{...originalGrid,evidence:{...originalGrid.evidence,medianBpm:120}}});
+    db.upsertTrackAnalysis('b',{bpm:143.6,beats:[500,1000],bars:Array.from({length:12},(_,i)=>1000+i*3000),gridProvenance:{...originalGrid,evidence:{...originalGrid.evidence,medianBpm:120}}});
     q.syncRegularStemPreparation();
     assert.equal(snapshots[0].pairToNextAllowed,false,'incompatible shared-grid BPMs block extraction');
     assert.equal(snapshots.every(item=>item.regularEligible),true,'pair admission remains separate from independent extraction');
-    db.upsertTrackAnalysis('b',{bpm:143.6,beats:[500,1000],bars:[1000],gridProvenance:originalGrid});
+    db.upsertTrackAnalysis('b',{bpm:143.6,beats:[500,1000],bars:Array.from({length:12},(_,i)=>1000+i*3000),gridProvenance:originalGrid});
     pending=false;
     await queue.drainToLiquidsoap();
     assert.equal(q.upcoming[0].sent,true);

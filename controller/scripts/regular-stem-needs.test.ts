@@ -39,7 +39,7 @@ test('sent, rejected, unknown-clock, short-deadline and unproven roles never req
   }
   const incomplete = {...grid(0,40000),source:{sha256:'b'.repeat(64),bytes:12345,complete:false}};
   const needs = regularStemNeeds([track('a'),{...track('b'),headGrid:incomplete}],0);
-  assert.deepEqual(needs.map(n=>n.side),['tail'],'invalid incoming coverage cannot become an extracted head');
+  assert.deepEqual(needs,[],'an invalid incoming role must not waste a tail extraction');
 });
 
 test('recording or grid replacement changes identity; queue clocks and display names do not', () => {
@@ -57,11 +57,20 @@ test('eight-bar windows stay inside actual coverage and extend the incoming wind
   assert.equal(regularStemNeeds([outgoing,track('b')],0)[0].endMs,230000,
     'an earlier full span replaces a last marker outside measured coverage');
   assert.deepEqual(regularStemNeeds([track('a'),{...track('b'),headGrid:grid(0,24999)}],0).map(n=>n.side),
-    ['tail'],'the incoming head must cover the full outgoing duration');
+    [],'both roles must fit the full outgoing duration before either is extracted');
 });
 
 test('pending role grids defer their seam while later eligible pairs remain independent', () => {
   const needs=regularStemNeeds([{...track('a'),tailGridPending:true},track('b'),track('c')],0);
   assert.deepEqual(needs.map(n=>[n.trackId,n.side]),[['b','tail'],['c','head']]);
   assert.deepEqual(regularStemNeeds([track('a'),{...track('b'),headGridPending:true}],0),[]);
+});
+
+test('rounded EOF markers use the preceding complete tail span', () => {
+  const item = {...track('out'),durationMs:309000,windDownMs:309000,
+    tailBars:Array.from({length:17},(_,i)=>268987+i*2500),tailGrid:grid(268987,308987)};
+  const needs=regularStemNeeds([item,track('in')],0);
+  assert.equal(needs[0].side,'tail');
+  assert.equal(needs[0].startMs,286487);
+  assert.equal(needs[0].endMs,306487,'do not select the rounded-up decoded EOF');
 });

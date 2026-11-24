@@ -76,6 +76,29 @@ test('a resolved backend is still remembered for the process lifetime', async ()
   assert.equal(probes, 1, 'a hit is not re-probed — only the miss is timed');
 });
 
+test('V2 preparation resolves the sidecar before sending its request', async () => {
+  analyzer._resetBackendCacheForTests();
+  const calls: string[] = [];
+  const source = { sha256: 'a'.repeat(64), bytes: 4096 };
+  const result = {
+    source: { ...source, durationSeconds: 8 }, grid: null,
+    roles: Object.fromEntries(['incoming', 'outgoing'].map(role => [role, {
+      status: 'no-cue', reason: 'No supported cue', cuePoints: [],
+      coverageStartSeconds: null, coverageEndSeconds: null,
+    }])) as any,
+  };
+  globalThis.fetch = (async input => {
+    const url = String(input);
+    calls.push(url);
+    if (url.endsWith('/health')) return new Response(JSON.stringify({ ok: true, engines: ['analyze'] }));
+    assert.equal(url, 'http://127.0.0.1:9/prepare-subbeats-v2');
+    return new Response(JSON.stringify({ ok: true, subbeats_prep_v2_result: result }));
+  }) as typeof fetch;
+  await analyzer.prepareSubbeatsPrepV2('/tmp/source.audio', source, null);
+  assert.deepEqual(calls, ['http://127.0.0.1:9/health', 'http://127.0.0.1:9/prepare-subbeats-v2']);
+  analyzer._resetBackendCacheForTests();
+});
+
 test.after(() => {
   globalThis.fetch = realFetch;
   analyzer._resetBackendCacheForTests();

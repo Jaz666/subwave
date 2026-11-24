@@ -19,7 +19,9 @@ let membership: Promise<void> = Promise.resolve();
 // One writer at a time makes each disk-space check account for prior sources.
 let staging: Promise<unknown> = Promise.resolve();
 const readers = new Map<string, number>();
-const inFlight = new Map<string, Promise<{ path: string; bytes: number; sha256: string }>>();
+type Source = { path: string; bytes: number; sha256: string };
+type SourceFlight = { promise: Promise<Source>; controller: AbortController; waiters: number; settled: boolean };
+const inFlight = new Map<string, SourceFlight>();
 
 export function retainRegularStemSources(current: string | null, queued: readonly string[]): void {
   membership = cache.reconcile(current, queued, []);
@@ -38,11 +40,15 @@ async function fingerprint(file: string, bytes: number, signal: AbortSignal): Pr
 }
 
 export async function acquireRegularStemSource(id: string, opts: {
-  expectedBytes?: number; expectedSha256?: string; timeoutMs?: number; deadlineMs?: number; log?: (message: string) => void;
+  expectedBytes?: number; expectedSha256?: string; timeoutMs?: number; deadlineMs?: number;
+  log?: (message: string) => void; signal?: AbortSignal;
 } = {}) {
+  opts.signal?.throwIfAborted();
   await membership;
+  opts.signal?.throwIfAborted();
   const lease = await cache.acquire(id);
   if (!lease) throw new Error('recording is no longer in the regular working queue');
+  if (opts.signal?.aborted) { await lease.release(); opts.signal.throwIfAborted(); }
   readers.set(id, (readers.get(id) ?? 0)+1);
   let released = false;
   const release = async () => {
@@ -60,13 +66,15 @@ export async function acquireRegularStemSource(id: string, opts: {
     if (!Number.isSafeInteger(bytes) || !bytes || bytes < 1 || bytes > Number.MAX_SAFE_INTEGER - 1024 * 1024)
       throw new Error('complete recording requires a known library file size');
     if (opts.expectedBytes != null && opts.expectedBytes !== bytes) throw new Error('library recording changed before preparation');
-    let work = inFlight.get(id);
-    if (!work) {
-      work = staging.catch(() => {}).then(async () => {
+    let flight = inFlight.get(id);
+    if (!flight) {
+      const controller = new AbortController();
+      const promise = staging.catch(() => {}).then(async () => {
         const timeoutMs = Math.floor(Math.min(300_000, opts.timeoutMs ?? config.analyzer.requestTimeoutMs,
           opts.deadlineMs == null ? Infinity : opts.deadlineMs - Date.now()));
         if (timeoutMs <= 0) throw new Error('complete-source preparation deadline passed');
-        const signal = AbortSignal.timeout(timeoutMs);
+        const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeoutMs)]);
+        signal.throwIfAborted();
         const expires = Date.now()+timeoutMs;
         const audio = path.join(lease.directory, 'source.audio');
         const meta = path.join(lease.directory, 'source.json');
@@ -100,7 +108,7 @@ export async function acquireRegularStemSource(id: string, opts: {
               throw new Error('local recording changed during source preparation');
           } else {
             const result = await analyzer.downloadCapped(id, { maxBytes: bytes + 1,
-              timeoutMs: Math.max(1, expires-Date.now()), destination: partial });
+              timeoutMs: Math.max(1, expires-Date.now()), destination: partial, signal });
             if (!result.complete) throw new Error('complete recording exceeds its library file size');
           }
           const sha256 = await fingerprint(partial, bytes, signal);
@@ -111,11 +119,37 @@ export async function acquireRegularStemSource(id: string, opts: {
           return { path: audio, bytes, sha256 };
         } finally { await rm(partial, { force: true }); }
       });
-      inFlight.set(id, work);
-      staging = work;
-      void work.finally(() => { if (inFlight.get(id) === work) inFlight.delete(id); }).catch(() => {});
+      flight = { promise, controller, waiters: 0, settled: false };
+      inFlight.set(id, flight);
+      staging = promise;
+      void promise.finally(() => {
+        flight!.settled = true;
+        if (inFlight.get(id) === flight) inFlight.delete(id);
+      }).catch(() => {});
     }
-    const source = await work;
+    flight.waiters++;
+    let detached = false;
+    const detach = () => {
+      if (detached) return;
+      detached = true;
+      flight!.waiters--;
+      if (flight!.waiters === 0 && !flight!.settled) flight!.controller.abort();
+    };
+    let source: Source;
+    try {
+      source = opts.signal ? await new Promise<Source>((resolve, reject) => {
+        const onAbort = () => { detach(); reject(new Error('complete-source preparation cancelled')); };
+        opts.signal!.addEventListener('abort', onAbort, { once: true });
+        if (opts.signal!.aborted) { onAbort(); return; }
+        flight!.promise.then(resolve, reject).finally(() => opts.signal!.removeEventListener('abort', onAbort));
+      }) : await flight.promise;
+      detach();
+    } catch (error) {
+      const lastCancelledWaiter = detached && flight.waiters === 0 && !flight.settled;
+      if (lastCancelledWaiter) await flight.promise.catch(() => {});
+      detach();
+      throw error;
+    }
     if (source.bytes !== bytes || (opts.expectedSha256 && source.sha256 !== opts.expectedSha256))
       throw new Error('complete recording differs from the requested stem window');
     return { ...source, release: async (completed = true) => {

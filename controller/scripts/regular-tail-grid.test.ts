@@ -23,7 +23,9 @@ test('regular tail widening forwards the window, preserves ending measurements a
     const body=JSON.parse(raw);calls++;
     assert.ok(body.path); assert.equal(body.url,undefined); assert.equal(body.complete,true);
     if (body.facets[0] === 'head') {
-      res.end(JSON.stringify({ok:true,facets:{head:{status:'ok',data:{beats:[1000],bars:[1000],grid_provenance:grid(0,40000)}}}})); return;
+      assert.ok([60,61].includes(body.head_grid_seconds));
+      res.end(JSON.stringify({ok:true,facets:{head:{status:'ok',data:{beats:[1000],
+        bars:Array.from({length:16},(_,i)=>1000+i*2000),grid_provenance:grid(0,body.head_grid_seconds*1000)}}}})); return;
     }
     assert.deepEqual(body.facets,['tail']);assert.equal(body.tail_grid_seconds,60);
     assert.equal(body.tail_vocals,undefined);assert.equal(body.stems_dir,undefined);
@@ -40,15 +42,17 @@ test('regular tail widening forwards the window, preserves ending measurements a
   process.env.ANALYZE_URL=`http://127.0.0.1:${address.port}`;
   process.env.NAVIDROME_URL=process.env.ANALYZE_URL;
   const library=await import('../src/music/library.js');
+  const settings=await import('../src/settings.js');
   const db=await import('../src/music/library-db.js');
   const tail=await import('../src/music/regular-tail-grid.js');
-  await library.load();
+  await library.load(); await settings.load();
+  await settings.update({transitions:{stemsEnabled:true,stemsStyle:'new-style',newStyleStemBlends:true}});
   const old={startMs:235000,ending:'fade',lufs:-17,bpm:100,
     vocalRanges:[{startMs:222000,endMs:234000}],extra:'preserve',
     beats:[222000,223000],bars:[222000,225000,228000,231000,234000,237000],gridProvenance:grid(220000,240000)};
   const seed=(id:string,genres=['Rock'])=>{
     db.upsertTrackMeta(id,{title:'Track '+id,artist:'Artist',duration:240,genres,fileSize:audio.length});
-    db.upsertTrackAnalysis(id,{bpm:120,beats:[1000],bars:[1000],gridProvenance:grid(0,40000)});
+    db.upsertTrackAnalysis(id,{bpm:120,beats:[1000],bars:Array.from({length:16},(_,i)=>1000+i*2000),gridProvenance:grid(0,40000)});
     db.getDb()!.prepare('UPDATE tracks SET outro_json=? WHERE id=?').run(JSON.stringify(old),id);
   };
   const rawOutro=(id:string)=>JSON.parse((db.getDb()!.prepare('SELECT outro_json FROM tracks WHERE id=?').get(id) as {outro_json:string}).outro_json);
@@ -107,6 +111,16 @@ test('regular tail widening forwards the window, preserves ending measurements a
     assert.equal(downloads,7,'each track downloads once, including head repair plus tail');
     const reused=await sources.acquireRegularStemSource('prefix');await reused.release();
     assert.equal(downloads,7,'extraction reuses the complete source');
+    seed('short-head');
+    db.upsertTrackAnalysis('short-head',{beats:[1000],bars:[1000,7000,13000,19000,25000,31000,37000],gridProvenance:grid(0,40000)});
+    assert.equal(tail.regularHeadGridAwaiting('short-head'),true,'current but short grids need real wider coverage');
+    await measure('short-head');
+    assert.equal(tail.regularHeadGridAwaiting('short-head'),false);
+    assert.equal(db.getTrack('short-head')!.gridProvenance!.windowEndMs,61000);
+    seed('sparse-head');
+    db.upsertTrackAnalysis('sparse-head',{beats:[1000],bars:[1000,20000,40000],gridProvenance:grid(0,120000)});
+    assert.equal(tail.regularHeadGridAwaiting('sparse-head'),false,
+      'a sparse grid already covering the maximum must not hot-loop or invent bars');
     sources.retainRegularStemSources(null,[]);
   } finally {
     db.close();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));

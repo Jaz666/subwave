@@ -22,6 +22,13 @@ export function recentlyPlayedSubbeatsTracks(since: string, limit: number): Subb
     ORDER BY t.id LIMIT ?`).all(since, limit) as SubbeatsTrackRef[];
 }
 
+// The fresh Stem Beats library scan uses the existing Dance Candidate
+// discovery rule, then unions V1-supported tracks at the route boundary.
+export function subbeatsDanceCandidates(): SubbeatsTrackRef[] {
+  return requireDb().prepare(`SELECT id, COALESCE(title,'') title, COALESCE(artist,'') artist, COALESCE(album,'') album
+    FROM tracks WHERE bpm BETWEEN 90 AND 180 AND subbeats_dance_genres(genres) = 1 ORDER BY id`).all() as SubbeatsTrackRef[];
+}
+
 // Keep list/count reads off the wide track rows and their large beat arrays.
 // SQLite maintains this compact projection whenever track metadata changes.
 const SUBBEATS_GRID_SQL = `CASE WHEN json_valid(beats_json) THEN COALESCE(json_array_length(beats_json),0) >= 16 ELSE 0 END`;

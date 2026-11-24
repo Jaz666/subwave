@@ -321,10 +321,14 @@ export interface LoudnessForm {
 }
 
 export interface TransitionsForm {
-  pairDrain: boolean;   // hold picks until the successor is known (#749 fix)
-  stemBlends: boolean;  // pre-rendered stem-blend seams (needs pairDrain + stem cache)
+  stemsEnabled: boolean;
+  stemsStyle: 'legacy' | 'new-style';
+  newStyleStemBlends: boolean;
+  newStyleStemBeats: boolean;
   subbeatsLive: boolean;
   subbeatsOnAirCaching: boolean;
+  pairDrain: boolean;   // hold picks until the successor is known (#749 fix)
+  stemBlends: boolean;  // pre-rendered stem-blend seams (needs pairDrain + stem cache)
   pickTimeStems: boolean;  // separate a held pick's missing stems while it waits (#2197)
   equalPowerCrossfade: boolean;  // plain crossfade curve: false = linear, true = equal-power (mixer restart)
   fadeAudibleEnd: boolean;  // cut a fade ending at its audible end (controller cue point, no restart)
@@ -471,10 +475,14 @@ export interface SettingsData {
      *  posted as `{ tagger: { auto } }`. Absent on an older controller. */
     tagger?: { auto?: TaggerAutoSettings };
     transitions?: {
-      pairDrain?: boolean;
-      stemBlends?: boolean;
+      stemsEnabled?: boolean;
+      stemsStyle?: 'legacy' | 'new-style';
+      newStyleStemBlends?: boolean;
+      newStyleStemBeats?: boolean;
       subbeatsLive?: boolean;
       subbeatsOnAirCaching?: boolean;
+      pairDrain?: boolean;
+      stemBlends?: boolean;
       pickTimeStems?: boolean;
       equalPowerCrossfade?: boolean;
       fadeAudibleEnd?: boolean;

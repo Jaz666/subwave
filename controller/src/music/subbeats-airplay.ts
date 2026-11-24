@@ -5,8 +5,10 @@ import * as settings from '../settings.js';
 import * as db from './library-db.js';
 import { SUBBEATS_QUEUE_LIMIT } from '../schemas/subbeats.js';
 import { createSubbeatsStore } from './subbeats-store.js';
+import { stemBeatsEnabled } from '../broadcast/regular-stem-mode.js';
 
-const enabled = () => settings.get()?.transitions?.subbeatsOnAirCaching === true;
+const enabled = () => stemBeatsEnabled()
+  && settings.get()?.transitions?.subbeatsOnAirCaching === true;
 
 export function queueAiredTrack(id: string | null | undefined): void {
   if (!enabled() || !id || !db.getDb()) return;

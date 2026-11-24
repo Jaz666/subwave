@@ -22,6 +22,7 @@
 // while one airs the answer is still the song before it, as the title is.
 
 import { REGULAR_STEM_PREVIEW_RETAIN_MS, type RegularStemPreview } from '../broadcast/regular-stem-preview.js';
+import { regularStemBlendsEnabled, stemBeatsEnabled } from '../broadcast/regular-stem-mode.js';
 import { Router } from 'express';
 import { spawn } from 'node:child_process';
 import { createReadStream, lstatSync, readFileSync } from 'node:fs';
@@ -36,9 +37,11 @@ import * as settings from '../settings.js';
 import * as stemCache from '../music/stem-cache.js';
 import * as regularStemDb from '../music/library-db.js';
 import { eightBarWindow, regularStemTempoDecision } from '../broadcast/regular-stem-policy.js';
-import { subbeatsRoleDecision } from '../music/subbeats-role-policy.js';
 import { readSubbeatsQueue } from '../music/subbeats-store.js';
+import { latestSubbeatsPrepV2Role } from '../music/subbeats-prep-v2-library.js';
+import { planSubbeatsPrepV2Extraction, subbeatsPrepV2PairSnapshot } from '../music/subbeats-pair.js';
 import { subbeatsSourceSeconds, type SubbeatsTiming } from '../broadcast/subbeats-clock.js';
+import { STEM_BEATS_PREVIEW_RETENTION_MS } from '../music/subbeats-picktime-extraction.js';
 import { fetchWithTimeout } from '../util/fetch-timeout.js';
 import { subbeatsStemWaveform, subbeatsStemWaveformPath, type StemWaveformName } from '../music/stem-waveform-peaks.js';
 
@@ -50,6 +53,7 @@ type StemSource = { path: string; startSec: number; endSec: number | null; stora
 type VisualTransition = {
   regular?: Omit<RegularStemPreview, 'envelopes'>;
   kind: 'stem-blend' | 'subbeats'; durationSec: number; incomingAtSec: number; outgoingUntilSec: number;
+  version?: 1 | 2; transitionId?: string;
   /** Present only after incoming playback is observed; forecasts come from /state. */
   incomingAiredAt?: string;
   outgoingId?: string; incomingId?: string;
@@ -62,7 +66,7 @@ export type MixingDeskStemStatus = {
   currentHeadGrid: boolean | null;
   currentTailGrid: boolean | null;
   regular: 'unavailable' | 'suitable' | 'verified' | 'unknown';
-  subbeats: 'unavailable' | 'suitable' | 'verified' | 'unknown';
+  stemBeats: 'unavailable' | 'suitable' | 'verified' | 'unknown';
 };
 
 const PEAK_SAMPLE_RATE = 8_000;
@@ -210,6 +214,35 @@ async function stemSource(id: string, side: VisualStemSide, stem: VisualStem, su
   return regularStemSource(id, side, stem);
 }
 
+function stemBeatsWindowSource(id: string, side: VisualStemSide, stem: VisualStem,
+  transition: Pick<VisualTransition, 'version' | 'transitionId' | 'outgoingId' | 'incomingId'>): StemSource | null {
+  if (transition.version !== 2 || !transition.transitionId) return null;
+  const owner = [queue.current, ...queue.upcoming, ...queue.history].find(item =>
+    item?.stemBlend?.subbeats?.version === 2
+      && item.stemBlend.subbeats.transitionId === transition.transitionId
+      && item.stemBlend.subbeats.outgoingId === transition.outgoingId
+      && item.stemBlend.subbeats.incomingId === transition.incomingId);
+  const ref = owner?.stemBlend?.subbeats?.previewWindows?.[side];
+  const expectedId = side === 'outgoing' ? transition.outgoingId : transition.incomingId;
+  if (!ref || id !== expectedId) return null;
+  try {
+    const root = `${path.resolve(stemCache.stemsRoot(), 'stembeats', 'pick-time')}${path.sep}`;
+    const folder = path.resolve(ref.directory);
+    const workspace = path.dirname(folder);
+    if (!folder.startsWith(root) || !workspace.startsWith(root)
+        || lstatSync(folder).isSymbolicLink() || !lstatSync(folder).isDirectory()
+        || lstatSync(workspace).isSymbolicLink() || !lstatSync(workspace).isDirectory()) return null;
+    const marker = JSON.parse(readFileSync(path.join(workspace, '.stembeats-preview.json'), 'utf8')) as { until?: number };
+    if (typeof marker.until !== 'number' || marker.until <= Date.now()
+        || marker.until - Date.now() > STEM_BEATS_PREVIEW_RETENTION_MS) return null;
+    const evidence = JSON.parse(readFileSync(path.join(folder, `${ref.evidence.side}-stembeats.json`), 'utf8'));
+    if (JSON.stringify(evidence) !== JSON.stringify(ref.evidence)) return null;
+    const file = path.join(folder, `${ref.evidence.side}-${stem}.flac`);
+    if (lstatSync(file).isSymbolicLink() || !lstatSync(file).isFile()) return null;
+    return { path: file, startSec: ref.startSeconds, endSec: ref.endSeconds, storageGain: 1 };
+  } catch { return null; }
+}
+
 export function createNowPlayingFileRouter(deps: {
   nowPlaying: () => Promise<NowPlaying>;
   lookup: (id: string) => Promise<FileFormat | null>;
@@ -222,7 +255,8 @@ export function createNowPlayingFileRouter(deps: {
   preparedSpeech?: () => boolean;
   speechPreparing?: () => boolean;
   speechForecasts?: () => Array<{ voiceId: string; expectedAt: string; durationMs: number; text: string }>;
-  stemSource?: (id: string, side: VisualStemSide, stem: VisualStem, subbeats: boolean) => StemSource | null | Promise<StemSource | null>;
+  stemSource?: (id: string, side: VisualStemSide, stem: VisualStem, subbeats: boolean,
+    transition?: Pick<VisualTransition, 'version' | 'transitionId' | 'outgoingId' | 'incomingId'>) => StemSource | null | Promise<StemSource | null>;
   waveformPeaks?: (id: string, signal: AbortSignal) => Promise<WaveformPeaks>;
   waveformPlayback?: (id: string) => WaveformPlayback | null;
   regularStemPeaks?: (transition: VisualTransition, side: VisualStemSide, stem: VisualStem) => WaveformPeaks | null;
@@ -230,6 +264,11 @@ export function createNowPlayingFileRouter(deps: {
   crossfadeSeconds?: () => number;
 }): Router {
   const router = Router();
+  const resolveStemSource = (id: string, side: VisualStemSide, stem: VisualStem, subbeats: boolean,
+    transition: VisualTransition) => transition.version === 2
+      ? deps.stemSource ? deps.stemSource(id, side, stem, true, transition)
+        : stemBeatsWindowSource(id, side, stem, transition)
+      : (deps.stemSource ?? stemSource)(id, side, stem, subbeats, transition);
   router.get('/now-playing/file', requireAdmin, async (req, res) => {
     let id: string | null = null;
     try {
@@ -360,7 +399,8 @@ export function createNowPlayingFileRouter(deps: {
       res.status(404).json({ error: 'Working stems are represented by their prepared waveform envelopes.' });
       return;
     }
-    const source = await (deps.stemSource ?? stemSource)(expectedId, side, stem as VisualStem, transition.kind === 'subbeats');
+    const source = await resolveStemSource(expectedId, side, stem as VisualStem,
+      transition.kind === 'subbeats', transition);
     if (!source) {
       res.status(404).json({ error: 'The prepared stem waveform is unavailable.' });
       return;
@@ -414,7 +454,8 @@ export function createNowPlayingFileRouter(deps: {
       }
       return;
     }
-    const source = await (deps.stemSource ?? stemSource)(expectedId, side, stem as VisualStem, transition.kind === 'subbeats');
+    const source = await resolveStemSource(expectedId, side, stem as VisualStem,
+      transition.kind === 'subbeats', transition);
     if (!source) {
       res.status(404).json({ error: 'The prepared stem waveform is unavailable.' });
       return;
@@ -547,9 +588,13 @@ export async function nowPlayingStemTransition(currentId: string): Promise<Visua
       },
     };
   }
+  const sourceTransition = { version:blend.subbeats?.version, transitionId:blend.subbeats?.transitionId,
+    outgoingId:ids.outgoingId, incomingId:ids.incomingId } as const;
   const sourceInfo = async (side: VisualStemSide) => {
     const id = side === 'outgoing' ? ids.outgoingId : ids.incomingId;
-    const source = await stemSource(id, side, 'drums', !!timing);
+    const source = blend.subbeats?.version === 2
+      ? stemBeatsWindowSource(id, side, 'drums', sourceTransition)
+      : await stemSource(id, side, 'drums', !!timing);
     return source ? { startSec: source.startSec, endSec: source.endSec, storageGain: source.storageGain } : undefined;
   };
   const [outgoingSource, incomingSource] = await Promise.all([sourceInfo('outgoing'), sourceInfo('incoming')]);
@@ -568,6 +613,8 @@ export async function nowPlayingStemTransition(currentId: string): Promise<Visua
       incomingAtSec: timing.incomingEntryFrame / timing.sampleRate,
       outgoingUntilSec: timing.outgoingEndFrame / timing.sampleRate,
       ...ids,
+      version:blend.subbeats!.version,
+      transitionId:blend.subbeats!.transitionId,
       mixStyle: blend.subbeats!.mixStyle,
       gainsDb: [blend.subbeats!.gainsDb[0] ?? 0, blend.subbeats!.gainsDb[1] ?? 0],
       timing,
@@ -595,7 +642,7 @@ export const router = createNowPlayingFileRouter({
   nextTrackId: () => queue.upcoming[0]?.track?.id || null,
   stemStatus: (currentId, nextId, transition) => {
     const outgoing = regularStemDb.getTrack(currentId);
-    if (!outgoing) return { currentHeadGrid: null, currentTailGrid: null, regular: 'unknown', subbeats: 'unknown' };
+    if (!outgoing) return { currentHeadGrid: null, currentTailGrid: null, regular: 'unknown', stemBeats: 'unknown' };
     const currentGrid = (grid: typeof outgoing.gridProvenance) => grid?.backend === 'beat-this-onnx'
       && grid.model === 'small0' && grid.preprocessingVersion === 1 && grid.source?.complete === true;
     const tailGrid = outgoing.outro?.gridProvenance;
@@ -611,31 +658,31 @@ export const router = createNowPlayingFileRouter({
         startMs: tailGrid.windowStartMs,
         endMs: Math.min(tailGrid.windowEndMs, outgoing.outro.startMs),
       }, 'tail');
-    if (!nextId) return { currentHeadGrid: headWindow, currentTailGrid: tailWindow, regular: 'unknown', subbeats: 'unknown' };
+    if (!nextId) return { currentHeadGrid: headWindow, currentTailGrid: tailWindow, regular: 'unknown', stemBeats: 'unknown' };
     const incoming = regularStemDb.getTrack(nextId);
-    if (!incoming) return { currentHeadGrid: headWindow, currentTailGrid: tailWindow, regular: 'unknown', subbeats: 'unknown' };
+    if (!incoming) return { currentHeadGrid: headWindow, currentTailGrid: tailWindow, regular: 'unknown', stemBeats: 'unknown' };
     const incomingGrid = incoming.gridProvenance;
     const incomingHeadWindow = !!incomingGrid && currentGrid(incomingGrid) && !!incoming.bars?.length
       && !!eightBarWindow(incoming.bars, { startMs: incomingGrid.windowStartMs, endMs: incomingGrid.windowEndMs }, 'head');
     const transitionMatches = transition?.outgoingId === currentId && transition.incomingId === nextId;
     const tempo = regularStemTempoDecision(tailGrid, incomingGrid);
-    const regularSuitable = settings.get().transitions.stemBlends === true
+    const regularSuitable = regularStemBlendsEnabled()
       && tailWindow && incomingHeadWindow && tempo.eligible;
-    const subbeatsJobs = readSubbeatsQueue(config.stateDir).jobs;
-    const outgoingRole = subbeatsRoleDecision(subbeatsJobs.find(job => job.id === currentId),
-      'tail', tailGrid, regularStemDb.trackFileSize(currentId), outgoing.outro?.bars ?? []);
-    const incomingRole = subbeatsRoleDecision(subbeatsJobs.find(job => job.id === nextId),
-      'head', incomingGrid, regularStemDb.trackFileSize(nextId), incoming.bars ?? []);
-    const subbeatsSuitable = outgoingRole.state === 'coverage-ready' && incomingRole.state === 'coverage-ready'
-      && settings.get().transitions.subbeatsLive === true && settings.get().transitions.pairDrain !== false
-      && !!settings.getEffectivePersona()?.djMode;
+    let stemBeatsSuitable = false;
+    try {
+      const pair = subbeatsPrepV2PairSnapshot(currentId, nextId);
+      stemBeatsSuitable = stemBeatsEnabled()
+        && settings.get().transitions.pairDrain !== false && !!settings.getEffectivePersona()?.djMode
+        && pair.outgoingRole.state === 'cue-ready' && pair.incomingRole.state === 'cue-ready'
+        && planSubbeatsPrepV2Extraction(pair.outgoingRole, pair.incomingRole).state === 'windows-ready';
+    } catch { /* unknown and unavailable both remain inactive */ }
     return {
       currentHeadGrid: headWindow,
       currentTailGrid: tailWindow,
       regular: transitionMatches && transition?.kind === 'stem-blend' ? 'verified'
         : regularSuitable ? 'suitable' : 'unavailable',
-      subbeats: transitionMatches && transition?.kind === 'subbeats' ? 'verified'
-        : subbeatsSuitable ? 'suitable' : 'unavailable',
+      stemBeats: transitionMatches && transition?.kind === 'subbeats' && transition.version === 2 ? 'verified'
+        : stemBeatsSuitable ? 'suitable' : 'unavailable',
     };
   },
   waveformPlayback: id => {
@@ -664,6 +711,9 @@ export const router = createNowPlayingFileRouter({
     catch { return null; }
   },
   stemTransition: nowPlayingStemTransition,
+  stemSource: (id, side, stem, subbeats, transition) => transition?.version === 2
+    ? stemBeatsWindowSource(id, side, stem, transition)
+    : stemSource(id, side, stem, subbeats),
   regularStemPeaks: (transition, side, stem) => {
     const items = [queue.current, ...queue.upcoming, ...queue.history];
     const outgoing = items.find(item => item?.track.id === transition.outgoingId

@@ -52,7 +52,7 @@ export async function estimateSubbeatsCleanup(opts: {now?: number; signals?: () 
   const keep = db.stemCleanupKeepIds(signals);
   const prepared = new Set(signals.subbeatsIds ?? []);
   const entries = (await readdir(cache.stemsRoot(), {withFileTypes:true}))
-    .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'));
+    .filter(entry => entry.isDirectory() && !entry.name.startsWith('.') && !cache.isStemFeatureDir(entry.name));
   let failure: unknown = null;
   const measured = await mapPool(entries, cache.SCAN_CONCURRENCY, async entry => {
     if (failure) return null;

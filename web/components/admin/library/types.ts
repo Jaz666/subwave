@@ -188,6 +188,12 @@ export interface SettingsResponse {
       analyzeQuietOnly?: boolean;
       analyzeQuietMinutes?: number;
     };
+    transitions?: {
+      stemsEnabled?: boolean;
+      stemsStyle?: 'legacy' | 'new-style';
+      newStyleStemBlends?: boolean;
+      newStyleStemBeats?: boolean;
+    };
     // Cost-preview attribution (#1162): seed calls bill to the chat LLM, embedding
     // calls to the embedding provider (blank = follows the LLM provider).
     llm?: { provider?: string; model?: string };

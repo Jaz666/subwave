@@ -777,6 +777,10 @@ const transitionEffectsPatchSchema = settingsBlockOf({
 });
 
 export const transitionsPatchSchema = settingsBlockOf({
+  stemsEnabled: settingsBoolLike(),
+  stemsStyle: settingsStrictOneOf(['legacy', 'new-style'] as const, 'transitions.stemsStyle must be legacy or new-style'),
+  newStyleStemBlends: settingsBoolLike(),
+  newStyleStemBeats: settingsBoolLike(),
   // stemBlends is documented as needing pairDrain, but that dependency is
   // resolved at drain time in broadcast/drain-policy.ts and has never been a
   // save-time refusal. Do not add one here.

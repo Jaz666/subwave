@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test, { after } from 'node:test';
 import express from 'express';
 import { subbeatsCandidatePageSchema, subbeatsCueMatchesSchema, subbeatsViewSchema } from '../src/schemas/subbeats.js';
+import { subbeatsPrepV2RunSchema } from '../src/schemas/subbeats-prep-v2-server.js';
 
 process.env.ANALYZE_URL = 'http://127.0.0.1:9';
 process.env.ANALYZE_PYTHON = '';
@@ -47,8 +48,11 @@ test('dance discovery handles genre variants and refuses malformed or unrelated 
 
 test('all Sub/Beats reads and writes require admin authentication', async () => {
   for (const path of ['/library/subbeats', '/library/subbeats/candidates']) assert.equal((await fetch(base + path)).status, 401);
+  assert.equal((await fetch(base + '/library/subbeats/prep-v2/runs')).status, 401);
+  assert.equal((await fetch(base + '/library/subbeats/prep-v2/candidates')).status, 401);
   assert.equal((await fetch(base + '/library/subbeats/join-preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"trackIds":["beat-grid","tempo-only"]}' })).status, 401);
   assert.equal((await fetch(base + '/library/subbeats/queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"ids":["beat-grid"]}' })).status, 401);
+  assert.equal((await fetch(base + '/library/subbeats/prep-v2/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"scope":"supported"}' })).status, 401);
 });
 
 test('discovery uses existing evidence and search can find tracks without a BPM', async () => {
@@ -512,4 +516,181 @@ test('coverage upgrades require admin and preserve saved cue identity', async ()
   const job=subbeatsViewSchema.parse(await response.json()).jobs.find(job=>job.id===id)!;
   assert.equal(job.task,'coverage');assert.equal(job.bundleKey,before.bundleKey);
   assert.deepEqual(job.cuePoints,before.cuePoints);assert.equal(job.preparationMethod,'small0');
+});
+
+test('V2 run captures a selected V1 baseline without editing the V1 queue', async () => {
+  const id = 'v2-baseline-fixture';
+  const role = { level: 'subbeat' as const, bpm: 120, cueSeconds: 32, leadSeconds: null, postSeconds: null, reason: 'V1 fixture' };
+  const suitability = { version: 1 as const, assessedAt: '2026-11-20T00:00:00Z', incoming: role,
+    outgoing: { ...role, level: 'regular' as const } };
+  db.upsertTrackMeta(id, { title: id, artist: 'Test artist', album: 'Test collection' });
+  try {
+    subbeatsStore.enqueue([{ id, title: id, artist: 'Test artist', album: 'Test collection' }]);
+    subbeatsStore.event({ id, status: 'running' }, [id]);
+    subbeatsStore.event({ id, status: 'prepared', bundleKey: 'a'.repeat(64), suitability }, [id]);
+    const v1BeforeCreate = subbeatsStore.read();
+    const response = await post('/library/subbeats/prep-v2/runs', { scope: 'selected', ids: [id] });
+    assert.equal(response.status, 201);
+    const run = subbeatsPrepV2RunSchema.parse(await response.json());
+    assert.ok(run.baselineSha256);
+    assert.match(run.baselineSha256, /^[a-f0-9]{64}$/);
+    assert.equal(run.jobs.length, 1);
+    assert.equal(run.jobs[0].id, id);
+    assert.equal(run.jobs[0].v1?.headSupported, true);
+    assert.equal(run.jobs[0].v1?.tailSupported, false);
+    assert.deepEqual(subbeatsStore.read(), v1BeforeCreate);
+    const detail = await fetch(base + `/library/subbeats/prep-v2/runs/${run.runId}`, { headers });
+    assert.equal(detail.status, 200);
+    const detailBody = await detail.json() as { timing: { completedJobs: number; averagePrepMs: number | null; totalPrepMs: number } };
+    assert.deepEqual(detailBody.timing, { completedJobs: 0, averagePrepMs: null, totalPrepMs: 0 });
+    const listed = await fetch(base + '/library/subbeats/prep-v2/runs', { headers });
+    assert.equal(listed.status, 200);
+    const listBody = await listed.json() as { runs: Array<{ timing: { completedJobs: number; averagePrepMs: number | null; totalPrepMs: number } }> };
+    assert.deepEqual(listBody.runs[0]!.timing,
+      { completedJobs: 0, averagePrepMs: null, totalPrepMs: 0 });
+    assert.equal('jobs' in listBody.runs[0]!, false, 'the run list stays compact for a large library scan');
+    const progress = await fetch(base + `/library/subbeats/prep-v2/runs/${run.runId}/progress`, { headers });
+    assert.equal(progress.status, 200);
+    const progressBody = await progress.json() as { total: number; counts: { queued: number; running: number } };
+    assert.equal(progressBody.total, 1);
+    assert.equal(progressBody.counts.queued, 1);
+    assert.equal(progressBody.counts.running, 0);
+    subbeatsStore.enqueue([{ id, title: id, artist: 'Test artist', album: 'Test collection' }]);
+    assert.equal((await post(`/library/subbeats/prep-v2/runs/${run.runId}/start`, {})).status, 409);
+    assert.equal((await post(`/library/subbeats/prep-v2/runs/${run.runId}/pause`, { paused: false })).status, 409);
+    const unchangedRun = await fetch(base + `/library/subbeats/prep-v2/runs/${run.runId}`, { headers });
+    assert.equal((await unchangedRun.json() as { status: string }).status, 'queued');
+    assert.equal(subbeatsStore.read().paused, true);
+  } finally {
+    subbeatsStore.failQueued([id], 'test cleanup');
+    subbeatsStore.remove(id);
+    db.getDb()!.prepare('DELETE FROM tracks WHERE id=?').run(id);
+  }
+});
+
+test('V2 can create an on-demand Stem Beats run without V1 admission', async () => {
+  const id = 'stembeats-on-demand-fixture';
+  db.upsertTrackMeta(id, { title: 'On demand', artist: 'Test artist', album: 'Test collection' });
+  try {
+    const response = await post('/library/subbeats/prep-v2/runs', { scope: 'track', id });
+    assert.equal(response.status, 201);
+    const run = subbeatsPrepV2RunSchema.parse(await response.json());
+    assert.equal(run.scope, 'track');
+    assert.equal(run.baselineSha256, null);
+    assert.deepEqual(run.jobs.map(job => [job.id, job.v1]), [[id, null]]);
+  } finally {
+    db.getDb()!.prepare('DELETE FROM tracks WHERE id=?').run(id);
+  }
+});
+
+test('Stem Beats library runs use Dance Candidates without adding saved V1 outliers', async () => {
+  const id = 'stembeats-library-v1-outlier';
+  const role = { level: 'subbeat' as const, bpm: 120, cueSeconds: 32, leadSeconds: null, postSeconds: null, reason: 'V1 fixture' };
+  const suitability = { version: 1 as const, assessedAt: '2026-11-20T00:00:00Z', incoming: role,
+    outgoing: { ...role, level: 'regular' as const } };
+  db.upsertTrackMeta(id, { title: 'V1 outlier', artist: 'Test artist', album: 'Test collection', genres: ['Rock'] });
+  try {
+    subbeatsStore.enqueue([{ id, title: 'V1 outlier', artist: 'Test artist', album: 'Test collection' }]);
+    subbeatsStore.event({ id, status: 'running' }, [id]);
+    subbeatsStore.event({ id, status: 'prepared', bundleKey: 'a'.repeat(64), suitability }, [id]);
+    const response = await post('/library/subbeats/prep-v2/runs', { scope: 'library' });
+    assert.equal(response.status, 201);
+    const run = subbeatsPrepV2RunSchema.parse(await response.json());
+    const ids = new Set(run.jobs.map(job => job.id));
+    assert.ok(ids.has('beat-grid'));
+    assert.ok(ids.has('tempo-only'));
+    assert.ok(!ids.has('quiet-intro'));
+    assert.ok(!ids.has(id));
+    assert.equal(run.baselineSha256, null);
+    assert.ok(run.jobs.every(job => job.v1 === null));
+  } finally {
+    subbeatsStore.failQueued([id], 'test cleanup');
+    subbeatsStore.remove(id);
+    db.getDb()!.prepare('DELETE FROM tracks WHERE id=?').run(id);
+  }
+});
+
+test('Stem Beats library runs can be created after the V1 queue is removed', async () => {
+  const { config } = await import('../src/config.js');
+  const { existsSync, renameSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const queuePath = join(config.stateDir, 'subbeats', 'queue.json');
+  const backupPath = `${queuePath}.test-backup-${process.pid}`;
+  const hadQueue = existsSync(queuePath);
+  if (hadQueue) renameSync(queuePath, backupPath);
+  try {
+    const response = await post('/library/subbeats/prep-v2/runs', { scope: 'library' });
+    assert.equal(response.status, 201);
+    const run = subbeatsPrepV2RunSchema.parse(await response.json());
+    assert.equal(run.scope, 'library');
+    assert.equal(run.baselineSha256, null);
+    assert.ok(run.jobs.length > 0);
+    assert.ok(run.jobs.every(job => job.v1 === null));
+  } finally {
+    if (hadQueue) renameSync(backupPath, queuePath);
+  }
+});
+
+test('New Style Library Run and Re-scan targets missing or previously prepared candidates within the selected limit', async () => {
+  const settings = await import('../src/settings.js');
+  const ids = ['library-prep-missing-a', 'library-prep-missing-b'];
+  await settings.load();
+  await settings.update({ transitions: { stemsEnabled: true, stemsStyle: 'new-style' } });
+  try {
+    for (const id of ids) {
+      db.upsertTrackMeta(id, { title: id, artist: 'Test artist', album: '', genres: ['Trance'], fileSize: 4096 });
+      db.getDb()!.prepare('UPDATE tracks SET bpm=120 WHERE id=?').run(id);
+    }
+    const first = await post('/library/subbeats/prep-v2/runs', { scope: 'library', mode: 'missing', limit: 1 });
+    assert.equal(first.status, 201);
+    const firstRun = subbeatsPrepV2RunSchema.parse(await first.json());
+    assert.equal(firstRun.jobs.length, 1);
+    assert.equal(firstRun.jobs[0]?.v1, null);
+    const next = await post('/library/subbeats/prep-v2/runs', { scope: 'library', mode: 'missing', limit: 1 });
+    assert.equal(next.status, 201);
+    const nextRun = subbeatsPrepV2RunSchema.parse(await next.json());
+    assert.equal(nextRun.jobs.length, 1);
+    assert.notEqual(nextRun.jobs[0]?.id, firstRun.jobs[0]?.id, 'queued work is not duplicated by Run');
+    assert.equal((await post('/library/subbeats/prep-v2/runs', { scope: 'library', mode: 'refresh', limit: 1 })).status, 400,
+      'Re-scan does not include tracks that have never completed preparation');
+    await settings.update({ transitions: { stemsEnabled: true, stemsStyle: 'legacy' } });
+    const legacy = await post('/library/subbeats/prep-v2/runs', { scope: 'library', mode: 'missing', limit: 1 });
+    assert.equal(legacy.status, 409, await legacy.text());
+  } finally {
+    await settings.update({ transitions: { stemsEnabled: false, stemsStyle: 'legacy' } });
+    for (const id of ids) db.getDb()!.prepare('DELETE FROM tracks WHERE id=?').run(id);
+  }
+});
+
+test('selected Stem Beats candidates create an isolated V2 scan run', async () => {
+  const settings = await import('../src/settings.js');
+  await settings.load();
+  const id = 'v2-selected-library-fixture';
+  db.upsertTrackMeta(id, { title: id, artist: 'Test artist', album: 'Test collection', genres: ['Trance'], fileSize: 1234 });
+  db.getDb()!.prepare('UPDATE tracks SET bpm=120 WHERE id=?').run(id);
+  await settings.update({ transitions: { stemsEnabled: true, stemsStyle: 'new-style', newStyleStemBeats: true } });
+  try {
+    const candidates = await fetch(base + '/library/subbeats/prep-v2/candidates', { headers });
+    assert.equal(candidates.status, 200);
+    const candidate = (await candidates.json() as { tracks: Array<{ id: string; title: string; artist: string; album: string; scanned: boolean; incomingReady: boolean; outgoingReady: boolean }> }).tracks.find(track => track.id === id);
+    assert.deepEqual(candidate, { id, title: id, artist: 'Test artist', album: 'Test collection', scanned: false, incomingReady: false, outgoingReady: false });
+    const response = await post('/library/subbeats/prep-v2/runs', { scope: 'library-selected', ids: [id] });
+    assert.equal(response.status, 201, await response.clone().text());
+    const run = subbeatsPrepV2RunSchema.parse(await response.json());
+    assert.equal(run.scope, 'library-selected');
+    assert.equal(run.baselineSha256, null);
+    assert.equal(run.jobs.length, 1);
+    assert.equal(run.jobs[0]?.id, id);
+    assert.equal(run.jobs[0]?.expectedSourceBytes, 1234);
+    const progress = await fetch(base + '/library/subbeats/prep-v2/runs', { headers });
+    const progressRuns = await progress.json() as { runs: Array<{ runId: string; airplay: boolean; currentJob: { title: string; status: string } | null; waitingForPickTime: boolean }> };
+    const selectedProgress = progressRuns.runs.find(item => item.runId === run.runId);
+    assert.equal(selectedProgress?.airplay, false);
+    assert.deepEqual(selectedProgress?.currentJob, { title: id, artist: 'Test artist', status: 'queued' });
+    assert.equal(selectedProgress?.waitingForPickTime, false);
+    assert.equal((await post('/library/subbeats/prep-v2/runs', { scope: 'library-selected', ids: [id, id] })).status, 400);
+  } finally {
+    await settings.update({ transitions: { stemsEnabled: false, stemsStyle: 'legacy', newStyleStemBeats: false } });
+    db.getDb()!.prepare('DELETE FROM tracks WHERE id=?').run(id);
+  }
 });

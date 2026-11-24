@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type WaveSurfer from 'wavesurfer.js';
-import { ArrowLeftToLine, ArrowRightToLine, AudioLines, Check, Disc3, Grid2X2 } from 'lucide-react';
+import { ArrowLeftToLine, ArrowRightToLine, AudioLines, Disc3 } from 'lucide-react';
 import { useStationFeed } from '../../../hooks/useStationFeed';
 import { adminJson, adminResponse, useAdminQuery } from '../../../lib/admin-query';
 import { useAdminAuth } from '../../../lib/adminAuth';
@@ -10,6 +10,7 @@ import { createColorProbe, mix, readThemeRgb, watchTheme } from '../../../lib/th
 import styles from './NowPlayingWaveform.module.css';
 import { queuedTransition, shouldAutoExpandStemPreview, stemTransitionWindow, waveformSnapPosition } from './waveform-timeline';
 import { LiveStemPreview } from './LiveStemPreview';
+import { MixingDeskStatusIcon } from './MixingDeskStatusIcon';
 import { stemDetailVisible, stemPairKey, stemPhase, stemStyle, waveformKeys, type StemTransition } from './stem-preview';
 
 const HISTORY_SECONDS = 30;
@@ -31,28 +32,13 @@ type VisualEvents = {
     currentHeadGrid: boolean | null;
     currentTailGrid: boolean | null;
     regular: 'unavailable' | 'suitable' | 'verified' | 'unknown';
-    subbeats: 'unavailable' | 'suitable' | 'verified' | 'unknown';
+    stemBeats: 'unavailable' | 'suitable' | 'verified' | 'unknown';
   } | null;
 };
 const EMPTY_SPEECH_FORECASTS: NonNullable<VisualEvents['speechForecasts']> = [];
 type DeckTrack = { id: string; duration: number; startedAt: number; colorRole: 'accent' | 'accent2'; playedSeconds?: number };
 type TransitionMarker = { airedAt: number; label: string };
 type WaveformPeakResponse = { durationSec: number; peaks: number[] };
-
-function StatusIcon({ icon: Icon, label, state, grid = false }: {
-  icon: typeof ArrowLeftToLine;
-  label: string;
-  state: 'ready' | 'unavailable' | 'suitable' | 'verified' | 'unknown';
-  grid?: boolean;
-}) {
-  const active = state === 'ready' || state === 'suitable' || state === 'verified';
-  return <span className={`relative inline-flex ${grid ? 'w-7' : 'w-5'} h-5 items-center justify-center ${active ? 'text-[var(--accent)]' : 'text-[var(--ink-faint)]'}`}
-    role="img" aria-label={label} title={label}>
-    {grid ? <><Grid2X2 size={14} strokeWidth={1.8} aria-hidden="true" /><Icon size={13} strokeWidth={1.8} aria-hidden="true" /></>
-      : <Icon size={16} strokeWidth={1.8} aria-hidden="true" />}
-    {state === 'verified' && <Check className="absolute -top-1 -right-1 rounded-full bg-[var(--card-bg)]" size={9} strokeWidth={3} aria-hidden="true" />}
-  </span>;
-}
 
 export function MixingDeskStatus() {
   const { nowPlaying } = useStationFeed();
@@ -71,14 +57,14 @@ export function MixingDeskStatus() {
   const status = visualEvents.data?.stemStatus;
   if (!currentId) return null;
   return <div className="flex shrink-0 items-center gap-1.5" role="group" aria-label="Current to next track stem status">
-    <StatusIcon icon={ArrowLeftToLine} grid label={`Current head grid: ${status?.currentHeadGrid == null ? 'waiting for grid data' : status.currentHeadGrid ? 'suitable for a stem window' : 'not suitable for a stem window'}`}
+    <MixingDeskStatusIcon icon={ArrowLeftToLine} grid label={`Current head grid: ${status?.currentHeadGrid == null ? 'waiting for grid data' : status.currentHeadGrid ? 'suitable for a stem window' : 'not suitable for a stem window'}`}
       state={status?.currentHeadGrid == null ? 'unknown' : status.currentHeadGrid ? 'ready' : 'unavailable'} />
-    <StatusIcon icon={ArrowRightToLine} grid label={`Current tail grid: ${status?.currentTailGrid == null ? 'waiting for grid data' : status.currentTailGrid ? 'suitable for a stem window' : 'not suitable for a stem window'}`}
+    <MixingDeskStatusIcon icon={ArrowRightToLine} grid label={`Current tail grid: ${status?.currentTailGrid == null ? 'waiting for grid data' : status.currentTailGrid ? 'suitable for a stem window' : 'not suitable for a stem window'}`}
       state={status?.currentTailGrid == null ? 'unknown' : status.currentTailGrid ? 'ready' : 'unavailable'} />
-    <StatusIcon icon={AudioLines} label={`Stem Blend: ${status?.regular ?? 'waiting for status'}`}
+    <MixingDeskStatusIcon icon={AudioLines} label={`Stem Blend: ${status?.regular ?? 'waiting for status'}`}
       state={status?.regular ?? 'unknown'} />
-    <StatusIcon icon={Disc3} label={`Sub/Beats: ${status?.subbeats ?? 'waiting for status'}`}
-      state={status?.subbeats ?? 'unknown'} />
+    <MixingDeskStatusIcon icon={Disc3} label={`Stem Beats: ${status?.stemBeats ?? 'waiting for status'}`}
+      state={status?.stemBeats ?? 'unknown'} />
   </div>;
 }
 
@@ -522,7 +508,7 @@ export default function NowPlayingWaveform() {
           element.style.setProperty('--overlap-width', `${(outgoingUntil - incomingAt) / duration * 100}%`);
           element.style.setProperty('--outgoing-color', stemColors.current);
           element.style.setProperty('--incoming-color', stemColors.next);
-        }}><span>{stemTransition.kind === 'subbeats' ? 'Sub/Beats' : stemStyle(stemTransition)}</span></div>;
+        }}><span>{stemTransition.kind === 'subbeats' ? 'Stem Beats' : stemStyle(stemTransition)}</span></div>;
     })()
     : null;
 

@@ -87,8 +87,14 @@ export function stemsSavePayload(form: FormState) {
   const n = numberFields();
   const patch = {
     transitions: {
+      stemsEnabled: form.transitions.stemsEnabled,
+      stemsStyle: form.transitions.stemsStyle,
+      newStyleStemBlends: form.transitions.newStyleStemBlends,
+      newStyleStemBeats: form.transitions.newStyleStemBeats,
       pairDrain: form.transitions.pairDrain,
       stemBlends: form.transitions.stemBlends,
+      // Hidden legacy Sub/Beats controls remain round-tripped until their
+      // retirement decision; saving this page must not reset their values.
       subbeatsLive: form.transitions.subbeatsLive,
       subbeatsOnAirCaching: form.transitions.subbeatsOnAirCaching,
       pickTimeStems: form.transitions.pickTimeStems,

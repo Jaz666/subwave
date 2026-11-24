@@ -434,6 +434,14 @@ async def test_facet_contract():
         "stream_url": "http://navi/stream", "tail_window": {"end_ms": 180000, "duration_ms": 200000},
         "tail_grid_seconds": 60,
     }], worker_calls
+    worker_calls.clear()
+    with tempfile.NamedTemporaryFile() as audio:
+        await server.analyze(server.AnalyzeRequest(
+            path=audio.name, complete=True, facets=["head"], head_grid_seconds=80,
+        ))
+    assert worker_calls == [{
+        "id": "1", "path": audio.name, "complete": True, "facets": ["head"], "head_grid_seconds": 80,
+    }], worker_calls
     # A flat request (the regular analysis pass) carries the placement too,
     # and its answer passes the placed marker back.
     worker_calls.clear()
@@ -675,6 +683,31 @@ async def test_live_subbeats_route_uses_the_bounded_lane():
             sys.modules['subbeats_live_service'] = previous
 
 
+async def test_live_stembeats_route_uses_the_bounded_lane():
+    helper = types.ModuleType('subbeats_live_service')
+    calls = []
+    async def render_live_request(body, request, python, worker):
+        calls.append((body, request, python, worker))
+        return {'status': 'unavailable', 'reason': 'fixture'}
+    helper.render_live_request = render_live_request
+    previous = sys.modules.get('subbeats_live_service')
+    sys.modules['subbeats_live_service'] = helper
+    try:
+        body = {'version': 2, 'transitionId': 'fixture', 'deadlineMs': 1234, 'roles': []}
+        request = object()
+        result = await server.render_stembeats_transition(types.SimpleNamespace(model_dump=lambda: body), request)
+        assert result['status'] == 'unavailable'
+        assert calls == [(body, request, server.ANALYZE_PYTHON, server.ANALYZE_WORKER)]
+        worker = (repo/'controller/scripts/subbeats_live.py').read_text()
+        assert 'render_live_v2' in worker and "req.get('version') == 2" in worker
+        assert 'COPY controller/scripts/subbeats_live.py /app/workers/subbeats_live.py' in (repo/'docker/Dockerfile.analyzer').read_text()
+    finally:
+        if previous is None:
+            del sys.modules['subbeats_live_service']
+        else:
+            sys.modules['subbeats_live_service'] = previous
+
+
 async def test_source_size_contract():
     """#2238: the library's file size reaches the worker with a stems_dir, on
     flat and facet requests, and never without one."""
@@ -718,6 +751,7 @@ async def main():
     await test_subbeats_preview_contract()
     await test_stems_windows_and_pool_size_contract()
     await test_live_subbeats_route_uses_the_bounded_lane()
+    await test_live_stembeats_route_uses_the_bounded_lane()
     await test_source_size_contract()
 
 

@@ -8,6 +8,9 @@ import type { BeatGridProvenance } from '../schemas/beat-grid.js';
 import { BoundedKeyMap } from '../util/bounded-key-map.js';
 import { bulkPassRunning } from './tagger-lock.js';
 import { acquireRegularStemSource } from './regular-stem-source.js';
+import { upgradePending } from './beat-grid-upgrade.js';
+import { eightBarWindow } from '../broadcast/regular-stem-policy.js';
+import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
 
 const failures = new BoundedKeyMap<number>({ maxKeys: 2048, isLive: (until, now) => until > now });
 let running: { id: string; work: Promise<void> } | null = null;
@@ -25,12 +28,28 @@ export function regularTailGridSeconds(row: Pick<TrackRecord, 'outro'>): number 
   return Math.min(120, Math.max(60, Math.ceil((10 * barMs + fadeMs) / 1000)));
 }
 
-export function regularTailGridPending(id: string): boolean { return running?.id === id; }
+export function regularTailGridPending(id?: string): boolean { return id == null ? !!running : running?.id === id; }
+
+export function regularHeadGridSeconds(row: Pick<TrackRecord, 'bars'>): number {
+  const bars = row.bars ?? [];
+  const intervals = bars.slice(1).map((bar, index) => bar-bars[index])
+    .filter(ms => Number.isFinite(ms) && ms > 0).sort((a, b) => a-b);
+  return Math.min(120, Math.max(60, Math.ceil(((bars[0] ?? 0) + 10 * (intervals[Math.floor(intervals.length/2)] ?? 4000))/1000)));
+}
+
+function headGridNeedsRepair(row: TrackRecord): boolean {
+  const grid = row.gridProvenance;
+  if (!current(grid) || !grid?.source?.complete || !row.beats?.length || !row.bars?.length) return true;
+  // Current provenance with a few markers is not yet an eight-bar window.
+  // Retry only if a bounded wider measurement can add real coverage; a full
+  // measurement without nine markers must not trigger a rescan every tick.
+  return !eightBarWindow(row.bars, { startMs: grid.windowStartMs, endMs: grid.windowEndMs - 1 }, 'head')
+    && grid.windowEndMs < Math.min(regularHeadGridSeconds(row)*1000, (row.durationSec ?? 0)*1000)-2;
+}
 
 export function regularHeadGridAwaiting(id: string): boolean {
-  const row = db.getTrack(id), grid = row?.gridProvenance;
-  return regularGridAwaiting(id) && (!current(grid) || !grid?.source?.complete
-    || !row?.beats?.length || !row.bars?.length);
+  const row = db.getTrack(id);
+  return !!row && regularGridAwaiting(id) && headGridNeedsRepair(row);
 }
 
 export function regularGridAwaiting(id: string): boolean {
@@ -38,21 +57,22 @@ export function regularGridAwaiting(id: string): boolean {
   if (bulkPassRunning() || (failures.get(id) ?? 0) > Date.now()) return false;
   const row = db.getTrack(id), head = row?.gridProvenance;
   if (!row) return false;
-  if (!current(head) || !head?.source?.complete || !row.beats?.length || !row.bars?.length) return true;
+  if (headGridNeedsRepair(row)) return true;
   const grid = row.outro?.gridProvenance;
   const endMs = analyzer.tailWindowFor(row)?.endMs ?? grid?.windowEndMs ?? (row.durationSec ?? 0) * 1000;
   const wantedMs = Math.min(regularTailGridSeconds(row) * 1000, endMs);
-  return !current(grid) || !grid?.source?.complete || grid.source.sha256 !== head.source.sha256
-    || grid.source.bytes !== head.source.bytes
+  return !current(grid) || !grid?.source?.complete || grid.source.sha256 !== head?.source?.sha256
+    || grid.source.bytes !== head?.source?.bytes
     || grid.windowEndMs-grid.windowStartMs < wantedMs-2;
 }
 
 export function regularTailGridDue(id: string): boolean {
-  return !running && regularGridAwaiting(id);
+  return regularStemWorkingMode() && !running && !upgradePending() && regularGridAwaiting(id);
 }
 
-export function ensureRegularTailGrid(id: string, log: (message: string) => void, wake: () => void, deadlineMs?: number): void {
-  if (!regularTailGridDue(id)) return;
+export function ensureRegularTailGrid(id: string, log: (message: string) => void, wake: () => void,
+  deadlineMs?: number, shouldContinue: () => boolean = () => true): void {
+  if (!regularStemWorkingMode() || !shouldContinue() || !regularTailGridDue(id)) return;
   const row = db.getTrack(id)!;
   const label = [row.title, row.artist].filter(Boolean).join(' — ') || id;
   const seconds = regularTailGridSeconds(row);
@@ -63,26 +83,33 @@ export function ensureRegularTailGrid(id: string, log: (message: string) => void
     try {
       source = await acquireRegularStemSource(id, { deadlineMs, log,
         expectedSha256: row.gridProvenance?.source?.complete ? row.gridProvenance.source.sha256 : undefined });
+      if (!shouldContinue()) return;
       const options = () => {
         const timeoutMs = Math.floor(Math.min(300_000, (deadlineMs ?? Date.now()+300_000)-Date.now()));
         if (timeoutMs <= 0) throw new Error('regular grid preparation deadline passed');
         return { localPathRequired: true, complete: true, timeoutMs };
       };
-      if (!current(row.gridProvenance) || !row.gridProvenance?.source?.complete || !row.beats?.length || !row.bars?.length) {
+      if (headGridNeedsRepair(row)) {
+        const headSeconds = regularHeadGridSeconds(row);
         log(`Regular stems: measuring head grid for ${label}`);
         const request = options();
         completed = false;
-        const result = await analyzer.analyzeFacets(id, { ...request, facets: ['head'] }, source.path);
+        const result = await analyzer.analyzeFacets(id, { ...request, facets: ['head'], headGridSeconds: headSeconds }, source.path);
         completed = true;
         const head = result.facets.head, grid = head?.result.gridProvenance;
         if (head?.status !== 'ok' || !head.result.beats?.length || !head.result.bars?.length
             || !current(grid) || !grid?.source?.complete || grid.source.sha256 !== source.sha256
-            || grid.source.bytes !== source.bytes || !db.writeRegularHeadGrid(id, {
+            || grid.source.bytes !== source.bytes || grid.windowStartMs !== 0
+            || grid.windowEndMs < Math.min(headSeconds*1000, (row.durationSec ?? 0)*1000)-2
+            || !db.writeRegularHeadGrid(id, {
               beats: head.result.beats, bars: head.result.bars, gridProvenance: grid }, fileSize))
           throw new Error(head?.reason ?? 'complete head grid unavailable');
         log(`Regular stems: head grid ready for ${label}`);
         wake();
       }
+      // A completed head remains reusable, but the next request must not
+      // consume a newly selected Stem Beats pair's extraction runway.
+      if (!shouldContinue()) return;
       log(`Regular stems: measuring ${seconds}s tail grid for ${label}`);
       const request = options();
       completed = false;

@@ -341,7 +341,7 @@ export function startAnalyzer(opts: { limit?: number; audio?: boolean; vocal?: b
 // Same managed process slot and process-group cancellation as ordinary analysis.
 export function startSubbeats(ids: string[], onEvent: (raw: unknown) => void, onClose: (stopped: boolean) => void) {
   if (tagger.running) throw new Error('Library analysis is already running');
-  spawnChild('analyze', ['src/music/subbeats-library.ts', ...ids], 'Sub/Beats', {
+  spawnChild('analyze', ['src/music/subbeats-library.ts', ...ids], 'Legacy V1 stem prep', {
     subbeats: { onEvent, onClose },
   });
 }
@@ -444,7 +444,7 @@ function spawnChild(
         if (!line) continue;
         if (opts.subbeats && line.startsWith(SUBBEATS_EVENT_PREFIX)) {
           try { opts.subbeats.onEvent(JSON.parse(line.slice(SUBBEATS_EVENT_PREFIX.length))); }
-          catch (error) { queue.log('error', `Sub/Beats result refused: ${error instanceof Error ? error.message : String(error)}`); }
+          catch (error) { queue.log('error', `Legacy V1 stem-prep result refused: ${error instanceof Error ? error.message : String(error)}`); }
           continue;
         }
         if (!opts.subbeats && line.startsWith(SUBBEATS_SCAN_PREFIX)) {
@@ -452,7 +452,7 @@ function spawnChild(
             const parsed = subbeatsScanReadySchema.parse(JSON.parse(line.slice(SUBBEATS_SCAN_PREFIX.length)));
             for (const id of parsed) subbeatsScanIds.add(id);
           } catch (error) {
-            queue.log('error', `Sub/Beats scan handoff refused: ${error instanceof Error ? error.message : String(error)}`);
+            queue.log('error', `Legacy V1 stem-prep scan handoff refused: ${error instanceof Error ? error.message : String(error)}`);
           }
           continue;
         }
@@ -541,10 +541,10 @@ function spawnChild(
     thisRunLog.close();
     if (!opts.subbeats && code === 0 && signal === null && subbeatsScanIds.size) {
       void import('../music/subbeats-manager.js').then(({ kickSubbeats }) => kickSubbeats(0, [...subbeatsScanIds]))
-        .catch(error => queue.log('error', `Queued Sub/Beats work could not start: ${error instanceof Error ? error.message : String(error)}`));
+        .catch(error => queue.log('error', `Queued legacy V1 stem-prep work could not start: ${error instanceof Error ? error.message : String(error)}`));
     }
     try { opts.subbeats?.onClose(signal !== null || code === 130 || code === 143); }
-    catch (error) { queue.log('error', `Sub/Beats completion could not be saved: ${error instanceof Error ? error.message : String(error)}`); }
+    catch (error) { queue.log('error', `Legacy V1 stem-prep completion could not be saved: ${error instanceof Error ? error.message : String(error)}`); }
     runEnd.closed();
   });
   child.on('exit', (code, signal) => {
@@ -568,7 +568,7 @@ function spawnChild(
     // The run just walked the catalogue, and nothing else recounts unattended
     // (#1570), so this is the one moment the total can refresh unasked.
     if (opts.subbeats) {
-      queue.log('scheduler', `Sub/Beats finished (${signal ? `signal ${signal}` : `exit ${code}`})`);
+      queue.log('scheduler', `Legacy V1 stem prep finished (${signal ? `signal ${signal}` : `exit ${code}`})`);
       return;
     }
     coverage.refresh().catch(() => {});

@@ -5,7 +5,9 @@ export function queuedSubbeatsForScan(
   jobs: readonly QueuedJob[],
   scope?: ReadonlySet<string> | null,
   limit?: number,
+  enabled = true,
 ): string[] {
+  if (!enabled) return [];
   const queued = jobs.filter(job => job.status === 'queued' && job.task !== 'assess'
     && (!scope || scope.has(job.id))).map(job => job.id);
   return Number.isFinite(limit) && (limit as number) > 0 ? queued.slice(0, Math.floor(limit!)) : queued;

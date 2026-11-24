@@ -86,14 +86,26 @@ class FakeLibrosa:
     class beat:
         @staticmethod
         def beat_track(y, sr):
-            raise RuntimeError("no beat tracker in the fake")  # grid is garnish
+            raise RuntimeError("standalone tempo tracking is not supplied by this fixture")
+
+
+class FakeGridTracker:
+    """Keep facet tests model-free while supplying the now-required shared grid.
+
+    Missing/failed real trackers are tested by analyzer_downbeat_test.py.
+    """
+    model_sha256 = aw.SMALL0_SHA256
+
+    def track(self, audio, sr, _librosa):
+        beats = np.arange(.5, len(audio) / sr, .5)
+        return beats, beats[::4]
 
 
 class Patched:
     """Swap module attributes for the duration of a block."""
 
     def __init__(self, **attrs):
-        self.attrs = attrs
+        self.attrs = {"get_downbeat_tracker": lambda: FakeGridTracker(), **attrs}
         self.saved = {}
 
     def __enter__(self):
@@ -797,6 +809,74 @@ def t_regular_rejects_replaced_recording_before_model():
 
 
 test("replaced recording is rejected before loading Demucs", t_regular_rejects_replaced_recording_before_model)
+
+
+def t_stembeats_window_is_separate_and_source_bound():
+    import json
+    first, stop = 4410001, 5821207
+    good = {"version": 1, "side": "tail", "start_ms": first * 1000 / aw.DEMUCS_SR,
+            "end_ms": stop * 1000 / aw.DEMUCS_SR,
+            "key": "a" * 64, "model": aw.DEMUCS_MODEL,
+            "source_sha256": "b" * 64, "source_bytes": 123}
+    req = {"stems_device": "cpu", "stems_dir": "/unused", "stembeats_window": good}
+    assert aw.parse_stembeats_stem_window(req, ["stems"]) == good
+    for changes in ({"version": 2}, {"key": "not-a-hash"}, {"end_ms": 220001}, {"side": "both"}):
+        try:
+            aw.parse_stembeats_stem_window({**req, "stembeats_window": {**good, **changes}}, ["stems"])
+        except aw.FacetRequestError:
+            continue
+        raise AssertionError(changes)
+
+    class Source:
+        complete = True
+        duration_s = stop / aw.DEMUCS_SR
+        path = '/fixture/recording.flac'
+        def load(self, _librosa, **kw):
+            raise AssertionError('Stem Beats must use decode-from-zero sample counting')
+        def describe(self):
+            return {"complete": True, "duration_s": self.duration_s}
+
+    class Detector:
+        def separate(self, audio, *, device):
+            assert device == "cpu"
+            return {name: audio for name in ("drums", "bass", "other", "vocals")}
+
+    with tempfile.TemporaryDirectory() as directory:
+        Path(directory, ".subwave-stembeats").touch()
+        destination = str(Path(directory, "job"))
+        Path(destination).mkdir()
+        counted = Path(directory, 'counted.wav')
+        def extract(path, offset, duration):
+            assert path == Source.path
+            assert round(offset * aw.DEMUCS_SR) == first
+            assert round(duration * aw.DEMUCS_SR) == stop - first
+            counted.touch()
+            return str(counted)
+        with Patched(source_fingerprint=lambda *_args: {"sha256": "b" * 64, "bytes": 123},
+                     extract_window_by_count=extract,
+                     load_audio=lambda *_a, **_k: (np.zeros((2, stop-first)), aw.DEMUCS_SR),
+                     get_vocal_detector=lambda force=False: Detector(),
+                     write_stems=lambda *_args: None):
+            evidence = aw.extract_stembeats_stem_window(None, Source(), good, destination)
+        assert evidence["device"] == "cpu" and evidence["samples"] == stop-first
+        assert json.loads(Path(destination, "tail-stembeats.json").read_text()) == evidence
+        assert not Path(destination, "tail-regular.json").exists()
+        Path(destination, "tail-stembeats.json").unlink()
+        with Patched(extract_window_by_count=extract,
+                     load_audio=lambda *_a, **_k: (np.zeros((2, stop-first-1)), aw.DEMUCS_SR)):
+            try:
+                aw.extract_stembeats_stem_window(None, Source(), good, destination)
+            except aw.FacetRequestError as error:
+                assert 'incomplete' in str(error)
+            else:
+                raise AssertionError('a short decoded source must not be padded')
+        assert not Path(destination, "tail-stembeats.json").exists()
+
+
+test("Stem Beats windows have their own marker and source-bound completion stamp",
+     t_stembeats_window_is_separate_and_source_bound)
+
+
 def t_wider_regular_tail_grid():
     class Source:
         path = "/fake/master.mp3"
@@ -857,6 +937,58 @@ def t_wider_request_bounds():
 
 test("wider regular tail grid uses complete exact audio, placement and cleanup", t_wider_regular_tail_grid)
 test("wider grid requests reject invalid bounds and mixed facets before source opening", t_wider_request_bounds)
+
+
+def t_wider_head_grid():
+    class Source:
+        complete = True
+        duration_s = 240.
+        path = "/fixture/head.flac"
+    calls, removed = [], []
+    def extract(path, start, length):
+        calls.append((path, start, length))
+        return "/fixture/head-window.wav"
+    def measure(audio, sr, librosa, beats, offset_s):
+        assert offset_s == 0., "a head repair must retain source zero"
+        return [1000], [1000], {"windowStartMs": 0, "windowEndMs": 59999}
+    with Patched(extract_window_by_count=extract, load_audio=lambda *_a, **_k: (silence(59.999), SR),
+                 measure_bar_grid=measure), patch.object(aw.os, "remove", side_effect=removed.append):
+        result = aw.analyze_facets(None, Source(), ["head"], head_grid_seconds=60)
+        assert result["head"]["status"] == "ok", result
+        assert result["head"]["data"]["grid_provenance"]["windowStartMs"] == 0
+    assert calls == [(Source.path, 0., 59.999)], calls
+    assert removed == ["/fixture/head-window.wav"]
+    with Patched(extract_window_by_count=extract, load_audio=lambda *_a, **_k: (silence(59), SR)):
+        with patch.object(aw.os, "remove"):
+            try:
+                aw.regular_head_grid(None, Source(), 60)
+            except aw.FacetRequestError:
+                pass
+            else:
+                raise AssertionError("short head audio was padded or shifted")
+    Source.complete = False
+    with Patched(extract_window_by_count=no_decode):
+        try:
+            aw.regular_head_grid(None, Source(), 60)
+        except aw.FacetRequestError:
+            pass
+        else:
+            raise AssertionError("incomplete source accepted for head repair")
+
+
+def t_wider_head_request_bounds():
+    for seconds, facets in [(True, ["head"]), (39, ["head"]), (121, ["head"]), (60, ["head", "tail"])]:
+        with patch.object(aw.FileSource, "from_request", side_effect=AssertionError("opened invalid request")):
+            try:
+                aw.analyze_facet_request(None, {"facets": facets, "head_grid_seconds": seconds})
+            except aw.FacetRequestError:
+                pass
+            else:
+                raise AssertionError("invalid wider-head request accepted")
+
+
+test("wider head measurement retains source zero and refuses incomplete coverage", t_wider_head_grid)
+test("wider head requests reject unsupported bounds and mixed facets before opening", t_wider_head_request_bounds)
 if failures:
     print(f"✗ analyzer_facets_test.py: {failures} failure(s)")
     sys.exit(1)

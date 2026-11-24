@@ -5,6 +5,7 @@ import * as analyzer from './analyzer.js';
 import * as db from './library-db.js';
 import type { BeatGridProvenance } from '../schemas/beat-grid.js';
 import { BoundedKeyMap } from '../util/bounded-key-map.js';
+import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
 
 const inFlight = new Map<string, Promise<boolean>>();
 const failuresUntil = new BoundedKeyMap<number>({ maxKeys: 2048, isLive: (until, now) => until > now });
@@ -22,10 +23,14 @@ export function trackGridCurrent(id: string): boolean {
 }
 
 export function upgradeDue(id: string): boolean {
-  return inFlight.size === 0 && !trackGridCurrent(id) && (failuresUntil.get(id) ?? 0) <= Date.now();
+  return regularStemWorkingMode() && inFlight.size === 0 && !trackGridCurrent(id)
+    && (failuresUntil.get(id) ?? 0) <= Date.now();
 }
 
+export function upgradePending(): boolean { return inFlight.size > 0; }
+
 export function ensureCurrent(id: string, log: (message: string) => void): Promise<boolean> {
+  if (!regularStemWorkingMode()) return Promise.resolve(false);
   if (trackGridCurrent(id)) return Promise.resolve(true);
   const running = inFlight.get(id);
   if (running) return running;

@@ -80,6 +80,10 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
   const ready=new Promise<void>(resolve=>{done=resolve;});
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
+    runtime.update(null,[only('a','tail'),only('b','head')],()=>{},message=>messages.push(message),true);
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(posts.length,0,'Stem Beats priority defers CPU work');
+    assert.ok(runtime.pair('a','b'),'deferring preparation retains independent pair admission');
     runtime.update(null,[only('a','tail'),only('b','head')],()=>{if(++wakes===2)done();},message=>messages.push(message));
     await Promise.race([ready,new Promise<never>((_resolve,reject)=>{timeout=setTimeout(()=>reject(new Error('preparation did not settle')),10000);})]);
     assert.deepEqual(posts.map(p=>p.side),['tail','head']);
@@ -90,6 +94,12 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     assert.ok(windows.some(window=>window.trackId==='a' && window.side==='tail' && window.state==='ready'));
     assert.ok(windows.some(window=>window.trackId==='b' && window.side==='head' && window.state==='ready'));
     assert.ok(windows.every(window=>Object.keys(window).sort().join(',')==='side,state,trackId'));
+
+    runtime.update(null,[only('a','tail'),only('b','head')],()=>{},()=>{},true);
+    const readySources=await runtime.sources('a','b');
+    assert.ok(readySources,'verified windows stay usable while new preparation is deferred');
+    await readySources.release();
+    assert.equal(posts.length,2,'using ready windows never repeats extraction');
 
     diskFull=true;
     assert.equal(await runtime.sources('a','b'),null,'low space refuses render');
@@ -210,7 +220,8 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
 test('nearest pair gets outgoing tail then incoming head; a pending grid can supply missing admission evidence', async () => {
   const {RegularStemRuntime}=await import('../src/broadcast/regular-stem-runtime.js');
   const runtime=new RegularStemRuntime();
-  runtime.lane.update=()=>{};
+  let scheduled: readonly import('../src/broadcast/regular-stem-preparation.js').RegularStemNeed[] = [];
+  runtime.lane.update=needs=>{scheduled=needs;};
   const grid=(start:number,end:number):BeatGridProvenance=>({version:1,backend:'beat-this-onnx',model:'small0',
     modelSha256:'a'.repeat(64),preprocessingVersion:1,windowStartMs:start,windowEndMs:end,
     evidence:{medianBpm:100,intervalSupport:1,librosaBeatSupport:null},source:{sha256:'b'.repeat(64),bytes:12345,complete:true}});
@@ -222,6 +233,10 @@ test('nearest pair gets outgoing tail then incoming head; a pending grid can sup
   assert.deepEqual(runtime.statusWindows().slice(0,2).map(n=>[n.trackId,n.side]),
     [['priority-a','tail'],['priority-b','head']]);
   assert.equal(runtime.statusWindows().length,4,'only adjacent-pair roles are prepared');
+  runtime.update(null,[track('priority-a'),{...track('priority-b'),pairPreparationDeferred:true},track('priority-c')],()=>{},()=>{});
+  assert.ok(runtime.pair('priority-b','priority-c'),'later V2 pairs retain independent Regular admission');
+  assert.deepEqual(scheduled.map(need=>[need.trackId,need.side]),
+    [['priority-a','tail'],['priority-b','head']], 'later V2 pairs do not start Regular work before their own refusal');
   runtime.update(null,[{...track('priority-a'),tailGridPending:true},track('priority-b')],()=>{},()=>{});
   assert.equal(runtime.pending('priority-a','priority-b'),true);
   assert.equal(runtime.statusWindows().some(n=>n.trackId==='priority-a' && n.side==='tail'),false);

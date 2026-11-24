@@ -42,7 +42,8 @@ process.env.ANALYZE_PYTHON = '';
 process.env.NAVIDROME_URL = address;
 process.env.NAVIDROME_USER = 'fixture';
 process.env.NAVIDROME_PASS = 'fixture';
-const { subbeatsStore: store, kickSubbeats } = await import('../src/music/subbeats-manager.js');
+const settings = await import('../src/settings.js');
+const { subbeatsStore: store, kickSubbeats, recoverSubbeats } = await import('../src/music/subbeats-manager.js');
 const { tagger, stopTagger, startSubbeats } = await import('../src/broadcast/tagger.js');
 after(async () => { release?.(); if (tagger.running) stopTagger(); await new Promise<void>(resolve => fixture.close(() => resolve())); });
 const track = (id: string) => ({ id, title: id, artist: 'Fixture artist', album: 'Fixture album' });
@@ -53,6 +54,18 @@ async function waitUntil(fn: () => boolean, timeout = 30000) {
     await new Promise(r => setTimeout(r, 40));
   }
 }
+
+test('Legacy leaves queued V1 preparation untouched and does not recover its worker', async () => {
+  await settings.update({ transitions: { stemsEnabled: true, stemsStyle: 'legacy', newStyleStemBeats: true } });
+  store.enqueue([track('legacy-held')]);
+  recoverSubbeats(); kickSubbeats(0, ['legacy-held']);
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(requests, 0);
+  assert.equal(store.read().jobs.find(job => job.id === 'legacy-held')?.status, 'queued');
+  store.failQueued(['legacy-held'], 'Legacy mode leaves V1 preparation queued.');
+  store.remove('legacy-held');
+  await settings.update({ transitions: { stemsStyle: 'new-style', newStyleStemBeats: true } });
+});
 
 test('managed preparation preserves new admissions, pauses between tracks and resumes', async () => {
   store.enqueue([track('first'), track('second')]); kickSubbeats();

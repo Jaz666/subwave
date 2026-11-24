@@ -118,7 +118,8 @@ import * as beatGridUpgrade from '../music/beat-grid-upgrade.js';
 import * as regularTailGrid from '../music/regular-tail-grid.js';
 import { quietOnlyEnabled } from '../music/analyze-quiet-pure.js';
 import * as subbeats from './subbeats.js';
-import { queueAiredTrack as queueSubbeatsFromAirplay } from '../music/subbeats-airplay.js';
+import { notifyStemBeatsPickTimePriorityChanged, queueAiredStemBeatsTrack, updateStemBeatsAirplayPreparation } from '../music/subbeats-prep-v2-library.js';
+import { regularStemBlendsEnabled, stemBeatsEnabled } from './regular-stem-mode.js';
 import { subbeatsPlaybackSeconds, subbeatsSourceSeconds, subbeatsEntryMs, type SubbeatsPlayback } from './subbeats-clock.js';
 import { subbeatsPlaybackSchema } from '../schemas/subbeats.js';
 import * as pickStems from './pick-stems.js';
@@ -2189,7 +2190,7 @@ class Queue {
         }
         blend.partsPublished = true;
         await subbeats.discardSubbeatsClips(blend);
-        this.log('mix','Sub/Beats recovery fell back: the mixer no longer has the outgoing track or either clip part.',
+        this.log('mix',`${transition.version === 2 ? 'Stem Beats' : 'Legacy V1 stem'} recovery fell back: the mixer no longer has the outgoing track or either clip part.`,
           {subbeats:'recovery-fallback',transitionId:transition.transitionId});
         this.persist();return;
       }
@@ -2208,7 +2209,7 @@ class Queue {
         if (!successor.sent) {
           delete successor.stemSeam;delete successor.stemCueInSec;delete successor.subbeatsHandoff;delete successor.cueInSec;
         }
-        this.log('mix','Sub/Beats successor was removed during publication; the remaining clip parts were skipped.',
+        this.log('mix',`${transition.version === 2 ? 'Stem Beats' : 'Legacy V1 stem'} successor was removed during publication; the remaining clip parts were skipped.`,
           {subbeats:'publication-cancelled',transitionId:transition.transitionId});
         break;
       }
@@ -2235,7 +2236,12 @@ class Queue {
   // Only roles needed by an adjacent pair that has passed its grid/BPM gates
   // are prepared. Preparation is never awaited by the sender.
   private regularStemOccurrences = new WeakMap<QueueItem,string>();
-  private syncRegularStemPreparation(): void {
+  private stemBeatsDeclinedPairs = new WeakMap<QueueItem,QueueItem>();
+  private stemBeatsHasPriority(outgoing: QueueItem, incoming: QueueItem): boolean {
+    return this.stemBeatsDeclinedPairs.get(outgoing) !== incoming
+      && stemBeatsEnabled() && subbeats.subbeatsPairHasV2Plan(String(outgoing.track.id), String(incoming.track.id));
+  }
+  private syncRegularStemPreparation(deferPreparation = false): void {
     // Source stems retire with queue membership. Keep only the immediately
     // previous seam's tiny envelope snapshot through the listener buffer.
     const retainPrevious = !!this.current?.stemSeam
@@ -2243,17 +2249,25 @@ class Queue {
     this.history.forEach((item, index) => {
       if (item.stemBlend?.regular && (index > 0 || !retainPrevious)) delete item.stemBlend.regular.envelopes;
     });
-    const enabled = settings.get().transitions.stemBlends === true
+    const enabled = regularStemBlendsEnabled()
       && !quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)
       && this.pairDrainActive() && !!settings.getEffectivePersona()?.djMode;
+    const gridWorkAllowed = () => {
+      const first = this.upcoming.findIndex(item => !item.sent);
+      return !deferPreparation && !(first >= 0 && this.upcoming[first+1]
+        && this.stemBeatsHasPriority(this.upcoming[first], this.upcoming[first+1]));
+    };
     try {
       const gridTargets = [...(this.current ? [this.current] : []), ...this.upcoming]
         .filter(item => !!regularStemDb.getTrack(String(item.track.id))
-          && !regularTailGrid.regularTailGridPending(String(item.track.id)))
+          // Unsent queued tracks belong to the complete-source Regular
+          // refresher. Its wider grids must never race a capped refresh.
+          && (!enabled || item === this.current || item.sent))
         .map(item => String(item.track.id));
       // Gradually upgrade every library track as it enters the working queue.
       // One CPU refresh at a time avoids a burst of eight analyzer jobs.
-      const gridTarget = gridTargets.find(id => beatGridUpgrade.upgradeDue(id));
+      const gridTarget = gridWorkAllowed() && !regularTailGrid.regularTailGridPending()
+        ? gridTargets.find(id => beatGridUpgrade.upgradeDue(id)) : undefined;
       if (gridTarget) void beatGridUpgrade.ensureCurrent(gridTarget, message => this.log('mix', message))
         .then(() => { void this.drainToLiquidsoap(); });
     } catch (error) { this.log('warn',`Pick-time shared beat grid upgrade unavailable: ${String(error)}`); }
@@ -2261,13 +2275,17 @@ class Queue {
       const rows = this.upcoming.map(item => regularStemDb.getTrack(String(item.track.id)));
       const outros = this.upcoming.map((item, index) =>
         library.get(String(item.track.id))?.outro ?? rows[index]?.outro);
-      if (enabled) {
-        const target = this.upcoming.find(item => !item.sent
+      if (enabled && gridWorkAllowed()) {
+        const targetIndex = this.upcoming.findIndex((item, index) => !item.sent
           && (this.remainingUntilItemAirs(item) ?? 0) > HARD_DEADLINE_SEC + 10
-          && regularTailGrid.regularTailGridDue(String(item.track.id)));
+          && regularTailGrid.regularTailGridDue(String(item.track.id))
+          && !(this.upcoming[index+1]
+            && this.stemBeatsHasPriority(item, this.upcoming[index+1]!)));
+        const target = targetIndex < 0 ? undefined : this.upcoming[targetIndex];
         if (target) regularTailGrid.ensureRegularTailGrid(String(target.track.id),
           message => this.log('mix', message), () => { void this.drainToLiquidsoap(); },
-          Date.now() + Math.max(0, (this.remainingUntilItemAirs(target) ?? 0)-HARD_DEADLINE_SEC-10)*1000);
+          Date.now() + Math.max(0, (this.remainingUntilItemAirs(target) ?? 0)-HARD_DEADLINE_SEC-10)*1000,
+          () => gridWorkAllowed() && this.upcoming.includes(target) && !target.sent);
       }
       const evidence: RegularStemQueueEvidence[] = this.upcoming.map((item, index) => {
         const row = rows[index], next = rows[index+1], outro = outros[index];
@@ -2283,6 +2301,8 @@ class Queue {
           // Genre-open fallback: Sub/Beats gets first render refusal, while
           // regular preparation uses only its own pair, grid and window rules.
           regularEligible: enabled,
+          pairPreparationDeferred: !!this.upcoming[index+1]
+            && this.stemBeatsHasPriority(item, this.upcoming[index+1]),
           pairToNextAllowed: !!row && !!next
             && !tailGridPending && !nextGridPending
             && regularStemTempoDecision(outro?.gridProvenance, next.gridProvenance).eligible
@@ -2295,13 +2315,20 @@ class Queue {
           headGridPending: enabled && !item.sent && regularTailGrid.regularHeadGridAwaiting(String(item.track.id)),
         };
       });
+      // Admission retains verified Regular windows. Only its CPU lane yields
+      // while the immediate pair gets its first Stem Beats attempt.
       regularStemRuntime.update(this.current?.track.id ? String(this.current.track.id) : null, evidence,
-        () => { void this.drainToLiquidsoap(); }, message => this.log('mix',message));
+        () => { void this.drainToLiquidsoap(); }, message => this.log('mix',message),
+        deferPreparation);
     } catch (error) { this.log('warn',`Regular stems preparation unavailable: ${String(error)}`); }
+    updateStemBeatsAirplayPreparation(() => gridWorkAllowed() && !this.senderBusy
+      && !beatGridUpgrade.upgradePending() && !regularTailGrid.regularTailGridPending()
+      && !regularStemRuntime.statusWindows().some(window => window.state === 'pending' || window.state === 'running'),
+      () => this.senderBusy);
   }
 
   async drainToLiquidsoap(force = false) {
-    this.syncRegularStemPreparation();
+    this.syncRegularStemPreparation(force);
     this.invalidateObsoleteHostSpeech();
     if (this.senderBusy) {
       // A forced drain (the clip-as-track recovery) must not vanish into a
@@ -2352,6 +2379,7 @@ class Queue {
         const regularRemaining = this.remainingUntilItemAirs(item);
         if (!force && regularRemaining != null && regularRemaining > HARD_DEADLINE_SEC + 10
             && regularSuccessor && stemBlend.regularStemTestStyle(String(item.track.id),String(regularSuccessor.track.id))
+            && !this.stemBeatsHasPriority(item, regularSuccessor)
             && regularStemRuntime.pending(String(item.track.id),String(regularSuccessor.track.id))) break;
         // A recovered, unpublished proposal owns no audio yet. Restore its
         // original exit and successor head before assessing today's pair.
@@ -2380,7 +2408,13 @@ class Queue {
         // is the accepted price of the trade: a naked link is a garnish lost,
         // a missed seam is the wrong track on air.
         if (item.introScript && !item.introWav && trackLineVoiceAllowed(item)) {
-          const budgetSec = introRenderBudgetSec(this.remainingUntilItemAirs(item));
+          const next = action === 'send-pair' ? this.upcoming[idx+1] : null;
+          const protectSubbeats = !!next
+            && this.stemBeatsHasPriority(item, next);
+          const ordinaryBudgetSec = introRenderBudgetSec(this.remainingUntilItemAirs(item));
+          const budgetSec = ordinaryBudgetSec != null && protectSubbeats
+            ? Math.max(0, ordinaryBudgetSec - subbeats.subbeatsExecutionReserveSeconds(config.analyzer.renderTimeoutMs))
+            : ordinaryBudgetSec;
           if (budgetSec === 0) {
             this.log('mix', `Intro render deferred to air time — "${item.track.title}" airs too soon to render ahead`);
           } else {
@@ -2501,7 +2535,9 @@ class Queue {
               const adjacent = () => this.upcoming.includes(item)
                 && this.upcoming[this.upcoming.indexOf(item)+1] === selectedSuccessor
                 && !selectedSuccessor.sent && !this.automaticIneligible(item) && !this.automaticIneligible(selectedSuccessor);
-              let blend = await this._renderSubbeats(item.track,successor.track,this.remainingUntilItemAirs(item), {
+              const stemBeatsFirst = this.stemBeatsHasPriority(item, successor);
+              let blend = this.stemBeatsDeclinedPairs.get(item) === successor ? null
+                : await this._renderSubbeats(item.track,successor.track,this.remainingUntilItemAirs(item), {
                 ...pairOptions,outCueInSec:item.stemCueInSec ?? item.cueInSec,
                 valid:adjacent,log:(message,meta) => this.log('mix',message,meta),
               });
@@ -2511,9 +2547,23 @@ class Queue {
                 continue;
               }
               if (blend?.subbeats && !this.subbeatsFitsPair(item,successor,blend.subbeats)) {
+                const transitionName = blend.subbeats.version === 2 ? 'Stem Beats' : 'Legacy V1 stem';
                 await subbeats.discardSubbeatsClips(blend);
                 blend = null;
-                this.log('mix','Sub/Beats fallback: the rendered handoff conflicts with the live queue boundary.',{subbeats:'fallback'});
+                this.log('mix',`${transitionName} fallback: the rendered handoff conflicts with the live queue boundary.`,{subbeats:'fallback'});
+              }
+              if (!blend && stemBeatsFirst) {
+                // The V2 attempt has released its extraction leases. Admit a
+                // complete Regular pair under its own gates and use only the
+                // remaining runway; never retry V2 for this queue occurrence.
+                this.stemBeatsDeclinedPairs.set(item, successor);
+                this.syncRegularStemPreparation(force);
+                const remaining = this.remainingUntilItemAirs(item);
+                if (!force && remaining != null && remaining > HARD_DEADLINE_SEC + 10
+                    && regularStemRuntime.pending(String(item.track.id), String(successor.track.id))) {
+                  if (previousPairCross == null) delete item.track.crossSec;else item.track.crossSec=previousPairCross;
+                  break;
+                }
               }
               if (!blend && adjacent()) blend = await this._renderBlend(
                 item.track,successor.track,this.remainingUntilItemAirs(item), {
@@ -2549,7 +2599,7 @@ class Queue {
                 successor.stemSeam = true;
                 successor.stemCueInSec = blend.inCueSec;
                 if (blend.subbeats) successor.subbeatsHandoff = blend.subbeats;
-                this.log('mix', `${blend.subbeats ? 'Sub/Beats' : 'stem blend'} armed: ${item.track.title} ✕ ${successor.track.title} (cut ${blend.outCueSec}s, cue-in ${blend.inCueSec}s, clip ${blend.clipSec}s)`);
+                this.log('mix', `${blend.subbeats ? blend.subbeats.version === 2 ? 'Stem Beats' : 'Legacy V1 stem' : 'Stem Blend'} armed: ${item.track.title} ✕ ${successor.track.title} (cut ${blend.outCueSec}s, cue-in ${blend.inCueSec}s, clip ${blend.clipSec}s)`);
                 if (previousBlend && previousBlend.clipPath !== blend.clipPath) {
                   await subbeats.discardSubbeatsClips(previousBlend);
                 }
@@ -2692,7 +2742,7 @@ class Queue {
               if (item.stemBlend && successor) successor.lengthPolicyCommitted = true;
               this._preparedBlends.delete(item);
               if (item.stemBlend?.subbeats) {
-                this.log('mix','Sub/Beats committed: outgoing source and linked head cues published.',
+                this.log('mix',`${item.stemBlend.subbeats.version === 2 ? 'Stem Beats' : 'Legacy V1 stem'} committed: outgoing source and linked head cues published.`,
                   {subbeats:'committed',transitionId:item.stemBlend.subbeats.transitionId});
                 this.persist();
               }
@@ -2774,7 +2824,7 @@ class Queue {
       if (this.pendingForceDrain) {
         this.pendingForceDrain = false;
         void this.drainToLiquidsoap(true);
-      }
+      } else notifyStemBeatsPickTimePriorityChanged();
     }
   }
 
@@ -4256,7 +4306,7 @@ class Queue {
         && Number.isFinite(entryMs) && entryMs > 0 && entryMs <= Date.now()
         ? new Date(entryMs).toISOString() : new Date().toISOString();
       this.current = { ...item, startedAt, source };
-      if (item.subbeatsHandoff) this.log('mix',`Sub/Beats incoming entry observed: ${item.track.title}`,
+      if (item.subbeatsHandoff) this.log('mix',`${item.subbeatsHandoff.version === 2 ? 'Stem Beats' : 'Legacy V1 stem'} incoming entry observed: ${item.track.title}`,
         {subbeats:'observed',transitionId:item.subbeatsHandoff.transitionId,style:item.subbeatsHandoff.mixStyle});
       // A timed-out intro pre-render is keyed by the queued item. The current
       // item is a spread clone, so carry the lifecycle across that identity
@@ -4375,9 +4425,13 @@ class Queue {
       transitionAsk,
       transitionDrops,
     });
-    // Airplay can select eligible Sub/Beats work, but all preparation remains
-    // in a later Library Demucs scan and never holds the now-playing watcher.
-    queueSubbeatsFromAirplay(this.current.track.id || null);
+    // First airplay queues V2 cue/grid preparation only. Stem extraction can
+    // happen on a later matching pick; the legacy comparison queue is untouched.
+    if (stemBeatsEnabled() && settings.get().transitions.stemsStyle === 'new-style') {
+      void queueAiredStemBeatsTrack(this.current.track.id || null).catch(error => {
+        this.log('warn', `Stem Beats airplay preparation skipped: ${String(error)}`);
+      });
+    }
 
     // `sourceTrackId` is the id from the music backend (Subsonic/Navidrome, or
     // whatever a router fronts), so a relay can resolve the exact library item
@@ -4704,7 +4758,7 @@ class Queue {
     if (this.pickerBusy || this.pickGateClosed()) return;
     if (!this.pairDrainActive()) return;
     const rem = this.remainingSecOnAir();
-    const leadSec = settings.get().transitions.subbeatsLive === true
+    const leadSec = stemBeatsEnabled()
       ? subbeats.subbeatsPickLeadSeconds(config.analyzer.renderTimeoutMs) : undefined;
     if (!shouldDeadlinePick(rem, leadSec)) return;
     // Attempt cooldown: the watcher tick re-enters every 1.5s for the whole
@@ -5769,7 +5823,8 @@ class Queue {
       // pair drain, cleared if the clip is pulled with a cancel, so it's
       // definitive, not a prediction; absent = plain crossfade.
       stemSeam: i.stemSeam || undefined,
-      subbeats: i.subbeatsHandoff ? true : undefined,
+      stemBeats: i.subbeatsHandoff?.version === 2 ? true : undefined,
+      subbeats: i.subbeatsHandoff?.version === 1 ? true : undefined,
     });
     // Running-order timing. `duration` is the playable span in seconds,
     // the same measure as /now-playing's; `airsAt` is the upcoming item's

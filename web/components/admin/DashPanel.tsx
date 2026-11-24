@@ -570,13 +570,10 @@ export default function DashPanel() {
                   {upcoming.slice(0, 8).map((t, i) => (
                     <QueueItem
                       key={`${t.subsonic_id ?? ''}:${i}`}
-                      title={t.stemCacheCoverage ? `Stem cache — Regular: ${[
+                      title={t.stemCacheCoverage ? `Pick-time readiness — Regular cached windows: ${[
                         t.stemCacheCoverage.regular.head ? 'head' : '',
                         t.stemCacheCoverage.regular.tail ? 'tail' : '',
-                      ].filter(Boolean).join(' + ') || 'none'}; Sub/Beats: ${[
-                        t.stemCacheCoverage.subbeats.head ? 'head' : '',
-                        t.stemCacheCoverage.subbeats.exit ? 'exit' : '',
-                      ].filter(Boolean).join(' + ') || 'none'}` : undefined}
+                      ].filter(Boolean).join(' + ') || 'none'}; Stem Beats prep: incoming ${t.stemCacheCoverage.stemBeats.incoming}, outgoing ${t.stemCacheCoverage.stemBeats.outgoing}` : undefined}
                       className="rounded-none border-b border-dashed border-separator-strong px-1.5 py-1.5 last:border-b-0 hover:bg-[var(--overlay)]"
                     >
                       <div className="flex items-center gap-2.5">
@@ -604,10 +601,12 @@ export default function DashPanel() {
                           </span>
                         ) : t.stemSeam ? (
                           <span
-                            title={t.subbeats ? 'Arrives via a rendered Sub/Beats transition' : 'Arrives via a rendered blend mixed from cached stems'}
+                            title={t.stemBeats ? 'Arrives via a rendered Stem Beats transition'
+                              : t.subbeats ? 'Arrives via a legacy V1 stem transition'
+                                : 'Arrives via a rendered blend mixed from cached stems'}
                             className="shrink-0 text-[8px] font-bold tracking-[0.14em] whitespace-nowrap text-vermilion/80 uppercase"
                           >
-                            {t.subbeats ? 'Sub/Beats' : 'Stem blend'}
+                            {t.stemBeats ? 'Stem Beats' : t.subbeats ? 'Legacy stems' : 'Stem Blend'}
                           </span>
                         ) : null}
                         {t.block && upcoming.findIndex(u => u.block?.id === t.block!.id) === i ? (

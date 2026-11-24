@@ -46,11 +46,15 @@ function playback(t = timing()): SubbeatsPlayback {
 
 test('live switch defaults off and survives a real cold load independently of Stem Blend', async () => {
   assert.equal((await coldLoadSettings({})).transitions.subbeatsLive,false);
+  const { stemBeatsEnabled } = await import('../src/broadcast/regular-stem-mode.js');
   await settings.update({transitions:{subbeatsLive:true,stemBlends:false}});
   const stored = JSON.parse(readFileSync(join(config.stateDir,'settings.json'),'utf8'));
   const restored = await coldLoadSettings(stored);
   assert.equal(restored.transitions.subbeatsLive,true);
   assert.equal(restored.transitions.stemBlends,false);
+  assert.equal(stemBeatsEnabled(),false,'the retained V1 switch does not activate in Legacy mode');
+  await settings.update({transitions:{stemsStyle:'new-style',newStyleStemBeats:true}});
+  assert.equal(stemBeatsEnabled(),true,'the New Style toggle controls Stem Beats');
   assert.equal((await coldLoadSettings({transitions:{subbeatsLive:'yes'}})).transitions.subbeatsLive,false);
 });
 
@@ -73,7 +77,7 @@ test('live successor picks reserve selection plus render time without extending 
     gate: queue.pickGateClosed, busy: queue.pickerBusy, last: queue._deadlinePickAt };
   const picked: unknown[] = [];
   try {
-    await settings.update({ transitions: { pairDrain: true, subbeatsLive: false },
+    await settings.update({ transitions: { pairDrain: true, stemsStyle: 'new-style', newStyleStemBeats: false },
       personas: settings.get().personas.map(p => ({ ...p, djMode: true })) });
     queue.current = { track: { id: 'air', duration: 300 }, startedAt: new Date(Date.now() - 120_000).toISOString(), source: 'ai' };
     const held: Item = { track: { id: 'held', duration: 300 }, sent: false };
@@ -82,7 +86,7 @@ test('live successor picks reserve selection plus render time without extending 
     queue.runPickCycle = opts => { picked.push(opts); };
     queue.maybeDeadlinePick();
     assert.equal(picked.length, 0, 'ordinary transitions keep the two-minute window');
-    await settings.update({ transitions: { subbeatsLive: true } });
+    await settings.update({ transitions: { stemsStyle: 'new-style', newStyleStemBeats: true } });
     queue.maybeDeadlinePick();
     assert.deepEqual(picked, [{ isAutonomous: true, pickAnchorItem: held }]);
     queue.maybeDeadlinePick();
@@ -248,7 +252,7 @@ test('live admission accepts speech but rejects changed evidence, reordered pair
   await library.load();
   const db = await import('../src/music/library-db.js');
   const { subbeatsPairSnapshot } = await import('../src/music/subbeats-pair.js');
-  await settings.update({transitions:{subbeatsLive:true,pairDrain:true},maxTrackSeconds:1200,
+  await settings.update({transitions:{stemsStyle:'new-style',newStyleStemBeats:true,pairDrain:true},maxTrackSeconds:1200,
     personas:settings.get().personas.map(p => ({...p,djMode:true}))});
   for (const id of ['out','in']) db.upsertTrackMeta(id,{title:id,artist:'Fixture',duration:300});
   const jobs = ['out','in'].map(id => ({id,title:id,artist:'Fixture',album:'',status:'prepared',attempts:1,
@@ -284,7 +288,7 @@ test('live admission accepts speech but rejects changed evidence, reordered pair
   }
   a.stemCueInSec=200;assert.equal(queue.subbeatsFitsPair(a,b,p),false,'a consecutive cut cannot precede the committed resume');delete a.stemCueInSec;
   await settings.update({maxTrackSeconds:120});assert.equal(queue.subbeatsFitsPair(a,b,p),false,'playback cap owns the ending');
-  await settings.update({maxTrackSeconds:1200,transitions:{subbeatsLive:false}});
+  await settings.update({maxTrackSeconds:1200,transitions:{stemsStyle:'new-style',newStyleStemBeats:false}});
   assert.equal(queue.subbeatsFitsPair(a,b,p),false,'switch-off revokes an unpublished proposal');
 });
 
@@ -323,7 +327,7 @@ test('a cold live renderer checks readiness for this pair, with bounded and canc
   const { createSubbeatsStore } = await import('../src/music/subbeats-store.js');
   const db = await import('../src/music/library-db.js');
   await library.load();
-  await settings.update({ transitions: { subbeatsLive: true, pairDrain: true }, loudness: { source: 'measured' },
+  await settings.update({ transitions: { stemsStyle: 'new-style', newStyleStemBeats: true, pairDrain: true }, loudness: { source: 'measured' },
     personas: settings.get().personas.map(persona => ({ ...persona, djMode: true })) });
   const store = createSubbeatsStore(root);
   store.cacheId();
@@ -384,6 +388,7 @@ test('a cold live renderer checks readiness for this pair, with bounded and canc
   }));
   const saved = { urls: config.analyzer.urls, python: config.analyzer.python };
   const logs: string[] = [];
+  const fallbackLog = () => logs.filter(message => /^(Sub\/Beats|Stem Beats) fallback:/.test(message)).at(-1) ?? '';
   const render = () => maybeRenderSubbeats({ id: 'ready-out', gainDb: 0 }, { id: 'ready-in', loudnessLufs: -14 }, 180,
     { valid: () => valid, log: message => { logs.push(message); } });
   try {
@@ -392,7 +397,7 @@ test('a cold live renderer checks readiness for this pair, with bounded and canc
     assert.equal(analyzer.subbeatsCapability(), null);
     assert.equal(await render(), null);
     assert.equal(posted, 1, 'the first cold pair reaches rendering instead of being sacrificed to warm-up');
-    assert.match(logs.at(-1)!, /Fixture reached the pair renderer/);
+    assert.match(fallbackLog(), /Fixture reached the pair renderer/);
     const { subbeatsPairSnapshot } = await import('../src/music/subbeats-pair.js');
     const beforeGridChange = subbeatsPairSnapshot('ready-out','ready-in').evidenceFingerprint;
     const originalHead = db.getTrack('ready-in')!;
@@ -404,7 +409,7 @@ test('a cold live renderer checks readiness for this pair, with bounded and canc
     db.upsertTrackAnalysis('ready-in',{...markers,gridProvenance:originalGrid});
     mode = 'unsupported'; analyzer._resetBackendCacheForTests();
     assert.equal(await render(), null); assert.equal(posted, 1);
-    assert.match(logs.at(-1)!, /readiness/);
+    assert.match(fallbackLog(), /readiness/);
     mode = 'slow'; analyzer._resetBackendCacheForTests();
     const cancelled = render(); await healthStarted.promise; valid = false;
     assert.equal(await cancelled, null); assert.equal(posted, 1, 'a changed pair cannot continue after its health check');
@@ -416,13 +421,13 @@ test('a cold live renderer checks readiness for this pair, with bounded and canc
     const startedAt = Date.now();
     assert.equal(await render(), null);
     assert.ok(Date.now() - startedAt < 6500, 'readiness cannot consume the full render budget');
-    assert.match(logs.at(-1)!, /readiness/); assert.equal(posted, 1);
+    assert.match(fallbackLog(), /readiness/); assert.equal(posted, 1);
     releaseHealth.resolve();
     await new Promise(resolve => setTimeout(resolve,50));
     mode='outside-grid'; analyzer._resetBackendCacheForTests();
     assert.equal(await render(),null);
     assert.equal(posted,2);
-    assert.match(logs.at(-1)!,/selected cues fall outside current role coverage/);
+    assert.match(fallbackLog(),/selected cues fall outside current role coverage/);
     assert.ok(returnedParts.every(file => !existsSync(file)),'a declined cue removes both owned handoff parts');
   } finally {
     releaseHealth.resolve(); http.server.closeAllConnections(); await http.close();

@@ -30,6 +30,14 @@ import {
 export const STEM_NAMES = ['drums', 'bass', 'other', 'vocals'] as const;
 export type StemWindow = 'head' | 'tail';
 
+// Feature-owned directories share this root but are not per-track stem cache
+// entries. Keep them out of every cache walk so sweeps and orphan cleanup can
+// never count or remove preparation data as if the folder name were a track id.
+const STEM_FEATURE_DIRS = new Set(['stemblends', 'stembeats']);
+export function isStemFeatureDir(name: string): boolean {
+  return STEM_FEATURE_DIRS.has(name);
+}
+
 // Pure path seam (scripts/stem-cache-root.test.ts). `relocated` (STEMS_DIR)
 // addresses the INSTALL, not the station, so a multi-station install keeps its
 // per-station segment under it — the cache is keyed by track id alone and a
@@ -334,7 +342,7 @@ export async function stemsRootStatus(opts: { prepare?: boolean; readOnly?: bool
   if (!markerPresent) {
     try {
       stemDirs = (await readdir(root, { withFileTypes: true }))
-        .filter(entry => entry.isDirectory() && !entry.name.startsWith('.')).length;
+        .filter(entry => entry.isDirectory() && !entry.name.startsWith('.') && !isStemFeatureDir(entry.name)).length;
     } catch { /* no root yet */ }
   }
   const action = stemsRootDecision({
@@ -476,7 +484,7 @@ async function scanDirs(): Promise<Array<{ dir: string; bytes: number; mtimeMs: 
   // in the eviction order (no library row) and let an over-budget sweep
   // rm -rf the whole quarantine past its grace, while freeing far more than
   // the sweep counted. stemsRootStatus skips them the same way.
-  entries = entries.filter(name => !name.startsWith('.'));
+  entries = entries.filter(name => !name.startsWith('.') && !isStemFeatureDir(name));
   await step('walk:listed');
   const measured = await mapPool(entries, SCAN_CONCURRENCY, name => measureDir(path.join(root, name)));
   return measured.filter((d): d is { dir: string; bytes: number; mtimeMs: number } => d !== null);
@@ -1221,7 +1229,7 @@ export async function cachedTrackIdSet(): Promise<Set<string>> {
   cacheWalks += 1;
   try {
     // Dot entries (the marker, the orphan quarantine) are not track ids.
-    return new Set((await readdir(stemsRoot())).filter(n => !n.startsWith('.')));
+    return new Set((await readdir(stemsRoot())).filter(n => !n.startsWith('.') && !isStemFeatureDir(n)));
   } catch {
     return new Set(); // no cache dir yet
   }

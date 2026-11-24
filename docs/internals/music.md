@@ -47,6 +47,77 @@ at incoming entry; source/tempo/loop timing maps queue clocks and lyric lines
 through the native resume. The station trial and wider mixed prepared/regular
 rollout remain outstanding; see the current integration checkpoint.
 
+Stem Beats V2 uses source-bound preparation cues to extract the selected pair's
+CPU windows before rendering. Its `start_ms`/`end_ms` transport fields retain
+fractional milliseconds representing exact 44.1 kHz sample positions. Planning
+uses the renderer's absolute-sample clock and Python's half-to-even rounding;
+extraction decodes from source zero and counts samples, publishes completion
+last, and rejects even a one-sample short window without padding. The renderer
+verifies those same endpoints and the complete source fingerprints. Whole
+milliseconds must not be used to floor or extend a recording's decoded end.
+
+Stem Beats priority defers Regular extraction without revoking its independent
+pair admission or retiring verified windows. Each queued V2 pair keeps its own
+deferral; the immediate pair also pauses new work in the Regular CPU lane.
+After a V2 refusal, that queue occurrence releases the deferral and never retries
+V2 on preparation wakeups. Regular can prepare its own pair within the existing
+handoff deadline, use verified Regular windows, or decline to ordinary crossfade.
+Force-send does not wait for or start new preparation. Jobs already running are
+not preempted; source/cache leases continue protecting their output. The 3% tempo,
+measured coverage, source identity and adjacency rules still apply independently.
+
+Queued Regular tracks have one complete-source grid owner. The generic
+pick-time upgrader handles tracks outside that ownership, and an in-flight
+generic refresh finishes before Regular takes over. An immediate V2 pair
+defers new grid jobs and new Regular separations; priority is checked again
+between source acquisition, head repair and tail measurement. Already-running
+requests remain non-preemptible. Force-send starts no new preparation.
+
+Regular extraction admits both usable windows together: nine actual markers
+must locate each eight-bar span, and the incoming decoded coverage must also
+fit the outgoing duration. A tail without its usable head is not scheduled.
+A current but short head grid can request a bounded 60–120 second grid-only
+measurement from source zero (`head_grid_seconds` on a complete-source,
+head-only request). Existing bar spacing sizes that measurement; it does not
+invent markers or shift an unusable intro. Full bounded coverage without nine
+markers declines without rescanning every tick. Head repair preserves saved
+BPM/key/levels and other musical metadata. Older analyzers that ignore the
+field fail the returned-coverage check; deploy controller and analyzer together.
+
+When both Stem Blends and Stem Beats are enabled, confirmed airplay queues
+eligible, unprepared recordings for V2 cue/grid analysis. Admission uses the
+same Dance Candidate genre and 90–180 BPM filter as library preparation.
+`onTrackStarted` does not wait for this work and no longer writes to the V1
+airplay queue. Pair-specific separation stays in the later pick-time path.
+
+Automatic jobs use ordinary V2 run files, grouped into an airplay-marked run
+rather than a file per play. The async startup index covers queued, running
+and terminal attempts as well as usable results. It prevents repeat jobs for
+current positive, no-cue and failed results; manual retry remains available.
+A changed recording byte count or algorithm can create fresh evidence while
+preserving the previous run. This is metadata-based invalidation; the renderer
+still verifies complete source hashes before using any prepared result.
+Preparation durations and run averages use the existing V2 timing fields.
+
+The queue supplies a live availability check to the automatic preparation
+owner. New work yields to the sender, immediate V2 pairs, shared grid refresh,
+Regular extraction, library scans, cache maintenance and quiet-only policy.
+Availability is checked again after downloading and before submitting cue
+analysis; a deferred source is cleaned up and its job remains queued. Running
+analyzer requests finish under the existing limits. Restart resumes persisted
+automatic jobs when allowed, while preserving operator-paused runs. Explicit
+library/comparison runs are not automatically resumed or replaced by airplay.
+
+Live render failures carry bounded reason codes (`window-coverage`,
+`source-mismatch`, `vocal-conflict`, `invalid-timing`, `busy`, `timeout`,
+`cancelled`, `render-failed`) through the sidecar or local process. Unknown
+codes and arbitrary exception text are not forwarded; streams can carry
+credentials. Process-group cancellation and cleanup apply to V2's
+`.stembeats-<transition-id>` scratch directory as well as V1's older prefix.
+See the [current handover](../plans/2026-11-20-stem-blends-subbeats-handover.md)
+for deployment and station-listening status; source changes alone do not
+establish that a running station has this behavior.
+
 **Agentic Musical Leanings.** Discovery and guard re-picks receive no persona
 preferences. A separate review keeps the discovered baseline by default. It can replace it
 only when a supported preference advantage genuinely

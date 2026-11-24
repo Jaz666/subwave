@@ -733,6 +733,10 @@ export const DEFAULTS = {
   },
   // Transition scheduling + stem-blend rendering (docs/stem-transitions-research.md).
   transitions: {
+    stemsEnabled: true,
+    stemsStyle: 'legacy',
+    newStyleStemBlends: false,
+    newStyleStemBeats: false,
     // Hold each queued pick unsent until its successor is known (or the on-air
     // track nears its end), so its exit stamps — adaptive crossfade length, and
     // stem-blend clips — can be sized for the actual pair (#749). Kill-switch: off

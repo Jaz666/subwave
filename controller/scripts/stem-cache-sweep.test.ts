@@ -118,6 +118,18 @@ async function main() {
     assert.deepEqual([...(await stemCache.cachedTrackIdSet())].sort(), ['mid', 'new']);
   });
 
+  await test('feature folders under the stems root are never counted or swept as tracks', async () => {
+    resetCache();
+    makeDir('track', 1024, 1);
+    const featureData = join(stemsRoot, 'stembeats', 'runs', 'run');
+    mkdirSync(featureData, { recursive: true });
+    writeFileSync(join(featureData, 'run.json'), 'keep');
+    forgetSnapshot();
+    assert.deepEqual([...(await stemCache.cachedTrackIdSet())], ['track']);
+    await stemCache.sweep(0);
+    assert.equal(readFileSync(join(featureData, 'run.json'), 'utf8'), 'keep');
+  });
+
   await test('a sweep whose walk overlapped another writer: a journaled change is re-measured, an unknown one leaves it stale', async () => {
     // The walk is minutes on a share. A purge or forgetStems that changed a
     // dir meanwhile may or may not be in what the walk counted. Before the

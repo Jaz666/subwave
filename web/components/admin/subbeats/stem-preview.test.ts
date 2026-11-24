@@ -116,6 +116,13 @@ test('predicted stem volumes follow each Sub/Beats style rather than a generic f
   assert.deepEqual(stemVolumes(native,'drums',7),{outgoing:1,incoming:.5},'native-tempo mixes recover the beat from their final bar');
 });
 
+test('V2 preview recovers its beat period from the sixteen-beat tempo release', () => {
+  const longBlend = {...transition,mixStyle:'long-blend' as const};
+  assert.equal(stemVolumes(longBlend,'drums',7.5).incoming,.75);
+  const v2 = {...longBlend,version:2 as const};
+  assert.equal(stemVolumes(v2,'drums',7.5).incoming,.5);
+});
+
 test('volume prediction includes terminal fades, station gain, and the end of playback', () => {
   assert.ok(Math.abs(stemVolumes(transition,'vocals',9.985).outgoing-.5)<1e-9);
   const gains: StemTransition = {...transition,gainsDb:[20*Math.log10(.5),20*Math.log10(.25)]};

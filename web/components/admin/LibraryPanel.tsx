@@ -63,10 +63,10 @@ function LibraryBody() {
     // grid-cols-1: the implicit `auto` track is sized by min-content, so a
     // doorway card's un-shrinkable copy blew the column past a phone viewport.
     <div className="grid grid-cols-1 gap-5">
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
-        <a href="/admin/library/subbeats" className="group flex min-w-0 items-center gap-3.5 border border-ink bg-bg p-3.5 transition-colors hover:bg-ink-soft">
+      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <a href="/admin/library/stems" className="group flex min-w-0 items-center gap-3.5 border border-ink bg-bg p-3.5 transition-colors hover:bg-ink-soft">
           <span className="grid size-9 flex-none place-items-center border border-ink bg-ink text-bg"><AudioLines size={18} /></span>
-          <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-ink">Sub/Beats</span><span className="block truncate text-xs text-muted">find driving tracks · queue deeper analysis</span></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-ink">Stems</span><span className="block truncate text-xs text-muted">beat-matched transitions · instrument blends</span></span>
           <ArrowRight className="size-4 flex-none text-muted group-hover:text-ink" />
         </a>
         <a
@@ -113,6 +113,9 @@ function LibraryBody() {
         logOpen={tag.logOpen}
         setLogOpen={tag.setLogOpen}
         onStart={tag.startTagger}
+        newStylePrepAvailable={tag.showStemBeatsPreparation}
+        legacyStemCacheAvailable={tag.showLegacyStemCache}
+        onStartStemBeatsPrep={tag.startStemBeatsLibraryPrep}
         onStop={tag.stopTagger}
         onRescan={tag.rescanTagger}
         onReconcile={tag.reconcile}

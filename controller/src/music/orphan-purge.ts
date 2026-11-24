@@ -229,7 +229,7 @@ async function readsAsStems(dir: string): Promise<boolean> {
  */
 async function walkCacheRoot(root: string, known: ReadonlySet<string>, now: number, inFlightMs: number, keepTrack = (id: string) => known.has(id)) {
   const names = (await readdir(root, { withFileTypes: true }))
-    .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+    .filter(e => e.isDirectory() && !e.name.startsWith('.') && !stemCache.isStemFeatureDir(e.name))
     .map(e => e.name);
   const kept = names.filter(name => keepTrack(name));
   const unknown = names.filter(name => !keepTrack(name));

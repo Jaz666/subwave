@@ -15,12 +15,14 @@ import { warnLimiter } from '../util/warn-limiter.js';
 import { describeFetchError, fetchWithTimeout } from '../util/fetch-timeout.js';
 import { envInt } from '../util/env.js';
 import { dirname, join } from 'node:path';
-import { subbeatsLiveRenderRequestSchema, subbeatsLiveRenderResultSchema } from '../schemas/subbeats.js';
+import { subbeatsLiveRenderRequestSchema, subbeatsLiveRenderResultSchema,
+  stemBeatsLiveRenderRequestSchema, stemBeatsLiveRenderResultSchema } from '../schemas/subbeats.js';
 import { stemBlendPreviewReportSchema, type stemBlendPreviewModeSchema } from '../schemas/stem-blend-preview.js';
 import { parseLoudnessCurve, type LoudnessCurve } from './loudness-curve.js';
 import { parseWholeLoudnessCurve, type WholeLoudnessCurve } from './whole-loudness-curve.js';
 import { getDb, trackFileSize } from './library-db.js';
 import { parseBeatGridProvenance, type BeatGridProvenance } from '../schemas/beat-grid.js';
+import { subbeatsPrepV2AnalyzerResultSchema } from '../schemas/subbeats-prep-v2-server.js';
 
 // A structural span over the track, in ms. Contiguous over the analysed
 // window; the first is the intro/leading section.
@@ -279,6 +281,7 @@ interface WorkerMessage {
   stem_blend_report?: unknown;
   subbeats_preview?: string;
   subbeats_timeline?: unknown;
+  subbeats_prep_v2_result?: unknown;
   id?: string;
   ok?: boolean;
   ready?: boolean;
@@ -312,6 +315,7 @@ interface WorkerMessage {
   decoded_duration_ms?: unknown;
   tail_window?: unknown;
   regular_stems_version?: number;
+  stembeats_stem_windows_version?: number;
   tail_curve_unavailable?: unknown;
   // Facet-shape answer.
   facets?: Record<string, { status?: string; reason?: string; data?: WorkerMessage }>;
@@ -349,6 +353,7 @@ interface WorkerMessage {
   tail_stems_landed?: boolean;
   text_embeddings?: unknown;
   regular_window?: unknown;
+  stembeats_window?: unknown;
   // render_transition op fields
   path?: string;
   blend_start_sec?: number;
@@ -356,7 +361,7 @@ interface WorkerMessage {
   clip_sec?: number;
 }
 
-type Pending = { resolve: (m: WorkerMessage) => void; reject: (e: Error) => void; timer: NodeJS.Timeout };
+type Pending = { resolve: (m: WorkerMessage) => void; reject: (e: Error) => void; timer: NodeJS.Timeout; cleanup?: () => void };
 
 let proc: ChildProcessWithoutNullStreams | null = null;
 let ready = false;
@@ -375,6 +380,7 @@ let _localFacetsCapable: boolean | null = null;
 let _localWholeFileCapable: boolean | null = null;
 let _localLoudnessCurveCapable: boolean | null = null;
 let _localRegularStems = false;
+let _localStemBeatsWindows = false;
 let _localSubbeatsSuitability = false;
 let _localSubbeatsShared = false;
 let _localSubbeatsCapable: boolean | null = null;
@@ -442,6 +448,7 @@ function startWorker(): Promise<void> {
           _localWholeFileCapable = typeof msg.whole_file_capable === 'boolean' ? msg.whole_file_capable : null;
           _localLoudnessCurveCapable = typeof msg.loudness_curve_capable === 'boolean' ? msg.loudness_curve_capable : null;
           _localRegularStems = msg.regular_stems_version === 2;
+          _localStemBeatsWindows = msg.stembeats_stem_windows_version === 1;
           _localSubbeatsShared = msg.subbeats_cache_version === 2;
           _localSubbeatsSuitability = msg.subbeats_suitability_version === 1;
           _localSubbeatsCapable = msg.subbeats_capable === true && _localSubbeatsShared && _localSubbeatsSuitability;
@@ -458,6 +465,7 @@ function startWorker(): Promise<void> {
         const waiter = pending.get(msg.id!);
         if (!waiter) continue;
         clearTimeout(waiter.timer);
+        waiter.cleanup?.();
         pending.delete(msg.id!);
         if (msg.ok) waiter.resolve(msg);
         else waiter.reject(new AnalyzerJobRejectedError(msg.error || 'analyze failed'));
@@ -470,7 +478,7 @@ function startWorker(): Promise<void> {
     p.on('exit', (code) => {
       ready = false; proc = null; booting = null;
       const err = new Error(`analyze worker exited (${code})`);
-      for (const { reject: rej, timer } of pending.values()) { clearTimeout(timer); rej(err); }
+      for (const { reject: rej, timer, cleanup } of pending.values()) { clearTimeout(timer); cleanup?.(); rej(err); }
       pending.clear();
     });
   });
@@ -563,14 +571,23 @@ function localRequest(req: ({ url: string } | { path: string }) & AnalyzeRequest
 }
 
 // The worker's raw answer (flat or facet shape), for the facet protocol.
-function localRequestRaw(req: object, timeoutMs = config.analyzer.requestTimeoutMs): Promise<WorkerMessage> {
+function localRequestRaw(req: object, timeoutMs = config.analyzer.requestTimeoutMs, signal?: AbortSignal): Promise<WorkerMessage> {
   const id = `a${++reqSeq}`;
   return new Promise<WorkerMessage>((resolve, reject) => {
+    if (signal?.aborted) { reject(new Error('analyze request cancelled')); return; }
     const timer = setTimeout(() => {
       pending.delete(id);
+      signal?.removeEventListener('abort', onAbort);
       reject(new Error('analyze request timed out'));
     }, timeoutMs);
-    pending.set(id, { resolve, reject, timer });
+    const onAbort = () => {
+      clearTimeout(timer);
+      pending.delete(id);
+      reject(new Error('analyze request cancelled'));
+    };
+    pending.set(id, { resolve, reject, timer, cleanup: () => signal?.removeEventListener('abort', onAbort) });
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) { onAbort(); return; }
     proc?.stdin.write(JSON.stringify({ id, ...req }) + '\n');
   });
 }
@@ -639,6 +656,7 @@ let _sidecarLoudnessCurveCapable: boolean | null = null;
 let _sidecarTailCurveCapable: boolean | null = null;
 let _sidecarWholeFileConcurrency: number | null = null;
 let _sidecarRegularStems = false;
+let _sidecarStemBeatsWindows = false;
 let _sidecarSubbeatsSuitability = false;
 let _sidecarSubbeatsShared = false;
 let _sidecarSubbeatsCapable: boolean | null = null;
@@ -647,6 +665,7 @@ let _sidecarSubbeatsCapable: boolean | null = null;
 let _sidecarConcurrency: number | null = null;
 // The CLAP TEXT tower (embed-text).
 let _sidecarTextCapable: boolean | null = null;
+let _sidecarModelsResident: boolean | null = null;
 // Why a capability is false, when the cause is a failed model load rather than
 // a lean build. Sourced from /health only: the sidecar remembers the failure
 // across its idle worker respawn, so a second write path could only disagree.
@@ -673,12 +692,14 @@ async function probeSidecar(url: string): Promise<boolean> {
       analyze_tail_loudness_curve_capable?: boolean | null;
       analyze_whole_file_concurrency?: number | null;
       analyze_regular_stems_version?: number | null;
+      analyze_stembeats_stem_windows_version?: number | null;
       analyze_subbeats_capable?: boolean | null;
       analyze_subbeats_cache_version?: number;
       analyze_subbeats_suitability_version?:number;
       analyze_concurrency?: number | null;
       analyze_audio_error?: string | null;
       analyze_vocal_error?: string | null;
+      analyze_models_resident?: boolean | null;
     };
     const reachable = !!body.ok && Array.isArray(body.engines) && body.engines.includes('analyze');
     if (reachable) {
@@ -693,6 +714,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       _sidecarWholeFileConcurrency = Number.isInteger(body.analyze_whole_file_concurrency) && (body.analyze_whole_file_concurrency as number) > 0
         ? (body.analyze_whole_file_concurrency as number) : null;
       _sidecarRegularStems = body.analyze_regular_stems_version === 2;
+      _sidecarStemBeatsWindows = body.analyze_stembeats_stem_windows_version === 1;
       _sidecarSubbeatsShared = body.analyze_subbeats_cache_version === 2;
       _sidecarSubbeatsSuitability = body.analyze_subbeats_suitability_version === 1;
       _sidecarSubbeatsCapable = body.analyze_subbeats_capable === true && _sidecarSubbeatsShared && _sidecarSubbeatsSuitability;
@@ -701,6 +723,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       _sidecarTextCapable = typeof body.analyze_text_capable === 'boolean' ? body.analyze_text_capable : null;
       _sidecarAudioError = typeof body.analyze_audio_error === 'string' ? body.analyze_audio_error : null;
       _sidecarVocalError = typeof body.analyze_vocal_error === 'string' ? body.analyze_vocal_error : null;
+      _sidecarModelsResident = typeof body.analyze_models_resident === 'boolean' ? body.analyze_models_resident : null;
     }
     return reachable;
   } catch {
@@ -1221,7 +1244,7 @@ function subsonicErrorMessage(body: string): string {
 // any error; the caller falls back to the url path for that one track.
 export async function downloadCapped(
   songId: string,
-  opts: { maxBytes?: number; timeoutMs?: number; destination?: string } = {},
+  opts: { maxBytes?: number; timeoutMs?: number; destination?: string; signal?: AbortSignal } = {},
 ): Promise<{ path: string; complete: boolean }> {
   const maxBytes = opts.maxBytes ?? ANALYZE_MAX_BYTES;
   if (opts.maxBytes !== undefined && (!Number.isSafeInteger(maxBytes) || maxBytes <= 0)) throw new Error('Invalid analysis download limit');
@@ -1230,11 +1253,12 @@ export async function downloadCapped(
   const url = subsonic.getRawStreamUrl(songId);
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), opts.timeoutMs ?? config.analyzer.requestTimeoutMs);
+  const signal = opts.signal ? AbortSignal.any([opts.signal, ac.signal]) : ac.signal;
   try {
     recordHttpAttempt('stream', 'analysis-download');
     const res = await fetch(url, {
       headers: { 'User-Agent': 'subwave-analyzer/1' },
-      signal: ac.signal,
+      signal,
     });
     if (!res.ok || !res.body) {
       throw new Error(`download ${res.status}: ${await res.text().catch(() => '')}`);
@@ -1260,7 +1284,7 @@ export async function downloadCapped(
         if (read >= maxBytes) return; // enough audio for the window
       }
     }
-    await pipeline(capped(), createWriteStream(dest));
+    await pipeline(capped(), createWriteStream(dest), { signal });
     if (read === 0) throw new Error('downloaded empty audio');
     // Backstop for the content-type guard: an envelope that slipped past the
     // headers is tiny and starts with '{' or '<'; real audio never does.
@@ -1418,12 +1442,14 @@ export type StemWindow = 'head' | 'tail';
 export interface FacetRequestOpts {
   stems_device?: 'cpu';
   regular_stem_window?: { version: 2; side: 'head' | 'tail'; start_ms: number; end_ms: number; key: string; source_sha256: string; source_bytes: number; model: string };
+  stembeats_window?: { version: 1; side: 'head' | 'tail'; start_ms: number; end_ms: number; key: string; source_sha256: string; source_bytes: number; model: string };
   facets: FacetName[];
   // Tail facet: place the window from the stored edges.
   tailWindow?: TailWindow | null;
   // Regular stems may need more measured bars than the legacy outro window.
   // Only the beat grid is widened; ending/level/vocal measurements stay put.
   tailGridSeconds?: number;
+  headGridSeconds?: number;
   // Tail facet also carries the outro's vocal ranges (Demucs on the tail only).
   tailVocals?: boolean;
   stems_dir?: string;
@@ -1438,6 +1464,7 @@ export interface FacetRequestOpts {
   // The request's deadline. Omitted, the pass's ANALYZE_REQUEST_TIMEOUT_MS. A
   // pick-time separation passes its own longer one (pick-stems-policy.ts).
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 // null = unknown (not probed / old backend). Callers use the facet protocol
@@ -1485,7 +1512,9 @@ async function facetRequest(
   body: Record<string, unknown>,
   deadlineMs?: number,
   strictDeadline = false,
+  signal?: AbortSignal,
 ): Promise<FacetAnalysis> {
+  signal?.throwIfAborted();
   const backend = await resolveBackend();
   if (!backend) throw new Error('no analysis backend available');
   const timeoutMs = strictDeadline ? deadlineMs ?? config.analyzer.requestTimeoutMs : analyzeRequestTimeoutMs(body, deadlineMs);
@@ -1498,12 +1527,13 @@ async function facetRequest(
       timeoutMs,
       bodyDeadline: true,
       retryStaleSocket: true,
+      signal,
     });
     if (!res.ok) return sidecarFailure(res);
     msg = (await res.json()) as WorkerMessage;
   } else {
     if (!ready) await startWorker();
-    msg = await localRequestRaw(body, timeoutMs);
+    msg = await localRequestRaw(body, timeoutMs, signal);
   }
   if (!msg.ok) throw new Error(msg.error || 'analysis failed');
   if (body.stems_device === 'cpu' && msg.source?.stems_device !== 'cpu') throw new Error('analyzer did not acknowledge CPU stem processing');
@@ -1516,6 +1546,17 @@ async function facetRequest(
         || !Number.isSafeInteger(evidence.samples) || evidence.samples <= 0
         || Math.abs(evidence.samples - Math.round((wanted.end_ms - wanted.start_ms) * 44.1)) > 2) {
       throw new Error('analyzer returned mismatched regular stem coverage');
+    }
+  }
+  if (body.stembeats_window) {
+    const wanted = body.stembeats_window as NonNullable<FacetRequestOpts['stembeats_window']>;
+    const evidence = msg.facets?.stems?.data?.stembeats_window as Record<string, unknown> | undefined;
+    if (msg.facets?.stems?.status !== 'ok' || !evidence || evidence.device !== 'cpu'
+        || Object.entries(wanted).some(([key, value]) => evidence[key] !== value)
+        || evidence.sample_rate !== 44100 || typeof evidence.samples !== 'number'
+        || !Number.isSafeInteger(evidence.samples) || evidence.samples <= 0
+        || evidence.samples !== Math.round(wanted.end_ms * 44.1) - Math.round(wanted.start_ms * 44.1)) {
+      throw new Error('analyzer returned mismatched Stem Beats window coverage');
     }
   }
   return parseFacetAnswer(msg);
@@ -1536,6 +1577,24 @@ export async function regularStemsAvailable(): Promise<boolean> {
   return false;
 }
 
+export async function stembeatsStemWindowsAvailable(): Promise<boolean> {
+  const backend = await resolveBackend();
+  if (backend === 'sidecar') {
+    if (!await sidecarReachable()) return false;
+    return _sidecarStemBeatsWindows;
+  }
+  if (backend === 'local') {
+    if (!ready) await startWorker();
+    return _localStemBeatsWindows;
+  }
+  return false;
+}
+
+export function stemBeatsModelResidency(): 'warm' | 'cold' | 'unknown' {
+  if (_backend !== 'sidecar' || _sidecarModelsResident == null) return 'unknown';
+  return _sidecarModelsResident ? 'warm' : 'cold';
+}
+
 // Facet request for one track. A pre-fetched `localPath` is preferred, with
 // the same url retry as the flat path when the sidecar can't see the
 // controller's staging dir. A stems target always travels with
@@ -1548,12 +1607,15 @@ export async function analyzeFacets(
 ): Promise<FacetAnalysis> {
   const body: Record<string, unknown> = {
     ...(opts.regular_stem_window ? { regular_stem_window: opts.regular_stem_window } : {}),
+    ...(opts.stembeats_window ? { stembeats_window: opts.stembeats_window } : {}),
     facets: opts.facets,
     ...(opts.stems_device ? { stems_device: opts.stems_device } : {}),
   };
   if (opts.regular_stem_window && !await regularStemsAvailable()) throw new Error('analyzer does not support regular stem windows version 2');
+  if (opts.stembeats_window && !await stembeatsStemWindowsAvailable()) throw new Error('analyzer does not support Stem Beats windows version 1');
   if (opts.tailVocals) body.tail_vocals = true;
   if (opts.tailGridSeconds != null) body.tail_grid_seconds = opts.tailGridSeconds;
+  if (opts.headGridSeconds != null) body.head_grid_seconds = opts.headGridSeconds;
   if (opts.tailWindow && usesTailWindow(opts.facets)) {
     body.tail_window = { end_ms: opts.tailWindow.endMs, duration_ms: opts.tailWindow.durationMs };
   }
@@ -1566,8 +1628,9 @@ export async function analyzeFacets(
     : {};
   const url = subsonic.getRawStreamUrl(songId);
   const timeoutMs = opts.timeoutMs; // undefined: facetRequest's default
-  if (!localPath && opts.localPathRequired) throw new Error('complete regular source path is required');
-  if (!localPath) return facetRequest({ url, ...body, ...stems }, timeoutMs);
+  const signal = opts.signal;
+  if (!localPath && opts.localPathRequired) throw new Error('a complete local source path is required');
+  if (!localPath) return facetRequest({ url, ...body, ...stems }, timeoutMs, false, signal);
   try {
     return await facetRequest({
       path: localPath,
@@ -1577,12 +1640,12 @@ export async function analyzeFacets(
       // known to be complete; the worker decides, never the sidecar.
       ...(readsStream(body) ? { stream_url: url } : {}),
       ...stems,
-    }, timeoutMs, opts.localPathRequired);
+    }, timeoutMs, opts.localPathRequired, signal);
   } catch (err) {
     if (!(err instanceof AnalyzerPathUnavailableError) || opts.regular_stem_window || opts.localPathRequired) throw err;
     // Same degrade as analyzePathWithUrlFallback: no stems without shared state.
     const facets = opts.facets.filter(f => f !== 'stems');
-    return facets.length ? facetRequest({ url, ...body, facets }, timeoutMs)
+    return facets.length ? facetRequest({ url, ...body, facets }, timeoutMs, false, signal)
       : { facets: {}, source: { kind: 'unknown', durationS: null, complete: null } };
   }
 }
@@ -1713,6 +1776,39 @@ export async function prepareSubbeats(path: string, stateDir: string, cacheId: s
   return {...result, addedBytes:cacheGrowth(answer)};
 }
 
+export async function prepareSubbeatsPrepV2(path: string, source: { sha256: string; bytes: number }, grid: unknown) {
+  const backend = await resolveBackend();
+  if (!backend) throw new Error('An analyzer is needed for V2 Sub/Beats preparation.');
+  const payload = {
+    path,
+    complete: true,
+    source_sha256: source.sha256,
+    source_bytes: source.bytes,
+    ...(grid == null ? {} : { grid }),
+  };
+  const timeoutMs = 30 * 60_000;
+  let answer: WorkerMessage;
+  if (backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/prepare-subbeats-v2`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeoutMs,
+      bodyDeadline: true, retryStaleSocket: true,
+    });
+    if (!response.ok) await sidecarFailure(response);
+    answer = await response.json() as WorkerMessage;
+  } else if (backend === 'local') {
+    if (!ready) await startWorker();
+    answer = await localRequestRaw({ op: 'prepare_subbeats_v2', ...payload }, timeoutMs);
+  } else {
+    throw new Error('The analyzer backend is unavailable for V2 Sub/Beats preparation.');
+  }
+  const result = subbeatsPrepV2AnalyzerResultSchema.parse(answer.subbeats_prep_v2_result);
+  if (result.source.sha256 !== source.sha256 || result.source.bytes !== source.bytes
+      || (result.grid && (result.grid.sourceSha256 !== source.sha256 || result.grid.sourceBytes !== source.bytes))) {
+    throw new Error('Analyzer returned a V2 grid for a different source recording.');
+  }
+  return result;
+}
+
 export function subbeatsCapability(): boolean | null {
   if (_backend === 'sidecar') return _sidecarSubbeatsCapable;
   if (_backend === 'local') return _localSubbeatsCapable;
@@ -1786,6 +1882,100 @@ export async function renderSubbeatsLive(
     if (_backend === 'local') await rm(join(request.stateDir,'transitions',`.subbeats-${request.transitionId}`), {recursive:true,force:true}).catch(() => {});
     if (!complete) await Promise.all(['out','in'].map(role =>
       rm(join(request.stateDir,'transitions',`subbeats-${request.transitionId}-${role}.wav`), {force:true}).catch(() => {})));
+  }
+}
+
+const stemBeatsRenderFailures: Record<string, string> = {
+  'window-coverage': 'extracted windows do not cover the handoff',
+  'source-mismatch': 'source recording differs from its preparation',
+  'vocal-conflict': 'measured vocals conflict at this handoff',
+  'invalid-timing': 'saved cues cannot form a supported handoff',
+  busy: 'renderer is already working',
+  timeout: 'handoff exceeded its time budget',
+  cancelled: 'handoff was cancelled',
+  unavailable: 'renderer endpoint is unavailable',
+  'render-failed': 'renderer failed without a recognized reason',
+};
+
+function stemBeatsRenderFailure(raw: unknown, status = 422): Error {
+  const body = raw as { detail?: { code?: unknown }; error?: { code?: unknown } } | null;
+  const reported = body?.detail?.code ?? body?.error?.code;
+  const code = typeof reported === 'string' && Object.hasOwn(stemBeatsRenderFailures, reported) ? reported
+    : status === 409 ? 'busy' : status === 408 ? 'timeout'
+      : status === 404 || status === 503 ? 'unavailable' : 'render-failed';
+  return new Error(`Stem Beats ${code}: ${stemBeatsRenderFailures[code]}.`);
+}
+
+/** Render using isolated V2 windows; the V1 live contract and storage are not consulted. */
+export async function renderStemBeatsLive(
+  input: ReturnType<typeof stemBeatsLiveRenderRequestSchema.parse>, signal: AbortSignal,
+) {
+  const request = stemBeatsLiveRenderRequestSchema.parse(input);
+  const timeoutMs = Math.min(120_000, request.deadlineMs - Date.now());
+  signal.throwIfAborted();
+  if (timeoutMs < 1 || !await stembeatsStemWindowsAvailable())
+    throw new Error('The Stem Beats live renderer is unavailable.');
+  let complete = false;
+  try {
+    let raw: unknown;
+    if (_backend === 'sidecar' && _sidecarBase) {
+      const response = await fetchWithTimeout(`${_sidecarBase}/render-stembeats-transition`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(request),
+        timeoutMs, bodyDeadline:true, signal,
+      });
+      if (!response.ok) throw stemBeatsRenderFailure(await response.json().catch(() => null), response.status);
+      raw = await response.json();
+    } else if (_backend === 'local') {
+      raw = await new Promise<unknown>((resolve, reject) => {
+        const child = spawn(config.analyzer.python, [join(dirname(config.analyzer.workerScript), 'subbeats_live.py')], {
+          detached:true, stdio:['pipe','pipe','ignore'],
+          env:{...process.env, OMP_NUM_THREADS:'1', OPENBLAS_NUM_THREADS:'1', NUMBA_NUM_THREADS:'1'},
+        });
+        let output = '', stopped = false;
+        const stop = () => { stopped = true; if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); } };
+        const timer = setTimeout(stop, timeoutMs);
+        signal.addEventListener('abort', stop, {once:true});
+        child.stdout.on('data', chunk => { output += chunk.toString(); if (Buffer.byteLength(output) > 128 * 1024) stop(); });
+        child.on('error', reject);
+        child.stdin.on('error', () => {});
+        child.on('close', code => {
+          clearTimeout(timer); signal.removeEventListener('abort', stop);
+          if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { /* group exited */ }
+          if (stopped) {
+            const reason = Buffer.byteLength(output) > 128 * 1024 ? 'render-failed'
+              : Date.now() >= request.deadlineMs ? 'timeout' : signal.aborted ? 'cancelled' : 'timeout';
+            reject(stemBeatsRenderFailure({error:{code:reason}}));
+          } else try {
+            const answer = JSON.parse(output.trim().split('\n').at(-1) ?? '');
+            if (code !== 0 || answer?.error) reject(stemBeatsRenderFailure(answer));
+            else resolve(answer);
+          } catch { reject(stemBeatsRenderFailure(null)); }
+        });
+        child.stdin.end(JSON.stringify(request) + '\n');
+        if (signal.aborted) stop();
+      });
+    } else throw new Error('The Stem Beats renderer is unavailable.');
+    signal.throwIfAborted();
+    const result = stemBeatsLiveRenderResultSchema.parse(raw);
+    if (result.transitionId !== request.transitionId || result.evidenceFingerprint !== request.evidenceFingerprint
+        || result.mixStyle !== request.mixStyle || Date.now() >= request.deadlineMs) {
+      throw new Error('The Stem Beats result is stale or belongs to another pair.');
+    }
+    const transitions = join(request.stateDir, 'transitions');
+    if (result.status === 'rendered' && (result.clipPath !== join(transitions, `subbeats-${request.transitionId}-in.wav`)
+        || (result.leadPath !== null && result.leadPath !== join(transitions, `subbeats-${request.transitionId}-out.wav`)))) {
+      throw new Error('The Stem Beats renderer returned an invalid clip path.');
+    }
+    complete = result.status === 'rendered';
+    return result;
+  } catch (error) {
+    if (Date.now() >= request.deadlineMs) throw stemBeatsRenderFailure({error:{code:'timeout'}});
+    if (signal.aborted) throw stemBeatsRenderFailure({error:{code:'cancelled'}});
+    throw error;
+  } finally {
+    if (_backend === 'local') await rm(join(request.stateDir, 'transitions', `.stembeats-${request.transitionId}`), {recursive:true,force:true}).catch(() => {});
+    if (!complete) await Promise.all(['out','in'].map(role =>
+      rm(join(request.stateDir, 'transitions', `subbeats-${request.transitionId}-${role}.wav`), {force:true}).catch(() => {})));
   }
 }
 
