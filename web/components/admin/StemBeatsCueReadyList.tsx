@@ -9,7 +9,7 @@ import { Thumb } from './library/bits';
 import { MixingDeskStatusIcon } from './subbeats/MixingDeskStatusIcon';
 
 const PAGE_SIZE = 50;
-type CueFilter = 'all' | 'incoming' | 'outgoing' | 'both';
+type CueFilter = 'all' | 'incoming' | 'outgoing' | 'both' | 'none';
 export type StemBeatsCandidate = { id: string; title: string; artist: string; album: string; scanned: boolean; incomingReady: boolean; outgoingReady: boolean };
 
 export default function StemBeatsCueReadyList({ tracks, loading, error, scanDisabled = false, adminFetch, onRunsChanged }: {
@@ -31,7 +31,7 @@ export default function StemBeatsCueReadyList({ tracks, loading, error, scanDisa
   const [feedback, setFeedback] = useState('');
   const [page, setPage] = useState(0);
   const compatible = useMemo(() => tracks.filter(item => item.incomingReady || item.outgoingReady
-    || (showUnscanned && !item.scanned)), [showUnscanned, tracks]);
+    || (cueFilter === 'none' && item.scanned) || (showUnscanned && !item.scanned)), [cueFilter, showUnscanned, tracks]);
   const filtered = useMemo(() => {
     const albumNeedle = album.trim().toLocaleLowerCase();
     const artistNeedle = artist.trim().toLocaleLowerCase();
@@ -43,7 +43,8 @@ export default function StemBeatsCueReadyList({ tracks, loading, error, scanDisa
       && (cueFilter === 'all'
         || (cueFilter === 'incoming' && item.incomingReady)
         || (cueFilter === 'outgoing' && item.outgoingReady)
-        || (cueFilter === 'both' && item.incomingReady && item.outgoingReady)));
+        || (cueFilter === 'both' && item.incomingReady && item.outgoingReady)
+        || (cueFilter === 'none' && item.scanned && !item.incomingReady && !item.outgoingReady)));
   }, [album, artist, compatible, cueFilter, track]);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -89,7 +90,7 @@ export default function StemBeatsCueReadyList({ tracks, loading, error, scanDisa
   return <section className="grid min-w-0 gap-3 border-t border-ink/20 pt-3" aria-labelledby="stem-beats-cue-ready">
     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h3 id="stem-beats-cue-ready" className="text-sm font-semibold">{showUnscanned ? 'Stem Beats tracks' : 'Cue-ready tracks'}</h3>
+        <h3 id="stem-beats-cue-ready" className="text-sm font-semibold">{showUnscanned || cueFilter === 'none' ? 'Stem Beats tracks' : 'Cue-ready tracks'}</h3>
         <span className="text-xs text-muted">{filtered.length.toLocaleString()} shown · {compatible.length.toLocaleString()} total</span>
       </div>
       <Button variant="outline" className="min-h-9" disabled={selected.size === 0 || scanBusy || scanDisabled} onClick={() => void scanSelection()}>
@@ -126,6 +127,7 @@ export default function StemBeatsCueReadyList({ tracks, loading, error, scanDisa
           <option value="incoming">Incoming cue</option>
           <option value="outgoing">Outgoing cue</option>
           <option value="both">Both cues</option>
+          <option value="none">No Cues</option>
         </select>
       </label>
     </div>
@@ -133,7 +135,9 @@ export default function StemBeatsCueReadyList({ tracks, loading, error, scanDisa
 
     {error && <p className="text-sm text-destructive" role="alert">Stem Beats preparation results are unavailable.</p>}
     {loading && compatible.length === 0 && <p className="text-sm text-muted" role="status">Loading cue-ready tracks…</p>}
-    {!loading && !error && compatible.length === 0 && <p className="text-sm text-muted">No cue-ready tracks yet. Prepare the library above, or show tracks not yet scanned.</p>}
+    {!loading && !error && compatible.length === 0 && <p className="text-sm text-muted">{cueFilter === 'none'
+      ? 'No scanned tracks without cues.'
+      : 'No cue-ready tracks yet. Prepare the library above, or show tracks not yet scanned.'}</p>}
     {!loading && !error && compatible.length > 0 && filtered.length === 0 && <p className="text-sm text-muted">No tracks match these filters.</p>}
     {feedback && <p className="text-xs text-muted" role="status">{feedback}</p>}
 
