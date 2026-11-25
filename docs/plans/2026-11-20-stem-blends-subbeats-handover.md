@@ -22,16 +22,19 @@ and Regular Stem coverage investigation below remain useful background.
 
 ### PR and working-copy state
 
-Draft [PR #10](https://github.com/Jaz666/subwave/pull/10) was updated on 25
-November. Its head is `eb8f769f02ea1e7344c851d9be54fc54b9e32bb8` on
-`feat/subbeats-draft`, based on the existing draft rather than a new PR. The
-new commits are:
+Draft [PR #10](https://github.com/Jaz666/subwave/pull/10) remains on
+`feat/subbeats-draft`; continue the existing draft rather than opening a new
+PR. The handover-only update was committed as `922b36c34`. The next follow-up
+adds focused New Style route coverage as `735104edc`. Query the PR for its
+current head before starting another update. Recent feature commits are:
 
 - `fde524803` — expose Stem Beats preparation stages/diagnostics and show
   pick-time extraction averages by Stem Blend and Stem Beats bar sizes.
 - `4ec3a32f3` — add the **No Cues** cue-role filter to the Stems page.
 - `eb8f769f0` — retire the old Sub/Beats route test file, whose assertions
   still targeted the removed V1 endpoints.
+- `735104edc` — cover New Style route authentication, candidate reads,
+  selected-run creation/progress/pause, metrics, and invalid selections.
 
 The old attached development worktree at
 `/home/jaz666/codex/pr10-integration-20261118` is still on `58a59a803` and has
@@ -52,33 +55,41 @@ until the owner later explicitly asked to update PR #10.
 
 ### Latest verification and known gap
 
-On the clean PR update worktree, the focused V2 prep-store tests passed (9/9),
-the extraction-metrics tests passed (2/2), and controller and web TypeScript
-typechecks passed. The host Python environment lacks NumPy, so the analyzer
-prep Python unit test was not runnable there. The old route test suite was
-removed because 23 of its 26 tests exercised V1 routes that are intentionally
-gone. This leaves a route-level coverage gap for the remaining New Style
-endpoints; consider adding focused tests for authentication, candidate listing,
-run creation/progress, and pause/retry behavior without reviving V1 APIs.
+On the clean PR worktree, the V2 prep-store tests passed (9/9),
+extraction-metrics tests passed (2/2), the new New Style route tests passed
+(4/4), and controller and web TypeScript typechecks passed. The host Python
+environment lacks NumPy, so the analyzer prep Python unit test was not runnable
+there. The old route suite was retired because 23 of 26 assertions exercised
+V1 endpoints that are intentionally gone. The replacement covers auth,
+candidates, selected-run creation/progress/pause, metrics, and invalid
+selections; retry-failed and full library-scan route behavior remain uncovered.
 
-All Compose services were reported running on 25 November, but the `latest`
-image tags do not identify the exact source revisions in those containers.
-The station source is committed through `107e4746e`; verify the deployed web
-image and Stems page behavior on the station before relying on the latest
-filter or reporting UI as confirmed. In particular, smoke-test the cue-role
-filter's **No Cues** option, the run-stage readout and extraction metrics, and
-check that the previous panel error (`B.counts is undefined`) stays fixed.
-Do not infer on-air behavior from UI checks.
+Live station checks on 25 November:
+
+- Controller container ID `2a6c501a09c3`, image digest
+  `sha256:3a9d72160f218e2faa5bf6ff01c133fffdb38e6cc266ba736341fe8d0617eb26`;
+  its in-container `GET /health` returned `200 {"status":"on-air"}`.
+- Web container ID `a0384879483e`, image digest
+  `sha256:f250d90ffa147e0abe59e3cca3f329260ca39e5cf7736e2c49c5d79eb5c0e443`.
+  `GET /admin/library/stems` returned HTTP 200 and its loaded page chunks
+  contain “No Cues”, “Cue role”, “Pick-time extraction”, and the prep-stage
+  label. This confirms those assets are served; no browser-control tool was
+  available to test actual clicks or visually inspect the rendered panel, so
+  the `B.counts is undefined` fix still needs an interactive check.
+- All Compose services were running. Image tags are `latest`; the digests do
+  not identify the exact source revision. Station source is committed through
+  `107e4746e` and has extensive uncommitted work. No new transition was heard
+  or assessed as part of these UI/API checks.
 
 ### Suggested next actions for the new chat
 
 1. Read this section and check the current PR head and station status before
    editing. Preserve the dirty station and development trees.
-2. Confirm the running web/controller image IDs and smoke-test the updated
-   Stems page on the station. If a suitable cue-less candidate exists, verify
-   **No Cues** returns it and that the other cue-role filters still work.
-3. Add focused New Style route tests to replace the retired V1 route suite,
-   then run them with the V2 store/metrics tests and controller/web typechecks.
+2. When browser access is available, interactively smoke-test the Stems page:
+   verify **No Cues** returns cue-less tracks, other cue-role filters still
+   work, run stages/metrics render, and the old `B.counts` panel error is gone.
+3. Consider adding coverage for retry-failed and full library-scan route
+   behavior; the current route tests cover selected preparation and pause.
 4. Review the uncommitted GPU/provider and Pick-Time changes separately. Only
    after identifying their dependencies and station evidence should the owner
    decide which completed changes belong in PR #10.
