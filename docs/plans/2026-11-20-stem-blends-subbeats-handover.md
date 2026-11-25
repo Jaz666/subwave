@@ -24,9 +24,10 @@ and Regular Stem coverage investigation below remain useful background.
 
 Draft [PR #10](https://github.com/Jaz666/subwave/pull/10) remains on
 `feat/subbeats-draft`; continue the existing draft rather than opening a new
-PR. The handover-only update was committed as `922b36c34`. The next follow-up
-adds focused New Style route coverage as `735104edc`. Query the PR for its
-current head before starting another update. Recent feature commits are:
+PR. After the handover-only update (`922b36c34`), this follow-up added focused
+New Style route coverage (`735104edc`) and recorded the live checks
+(`77597132b`). Query the PR for its current head before starting another
+update. Recent feature commits are:
 
 - `fde524803` — expose Stem Beats preparation stages/diagnostics and show
   pick-time extraction averages by Stem Blend and Stem Beats bar sizes.
@@ -56,13 +57,13 @@ until the owner later explicitly asked to update PR #10.
 ### Latest verification and known gap
 
 On the clean PR worktree, the V2 prep-store tests passed (9/9),
-extraction-metrics tests passed (2/2), the new New Style route tests passed
-(4/4), and controller and web TypeScript typechecks passed. The host Python
-environment lacks NumPy, so the analyzer prep Python unit test was not runnable
-there. The old route suite was retired because 23 of 26 assertions exercised
-V1 endpoints that are intentionally gone. The replacement covers auth,
-candidates, selected-run creation/progress/pause, metrics, and invalid
-selections; retry-failed and full library-scan route behavior remain uncovered.
+extraction-metrics tests passed (2/2), New Style route tests passed (4/4), and
+controller and web TypeScript typechecks passed. The host Python environment
+lacks NumPy, so the analyzer prep Python unit test was not runnable there. The
+old route suite was retired because 23 of 26 assertions exercised V1 endpoints
+that are intentionally gone. The replacement covers auth, candidates,
+selected-run creation/progress/pause, metrics, and invalid selections;
+retry-failed and full library-scan route behavior remain uncovered.
 
 Live station checks on 25 November:
 
@@ -81,6 +82,46 @@ Live station checks on 25 November:
   `107e4746e` and has extensive uncommitted work. No new transition was heard
   or assessed as part of these UI/API checks.
 
+### GPU and Pick-Time evidence from this continuation
+
+The live controller's effective settings were read without exposing other
+settings: Stems enabled, New Style selected, Stem Blend and Stem Beats enabled,
+pair drain enabled, and `pickTimeDevice: gpu`. The analyzer container is
+`sub-wave-analyzer` (`ghcr.io/perminder-klair/subwave-analyzer-cuda:latest`),
+ID `509e02b20e63`, image digest
+`sha256:6196537aa17f5dadec2ad3abf1f45327a2ca8ef1afb1baa6467e6d8679f1b8a7`.
+Its ready log reports `regular_stems_version: 2`,
+`stembeats_stem_windows_version: 1`, and shared beat-grid support.
+
+The newest library preparation run was
+`31481bd5-047a-4bbd-b02f-6209a4c35d8b`, created at 11:46 UTC: 97 complete,
+three failed, none queued or running. Of the 87 completed jobs carrying current
+diagnostics, all report `gridDevice: gpu`; their mean decode, grid, cue-fit,
+and total analyzer times are 625 ms, 524 ms, 123 ms, and 21.1 s respectively.
+Ten other completed jobs have no diagnostics, so do not include them in those
+device/timing counts. The three failures are two recordings over the analyzer's
+20-minute complete-recording limit (`mesh cinereaL` — Autechre; `Delicacies
+Mix` — Simian Mobile Disco) and one Beat This downbeat-subset rejection
+(`Advert` — Bass Communion). These failures are recorded evidence, not a reason
+to expand the eligibility algorithm during this pass.
+
+This is evidence that the grid request selected the CUDA provider for those 87
+jobs; it is not a measurement of sustained GPU utilization. The analyzer logs
+still contain the CUDA `Memcpy nodes` warning, which alone neither proves GPU
+utilization nor means the request fell back to CPU. A separate eight-hour log
+inspection found successful shared-grid upgrades, but the observed Stem Beats
+pair attempts mostly exited immediately with `outgoing tail unavailable:
+not-prepared`, before stem extraction. Capture GPU utilization and an actual
+eligible prepared pair on a later run before concluding the pick-time Demucs
+GPU path or on-air render has been verified.
+
+Read-only review shows `pickTimeDevice` is passed to shared-grid refresh,
+Regular Stem Blend window extraction, and Stem Beats window extraction. The
+GPU/provider and Pick-Time edits are still uncommitted in the station checkout;
+they were not copied into PR #10 in this continuation. Their analyzer protocol
+changes and wider queue/runtime diff still need a scoped review and targeted
+verification before selection for the PR.
+
 ### Suggested next actions for the new chat
 
 1. Read this section and check the current PR head and station status before
@@ -90,10 +131,13 @@ Live station checks on 25 November:
    work, run stages/metrics render, and the old `B.counts` panel error is gone.
 3. Consider adding coverage for retry-failed and full library-scan route
    behavior; the current route tests cover selected preparation and pause.
-4. Review the uncommitted GPU/provider and Pick-Time changes separately. Only
+4. Measure GPU utilization during a preparation/pick-time task and test a
+   genuinely V2-ready pair; current logs mostly show `not-prepared` exits.
+   Keep the CUDA memcpy warning separate from device-selection evidence.
+5. Review the uncommitted GPU/provider and Pick-Time changes separately. Only
    after identifying their dependencies and station evidence should the owner
    decide which completed changes belong in PR #10.
-5. Continue observing actual Stem Beats and Regular Stem Blend transitions
+6. Continue observing actual Stem Beats and Regular Stem Blend transitions
    before changing timing, gates, or extraction budgets.
 
 The detailed 24 November checkpoint and earlier dated investigations follow.
