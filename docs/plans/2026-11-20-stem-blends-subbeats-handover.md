@@ -1,12 +1,95 @@
 # Stem Blends and Sub/Beats handover
 
-Updated: 24 November 2026. Start with the current checkpoint and action plan
-below. The dated investigation history follows it. Earlier shared work is in
-[draft PR #10](https://github.com/Jaz666/subwave/pull/10); the latest V2 and
-station-testing changes are uncommitted and must stay off that PR until the
-newly deployed behavior is confirmed on-air.
+Updated: 25 November 2026. Start with the fresh-session handover below; older
+dated checkpoints remain as historical investigation notes.
 
-## Current checkpoint — 24 November 2026
+## Fresh-session handover — 25 November 2026
+
+### Goal and guardrails
+
+Continue the opt-in **New Style Stems** work: prepare Stem Beats evidence in
+advance, then extract stems only when a suitable pair is picked. Vanilla
+behavior remains available as **Legacy Stems**. Preserve that separation and
+do not reintroduce the retired V1 Sub/Beats picker, queue, or renderer. The
+V1 data backup was for comparison; its old runtime behavior is not part of the
+current feature. Keep Regular Stem Blend admission independent, followed by
+the ordinary transition when neither stems path succeeds.
+
+The station has previously produced stable Stem Beats and Regular Stem Blend
+transitions. Do not alter timing or eligibility based on speculation; new
+audible issues require a measured example. The historical beat-alignment note
+and Regular Stem coverage investigation below remain useful background.
+
+### PR and working-copy state
+
+Draft [PR #10](https://github.com/Jaz666/subwave/pull/10) was updated on 25
+November. Its head is `eb8f769f02ea1e7344c851d9be54fc54b9e32bb8` on
+`feat/subbeats-draft`, based on the existing draft rather than a new PR. The
+new commits are:
+
+- `fde524803` — expose Stem Beats preparation stages/diagnostics and show
+  pick-time extraction averages by Stem Blend and Stem Beats bar sizes.
+- `4ec3a32f3` — add the **No Cues** cue-role filter to the Stems page.
+- `eb8f769f0` — retire the old Sub/Beats route test file, whose assertions
+  still targeted the removed V1 endpoints.
+
+The old attached development worktree at
+`/home/jaz666/codex/pr10-integration-20261118` is still on `58a59a803` and has
+substantial uncommitted changes. Preserve them. Do not push from that stale,
+dirty worktree or copy its entire diff into the PR. A separate clean worktree
+was used to update the PR head safely. The station checkout is
+`/home/jaz666/Docker/subwave`, branch
+`test-station/ordered-pr-union-20261118`, with committed HEAD
+`107e4746e` (`feat(stems): filter tracks without cues`). It also has extensive
+uncommitted station work. Keep those edits intact and inspect diffs before
+selecting any further changes for the PR.
+
+The PR currently includes the three commits above; it does **not** include the
+whole uncommitted GPU/provider investigation and pick-time work present in the
+station and development checkouts. Treat those as separate work until reviewed
+and verified. The earlier instruction to keep work off the PR was followed
+until the owner later explicitly asked to update PR #10.
+
+### Latest verification and known gap
+
+On the clean PR update worktree, the focused V2 prep-store tests passed (9/9),
+the extraction-metrics tests passed (2/2), and controller and web TypeScript
+typechecks passed. The host Python environment lacks NumPy, so the analyzer
+prep Python unit test was not runnable there. The old route test suite was
+removed because 23 of its 26 tests exercised V1 routes that are intentionally
+gone. This leaves a route-level coverage gap for the remaining New Style
+endpoints; consider adding focused tests for authentication, candidate listing,
+run creation/progress, and pause/retry behavior without reviving V1 APIs.
+
+All Compose services were reported running on 25 November, but the `latest`
+image tags do not identify the exact source revisions in those containers.
+The station source is committed through `107e4746e`; verify the deployed web
+image and Stems page behavior on the station before relying on the latest
+filter or reporting UI as confirmed. In particular, smoke-test the cue-role
+filter's **No Cues** option, the run-stage readout and extraction metrics, and
+check that the previous panel error (`B.counts is undefined`) stays fixed.
+Do not infer on-air behavior from UI checks.
+
+### Suggested next actions for the new chat
+
+1. Read this section and check the current PR head and station status before
+   editing. Preserve the dirty station and development trees.
+2. Confirm the running web/controller image IDs and smoke-test the updated
+   Stems page on the station. If a suitable cue-less candidate exists, verify
+   **No Cues** returns it and that the other cue-role filters still work.
+3. Add focused New Style route tests to replace the retired V1 route suite,
+   then run them with the V2 store/metrics tests and controller/web typechecks.
+4. Review the uncommitted GPU/provider and Pick-Time changes separately. Only
+   after identifying their dependencies and station evidence should the owner
+   decide which completed changes belong in PR #10.
+5. Continue observing actual Stem Beats and Regular Stem Blend transitions
+   before changing timing, gates, or extraction budgets.
+
+The detailed 24 November checkpoint and earlier dated investigations follow.
+They are historical context; use this 25 November section for current branch,
+PR, and verification status.
+
+## Historical checkpoint — 24 November 2026
 
 The owner reports stable station playback of **both Stem Beats and Regular
 Stem Blend transitions** following the 23 November deployments. Record this
@@ -143,7 +226,7 @@ algorithm 4. The deployment preserved the V2-only wrapper, 16-beat release,
 previews, Sleeve Notes, Sub/Flow, Sub/Shows and controller-stall work. No
 analyzer implementation or render policy changed.
 
-## Current checkpoint and action plan — 23 November 2026
+## Historical checkpoint and action plan — 23 November 2026
 
 ### Scope, locations and owner decisions
 
