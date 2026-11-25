@@ -75,10 +75,10 @@ def mixing_windows(analysis):
     return {'version':1, 'incoming':windows[:8], 'outgoing':outgoing[-8:][::-1]}
 
 
-def analyze(path, stage, librosa, preferred_bpm=None):
+def analyze(path, stage, librosa, preferred_bpm=None, *, audio=None):
     import numpy as np
     from scipy import ndimage
-    y = decode(path, SR, 1)[0]
+    y = decode(path, SR, 1)[0] if audio is None else audio
     duration = len(y) / SR
     percussive = librosa.effects.percussive(y, margin=3, hop_length=HOP)
     env = librosa.onset.onset_strength(y=percussive, sr=SR, hop_length=HOP)

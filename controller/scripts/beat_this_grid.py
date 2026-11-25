@@ -1,8 +1,10 @@
 """Beat This! ONNX inference shared by window and full-recording callers.
 
-No worker settings, model lifetime, fallbacks or torch imports live here. Callers
-choose their own failure policy. Preprocessing and postprocessing mirror the
-pinned beat_this 1.1.0 pipeline; tools/beat-this/parity.py checks that contract.
+The worker chooses model lifetime and failure policy. Provider selection uses
+ANALYZE_DEVICE for Auto. CUDA builds load PyTorch first so its bundled CUDA
+libraries are available when ONNX Runtime imports. Preprocessing and
+postprocessing mirror the pinned beat_this 1.1.0 pipeline;
+tools/beat-this/parity.py checks that contract.
 """
 import hashlib
 import math
@@ -103,15 +105,31 @@ def bt_beats_downbeats(beat_logits, down_logits):
 
 
 class DownbeatTracker:
-    def __init__(self, model_path, threads):
+    def __init__(self, model_path, threads, device="auto"):
         self.model_path = model_path
         self.threads = threads
+        self.device = device
         self.session = None
         self.input_name = None
         self._fb = None
         self.model_sha256 = None
+        self.provider_fallback_reason = None
 
     def load(self):
+        # The CUDA wheel's Python extension links libcudart and cuDNN during
+        # import, before ONNX Runtime's preload_dlls helper can be called.
+        # CUDA analyzer images include PyTorch, which loads those bundled
+        # libraries before ORT. CPU-only images install the CPU ORT package and
+        # never import torch here.
+        from importlib import metadata
+        try:
+            metadata.version("onnxruntime-gpu")
+        except metadata.PackageNotFoundError:
+            pass
+        else:
+            import torch
+            torch.cuda.is_available()
+
         import onnxruntime as ort
 
         if not os.path.isfile(self.model_path):
@@ -121,9 +139,38 @@ class DownbeatTracker:
         so = ort.SessionOptions()
         so.intra_op_num_threads = self.threads
         so.inter_op_num_threads = 1
-        self.session = ort.InferenceSession(
-            self.model_path, so, providers=["CPUExecutionProvider"]
-        )
+        available = ort.get_available_providers()
+        configured = os.environ.get("ANALYZE_DEVICE", "auto").strip().lower()
+        if configured not in ("auto", "cpu", "cuda"):
+            configured = "auto"
+        if self.device == "cpu" or (self.device == "auto" and configured == "cpu"):
+            providers = ["CPUExecutionProvider"]
+        elif self.device == "gpu":
+            if "CUDAExecutionProvider" not in available:
+                raise RuntimeError("CUDAExecutionProvider is not available")
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        else:
+            providers = (["CUDAExecutionProvider", "CPUExecutionProvider"]
+                         if "CUDAExecutionProvider" in available else ["CPUExecutionProvider"])
+        try:
+            # CUDA builds of ONNX Runtime can use the CUDA/cuDNN libraries
+            # shipped in the CUDA PyTorch wheels. ORT 1.21+ exposes this helper;
+            # older compatible builds already find the system/runtime libs.
+            preload = getattr(ort, "preload_dlls", None)
+            if providers[0] == "CUDAExecutionProvider" and callable(preload):
+                preload()
+            self.session = ort.InferenceSession(self.model_path, so, providers=providers)
+        except Exception as exc:
+            if self.device != "auto" or providers == ["CPUExecutionProvider"]:
+                raise
+            self.provider_fallback_reason = str(exc)
+            # Auto mode should use the CPU build when a CUDA provider is
+            # installed but cannot initialize on this host.
+            self.session = ort.InferenceSession(
+                self.model_path, so, providers=["CPUExecutionProvider"]
+            )
+        active = self.session.get_providers()
+        self.device = "gpu" if "CUDAExecutionProvider" in active else "cpu"
         self.input_name = self.session.get_inputs()[0].name
 
     def logmel(self, y, librosa):

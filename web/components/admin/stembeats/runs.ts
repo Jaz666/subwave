@@ -11,6 +11,12 @@ export type StemBeatsJob = {
   album: string;
   status: string;
   source: { sha256: string; bytes: number; durationSeconds: number } | null;
+  diagnostics?: {
+    gridSource: 'cached' | 'computed';
+    gridDevice: string;
+    stageTimingsMs: { decodeMs: number; gridMs: number; cueFitMs: number; incomingFallbackMs: number; totalAnalyzerMs: number };
+    incomingFallbackUsed: boolean;
+  };
   roles: { incoming: StemBeatsCueRole; outgoing: StemBeatsCueRole };
 };
 
@@ -19,15 +25,29 @@ export type StemBeatsRun = {
   createdAt: string;
   status: 'queued' | 'running' | 'complete' | 'paused' | 'failed';
   scope?: string;
-  algorithmVersion: number;
   airplay?: boolean;
   waitingForPickTime?: boolean;
   waitingReason?: 'pick-time' | 'automatic-preparation' | null;
-  currentJob?: { title: string; artist: string; status: string } | null;
+  active?: boolean;
+  currentJob?: { title: string; artist: string; status: string; stage?: 'downloading' | 'analyzing' | 'saving' | null } | null;
+  algorithmVersion: number;
   jobs?: StemBeatsJob[];
   total?: number;
   counts?: { queued?: number; running?: number; complete: number; failed: number; sourceChanged: number; incomingReady: number; outgoingReady: number };
-  timing?: { averagePrepMs?: number | null };
+  timing?: {
+    averagePrepMs?: number | null;
+    measuredJobs?: number;
+    computedGridJobs?: number;
+    selectedGpuGridJobs?: number;
+    selectedCpuGridJobs?: number;
+    incomingFallbackJobs?: number;
+    averageDecodeMs?: number | null;
+    averageGridMs?: number | null;
+    averageCueFitMs?: number | null;
+    averageIncomingFallbackMs?: number | null;
+    averageAnalyzerMs?: number | null;
+  };
+  events?: { at: string; kind: 'info' | 'success' | 'warning' | 'error'; text: string }[];
 };
 
 export const stemBeatsRunsKey = ['library', 'stembeats', 'runs'] as const;

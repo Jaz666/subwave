@@ -10,7 +10,6 @@ import * as db from './library-db.js';
 import { createSubbeatsPrepV2Store } from './subbeats-prep-v2-store.js';
 import { bulkPassRunning } from './tagger-lock.js';
 import { tagger } from '../broadcast/tagger.js';
-import { subbeatsRemovalRunning } from './subbeats-removal.js';
 import * as stemCache from './stem-cache.js';
 import * as settings from '../settings.js';
 import { stemBeatsEnabled } from '../broadcast/regular-stem-mode.js';
@@ -47,6 +46,7 @@ function storedGrid(runId: string, job: SubbeatsPrepV2Job, source: { sha256: str
 
 async function processJob(runId: string, job: SubbeatsPrepV2Job,
   shouldContinue: () => boolean = () => true): Promise<boolean> {
+  const label = `${job.title}${job.artist ? ` — ${job.artist}` : ''}`;
   const bytes = db.trackFileSize(job.id);
   if (!Number.isSafeInteger(bytes) || !bytes || bytes < 1) throw new Error('The complete recording size is unavailable.');
   if (job.expectedSourceBytes != null && bytes !== job.expectedSourceBytes)
@@ -62,6 +62,7 @@ async function processJob(runId: string, job: SubbeatsPrepV2Job,
   await chmod(tempDir, 0o755);
   const sourcePath = join(tempDir, 'source.audio');
   try {
+    store.setStage(runId, job.id, 'downloading');
     const downloaded = await analyzer.downloadCapped(job.id, {
       maxBytes: bytes + 1,
       timeoutMs: Math.max(config.analyzer.requestTimeoutMs, config.analyzer.wholeFileTimeoutMs),
@@ -77,8 +78,11 @@ async function processJob(runId: string, job: SubbeatsPrepV2Job,
     // A pick may have arrived during the download. Cue analysis must yield
     // before its next expensive request; already-running requests finish.
     if (!shouldContinue()) return false;
+    store.addEvent(runId, 'info', `Measuring Stem Beats cues for ${label}.`);
+    store.setStage(runId, job.id, 'analyzing');
     const result = await analyzer.prepareSubbeatsPrepV2(sourcePath, source, storedGrid(runId, job, source));
     if (db.trackFileSize(job.id) !== bytes) throw new Error('The library recording changed during V2 preparation.');
+    store.setStage(runId, job.id, 'saving');
     const gridKeys: Partial<Record<'incoming' | 'outgoing', string>> = {};
     if (result.grid) {
       const beatIntervals = result.grid.beatsSeconds.slice(1).map((at, index) => at - result.grid!.beatsSeconds[index]!)
@@ -111,7 +115,11 @@ async function processJob(runId: string, job: SubbeatsPrepV2Job,
       job.roles[role].status !== 'pending' ? job.roles[role]
         : { ...result.roles[role], gridArtifact: gridKeys[role] ?? null },
     ])) as typeof job.roles;
-    store.complete(runId, job.id, { source: result.source, roles });
+    store.complete(runId, job.id, { source: result.source, roles, diagnostics: result.diagnostics });
+    const device = result.grid?.device;
+    const ready = (['incoming', 'outgoing'] as const).filter(role => roles[role].status === 'cue-ready').join(' and ') || 'no cue-ready roles';
+    store.addEvent(runId, 'success', `Prepared ${label}: ${ready}${device
+      ? ` · Beat This selected the ${device.toUpperCase()} provider; decoding, cue fitting and fallback rhythm analysis include CPU work` : ''}.`);
     return true;
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -123,12 +131,13 @@ export function startSubbeatsPrepV2(runId: string): void {
     if (active.runId === runId) return;
     throw new Error('Another V2 preparation run is already active.');
   }
-  if (tagger.running || bulkPassRunning() || subbeatsRemovalRunning()) {
+  if (tagger.running || bulkPassRunning()) {
     throw new Error('Wait for current library analysis or cache maintenance to finish.');
   }
   store.recover(runId);
   const run = store.read(runId);
   if (run.status === 'complete') return;
+  store.addEvent(runId, 'info', 'Stem Beats preparation started.');
   const work = (async () => {
     while (true) {
       const current = store.read(runId);
@@ -145,9 +154,11 @@ export function startSubbeatsPrepV2(runId: string): void {
       const claimed = store.claim(runId, job.id);
       if (!claimed) continue;
       try {
+        store.addEvent(runId, 'info', `Started ${claimed.title}${claimed.artist ? ` — ${claimed.artist}` : ''}.`);
         const completed = await processJob(runId, claimed, current.airplay
           ? airplayPreparationAllowed : () => !manualPreparationShouldYield());
         if (!completed) {
+          store.addEvent(runId, 'warning', 'Yielding before the next track for higher-priority preparation.');
           if (!current.airplay) {
             deferredManualRunId = runId;
             deferredManualReason = pickTimeHasPriority() ? 'pick-time' : 'automatic-preparation';
@@ -164,6 +175,7 @@ export function startSubbeatsPrepV2(runId: string): void {
         if (current.airplay && !airplayPreparationAllowed()) { store.recover(runId); break; }
         const message = error instanceof Error ? error.message : String(error);
         store.fail(runId, claimed.id, message, /recording changed|source changed/i.test(message));
+        store.addEvent(runId, 'error', `Failed ${claimed.title}${claimed.artist ? ` — ${claimed.artist}` : ''}: ${message}`);
       }
     }
   })().catch(error => {
@@ -178,6 +190,9 @@ export function startSubbeatsPrepV2(runId: string): void {
 
 export function pauseSubbeatsPrepV2(runId: string, paused: boolean): void {
   store.pause(runId, paused);
+  store.addEvent(runId, paused ? 'warning' : 'info', paused
+    ? 'Pause requested; the current track will finish before preparation stops.'
+    : 'Stem Beats preparation resumed.');
   if (!paused) startSubbeatsPrepV2(runId);
 }
 
@@ -205,7 +220,7 @@ function airplayPreparationEnabled(): boolean {
 function airplayPreparationAllowed(): boolean {
   return !!db.getDb() && airplayPreparationEnabled() && airplayMayRun()
     && !quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY, settings.get().audio)
-    && !tagger.running && !bulkPassRunning() && !subbeatsRemovalRunning();
+    && !tagger.running && !bulkPassRunning();
 }
 
 function scheduleAirplayPreparation(): void {

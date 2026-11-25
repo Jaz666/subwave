@@ -57,38 +57,6 @@ const suitability = {
   outgoing: { level: 'regular' as const, bpm: 120, cueSeconds: null, leadSeconds: null, postSeconds: null, reason: 'V1 tail' },
 };
 
-test('airplay jobs share durable V2 runs, recover after restart, and respect pause and terminal results', async () => {
-  const root = tempRoot(), store = createSubbeatsPrepV2Store(root);
-  await store.primeLatestCompleteJobs();
-  const input = (id: string) => ({ id, title: id, artist: 'Fixture', album: '', expectedSourceBytes: 4096 });
-  const run = store.enqueueAirplayJob(input('first'));
-  assert.equal(store.enqueueAirplayJob(input('second')).runId, run.runId, 'new plays append to one automatic run');
-  assert.equal(store.listRuns().length, 1);
-  assert.equal(store.latestJob('first')?.job.status, 'queued');
-  assert.equal(store.nextAirplayRun(), run.runId);
-  store.claim(run.runId, 'first');
-  const restarted = createSubbeatsPrepV2Store(root);
-  await restarted.primeLatestCompleteJobs();
-  assert.equal(restarted.nextAirplayRun(), run.runId);
-  restarted.recover(run.runId);
-  assert.equal(restarted.latestJob('first')?.job.status, 'queued');
-  restarted.pause(run.runId, true);
-  assert.equal(restarted.nextAirplayRun(), null, 'restart cannot resume an operator-paused run');
-  restarted.pause(run.runId, false);
-  restarted.claim(run.runId, 'first');
-  restarted.fail(run.runId, 'first', 'Fixture decode refusal');
-  restarted.claim(run.runId, 'second');
-  restarted.fail(run.runId, 'second', 'Fixture decode refusal');
-  assert.equal(restarted.latestJob('second')?.job.status, 'failed');
-  assert.equal(restarted.nextAirplayRun(), null, 'failed attempts do not hot-loop');
-  const next = restarted.enqueueAirplayJob(input('third'));
-  assert.equal(next.runId, run.runId, 'a completed run can accept the next new recording');
-  assert.equal(restarted.nextAirplayRun(), run.runId);
-  const replacement = restarted.enqueueAirplayJob({ ...input('first'), expectedSourceBytes: 8192 });
-  assert.notEqual(replacement.runId, run.runId, 'a new recording version preserves its previous result');
-  assert.equal(restarted.read(run.runId).jobs[0]?.expectedSourceBytes, 4096);
-});
-
 test('V2 run stores a V1 comparison snapshot without touching the V1 queue', () => {
   const stateDir = tempRoot();
   const v1Path = join(stateDir, 'subbeats', 'queue.json');
@@ -107,6 +75,17 @@ test('V2 run stores a V1 comparison snapshot without touching the V1 queue', () 
   assert.equal(store.read(run.runId).jobs[0]?.v1?.tailSupported, false);
   assert.deepEqual(store.listRuns().map(item => item.runId), [run.runId]);
   assert.equal(readFileSync(join(stateDir, 'stems', 'stembeats', 'runs', run.runId, 'run.json'), 'utf8').length > 0, true);
+});
+
+test('V2 run activity events persist as a capped run log', () => {
+  const store = createSubbeatsPrepV2Store(tempRoot());
+  const run = store.createRun({ baselineSha256: null, algorithmVersion: 4,
+    jobs: [{ id: 'event-track', title: 'Event Track', artist: 'Artist', album: 'Album' }] });
+  for (let i = 0; i < 105; i++) store.addEvent(run.runId, 'info', `event ${i}`);
+  const events = store.read(run.runId).events!;
+  assert.equal(events.length, 100);
+  assert.equal(events[0]?.text, 'event 5');
+  assert.equal(events.at(-1)?.text, 'event 104');
 });
 
 test('V2 can resume legacy runs and leaves their data in the original location', () => {
@@ -129,21 +108,19 @@ test('V2 can resume legacy runs and leaves their data in the original location',
   assert.equal(existsSync(from), false);
 });
 
-test('V2 keeps reading runs from the previous Stem Beats subfolder after moving new runs up one level', () => {
+test('V2 reads the former nested Stem Beats run location after moving new runs up one level', () => {
   const stateDir = tempRoot();
   const store = createSubbeatsPrepV2Store(stateDir);
-  const run = store.createRun({ baselineSha256: null, scope: 'library', algorithmVersion: 1,
-    jobs: [{ id: 'old-path', title: 'Old path', artist: 'Artist', album: '', v1: null }] });
-  const current = join(stateDir, 'stems', 'stembeats', 'runs', run.runId);
+  const run = store.createRun({ baselineSha256: null, algorithmVersion: 4,
+    jobs: [{ id: 'nested-run-track', title: 'Nested', artist: 'Artist', album: 'Album' }] });
+  const from = join(stateDir, 'stems', 'stembeats', 'runs', run.runId);
   const previous = join(stateDir, 'stems', 'stembeats', 'prep-v2', 'runs', run.runId);
   mkdirSync(join(stateDir, 'stems', 'stembeats', 'prep-v2', 'runs'), { recursive: true });
-  renameSync(current, previous);
-  const restarted = createSubbeatsPrepV2Store(stateDir);
-  assert.equal(restarted.read(run.runId).runId, run.runId);
-  assert.deepEqual(restarted.listRuns().map(item => item.runId), [run.runId]);
-  assert.equal(restarted.createRun({ baselineSha256: null, scope: 'library', algorithmVersion: 1,
-    jobs: [{ id: 'new-path', title: 'New path', artist: 'Artist', album: '', v1: null }] }).jobs[0]?.id, 'new-path');
-  assert.ok(existsSync(join(stateDir, 'stems', 'stembeats', 'runs')));
+  renameSync(from, previous);
+  assert.equal(store.read(run.runId).runId, run.runId);
+  assert.equal(store.listRuns().length, 1);
+  assert.equal(existsSync(previous), true);
+  assert.equal(existsSync(from), false);
 });
 
 test('V2 shared-grid artifacts are source-bound, immutable and checksum verified', () => {
@@ -157,6 +134,7 @@ test('V2 shared-grid artifacts are source-bound, immutable and checksum verified
   });
   const grid = {
     version: 1 as const, backend: 'beat-this-onnx' as const, model: 'small0' as const,
+    device: 'gpu' as const,
     modelSha256: 'e'.repeat(64), preprocessingVersion: 1 as const,
     sourceSha256: 'f'.repeat(64), sourceBytes: 4096,
     windowStartSeconds: 0, windowEndSeconds: 32,
@@ -183,8 +161,13 @@ test('V2 retries failed recordings while preserving source-changed refusals', ()
       cuePoints: null, cueCoverage: null, suitability: null })),
   });
   const first = store.claim(run.runId, 'retry-me')!;
+  assert.equal(first.stage, 'downloading');
+  store.setStage(run.runId, first.id, 'analyzing');
+  assert.equal(store.read(run.runId).jobs[0]?.stage, 'analyzing');
   store.complete(run.runId, first.id, {
     source: { sha256: 'f'.repeat(64), bytes: 4096, durationSeconds: 120 },
+    diagnostics: { gridSource: 'computed', gridDevice: 'gpu', incomingFallbackUsed: true,
+      stageTimingsMs: { decodeMs: 400, gridMs: 6500, cueFitMs: 80, incomingFallbackMs: 21000, totalAnalyzerMs: 28000 } },
     roles: {
       incoming: { status: 'no-cue', reason: 'No incoming passage.', cuePoints: [], gridArtifact: null,
         coverageStartSeconds: 0, coverageEndSeconds: 32 },
@@ -197,6 +180,9 @@ test('V2 retries failed recordings while preserving source-changed refusals', ()
   assert.ok(typeof completed.durationMs === 'number' && completed.durationMs >= 0);
   assert.deepEqual(subbeatsPrepV2TimingSummary(store.read(run.runId)), {
     completedJobs: 1, averagePrepMs: completed.durationMs, totalPrepMs: completed.durationMs,
+    measuredJobs: 1, computedGridJobs: 1, selectedGpuGridJobs: 1, selectedCpuGridJobs: 0, incomingFallbackJobs: 1,
+    averageDecodeMs: 400, averageGridMs: 6500, averageCueFitMs: 80,
+    averageIncomingFallbackMs: 21000, averageAnalyzerMs: 28000,
   });
   const second = store.claim(run.runId, 'changed')!;
   store.fail(run.runId, second.id, 'library recording changed', true);
@@ -212,11 +198,11 @@ test('V2 retries failed recordings while preserving source-changed refusals', ()
 
 test('V2 pick-time lookup returns the newest completed recording evidence by track ID', async () => {
   const store = createSubbeatsPrepV2Store(tempRoot());
-  const create = () => store.createRun({
-    baselineSha256: null, scope: 'track', algorithmVersion: 4,
+  const create = (algorithmVersion = 4) => store.createRun({
+    baselineSha256: null, scope: 'track', algorithmVersion,
     jobs: [{ id: 'track-a', title: 'A', artist: 'Artist', album: 'Album' }],
   });
-  const first = create();
+  const first = create(3);
   const older = store.claim(first.runId, 'track-a')!;
   store.complete(first.runId, older.id, {
     source: { sha256: 'a'.repeat(64), bytes: 4096, durationSeconds: 180 },
@@ -243,6 +229,19 @@ test('V2 pick-time lookup returns the newest completed recording evidence by tra
   assert.equal(store.latestCompleteJob('track-a')?.runId, second.runId);
   assert.equal(store.latestCompleteJob('track-a')?.job.source?.sha256, 'b'.repeat(64));
   assert.equal(store.latestCompleteJob('missing'), null);
+
+  const unsupported = create(2);
+  const oldVersion = store.claim(unsupported.runId, 'track-a')!;
+  store.complete(unsupported.runId, oldVersion.id, {
+    source: { sha256: 'c'.repeat(64), bytes: 4096, durationSeconds: 180 },
+    roles: {
+      incoming: { status: 'cue-ready', reason: null, cuePoints: [], gridArtifact: null,
+        coverageStartSeconds: 0, coverageEndSeconds: 32 },
+      outgoing: { status: 'no-cue', reason: 'No tail cue.', cuePoints: [], gridArtifact: null,
+        coverageStartSeconds: null, coverageEndSeconds: null },
+    },
+  });
+  assert.equal(store.latestCompleteJob('track-a')?.runId, second.runId);
 });
 
 test('V2 pick-time roles require a current source-bound grid and filter cues by direction', async () => {

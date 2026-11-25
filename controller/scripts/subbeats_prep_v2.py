@@ -3,6 +3,7 @@ from pathlib import Path
 from bisect import bisect_left
 import re
 from tempfile import TemporaryDirectory
+from time import perf_counter
 
 from subbeats_cache import digest
 from subbeats_prepare import SR, decode
@@ -46,31 +47,45 @@ def prepare_request(req):
             or not isinstance(source_sha256, str) or len(source_sha256) != 64
             or path.stat().st_size != source_bytes or digest(path) != source_sha256):
         raise ValueError('V2 source identity is incomplete or has changed')
+    total_started = perf_counter()
+    stage_timings = dict(decodeMs=0, gridMs=0, cueFitMs=0, incomingFallbackMs=0)
+    started = perf_counter()
     audio = decode(path, SR, 1)[0]
+    stage_timings['decodeMs'] = round((perf_counter() - started) * 1000)
     duration = len(audio) / SR
     if duration <= 0 or duration > 1200:
         raise ValueError('V2 requires a complete recording of at most 20 minutes')
     from beat_this_grid import PREPROCESSING_VERSION
-    from subbeats_cues import fitted_passages, natural_finish_grid_cues, predict
+    from subbeats_cues import active_device, fitted_passages, natural_finish_grid_cues, predict
     from subbeats_models import MODELS
     grid = req.get('grid')
+    grid_source = 'cached' if grid is not None else 'computed'
+    grid_device = grid.get('device', 'unknown') if grid is not None else 'not-used'
     if grid is None:
         import numpy as np
+        started = perf_counter()
         beats, bars = predict(audio, SR, 'small0')
+        stage_timings['gridMs'] = round((perf_counter() - started) * 1000)
+        grid_device = active_device() or 'unknown'
         grid = dict(version=1, backend='beat-this-onnx', model='small0',
                     preprocessingVersion=PREPROCESSING_VERSION, modelSha256=MODELS['small0'],
                     sourceSha256=source_sha256, sourceBytes=source_bytes,
                     windowStartSeconds=0., windowEndSeconds=duration,
                     beatsSeconds=np.asarray(beats, dtype=float).tolist(),
                     downbeatsSeconds=np.asarray(bars, dtype=float).tolist())
+        if grid_device in ('cpu', 'gpu'):
+            grid['device'] = grid_device
     try:
         start, end, beats, bars = _validate_grid(grid, source_sha256, source_bytes, duration)
+        started = perf_counter()
         result = fitted_passages(audio, SR, beats, bars)
+        stage_timings['cueFitMs'] = round((perf_counter() - started) * 1000)
     except Exception as error:
         error_reason = str(error)[:1000]
         grid = None
         result = None
     roles = {}
+    incoming_fallback_used = False
     for role in ('incoming', 'outgoing'):
         if grid is None or result is None:
             roles[role] = dict(status='failed', reason=error_reason,
@@ -82,7 +97,10 @@ def prepare_request(req):
                 candidates = [point for point in candidates if start <= point['sourceSeconds'] < end
                     and (point.get('phraseStartSeconds') is None or point['phraseStartSeconds'] >= start)]
                 if not candidates:
-                    candidates = _incoming_grid_fallback(path, beats, bars, duration)
+                    incoming_fallback_used = True
+                    started = perf_counter()
+                    candidates = _incoming_grid_fallback(path, beats, bars, duration, audio=audio)
+                    stage_timings['incomingFallbackMs'] = round((perf_counter() - started) * 1000)
             else:
                 candidates = [point for point in candidates if duration * .5 <= point['sourceSeconds'] < end
                     and point.get('phraseEndSeconds') is not None
@@ -111,14 +129,17 @@ def prepare_request(req):
                 coverageStartSeconds=None, coverageEndSeconds=None)
     if path.stat().st_size != source_bytes or digest(path) != source_sha256:
         raise ValueError('V2 source changed during preparation')
+    stage_timings['totalAnalyzerMs'] = round((perf_counter() - total_started) * 1000)
     return dict(ok=True, subbeats_prep_v2_result=dict(
         source=dict(sha256=source_sha256, bytes=source_bytes, durationSeconds=duration),
         grid=grid,
+        diagnostics=dict(gridSource=grid_source, gridDevice=grid_device, stageTimingsMs=stage_timings,
+                         incomingFallbackUsed=incoming_fallback_used),
         roles=roles,
     ))
 
 
-def _incoming_grid_fallback(path, beats, bars, duration):
+def _incoming_grid_fallback(path, beats, bars, duration, *, audio=None):
     """Use independent rhythm support while keeping every cue on Beat This."""
     import librosa
     import numpy as np
@@ -131,7 +152,7 @@ def _incoming_grid_fallback(path, beats, bars, duration):
         return []
     preferred_bpm = float(np.median([window['bpm'] for window in windows[:8]]))
     with TemporaryDirectory(prefix='subbeats-v2-grid-') as work:
-        evidence = analyze(path, Path(work), librosa, preferred_bpm=preferred_bpm)
+        evidence = analyze(path, Path(work), librosa, preferred_bpm=preferred_bpm, audio=audio)
         matches = supported_grid_matches(windows, evidence['supported_regions'], beats)
         if not matches:
             return []

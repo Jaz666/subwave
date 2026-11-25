@@ -109,27 +109,6 @@ class PrepV2Test(unittest.TestCase):
         self.assertEqual(result['roles']['outgoing']['cuePoints'][0]['phraseEndSeconds'], 90.)
         fallback.assert_called_once()
 
-    def test_natural_finish_alternatives_are_kept_with_fitted_phrase_cues(self):
-        request = dict(path=str(self.path), complete=True, source_sha256=self.source_sha256,
-                       source_bytes=self.source_bytes,
-                       grid=grid(0., 90., self.source_sha256, self.source_bytes))
-        fitted = dict(sourceSeconds=70., bpm=120., strength=.9, reason='ending',
-                      phraseBars=16, phraseEndSeconds=88.)
-        duplicate = dict(sourceSeconds=70.5, bpm=120., strength=.9, reason='ending',
-                         timingSource='fitted-grid', timingValidated=True, phraseEndSeconds=90.)
-        terminal = dict(sourceSeconds=74., bpm=120., strength=.9, reason='ending',
-                        timingSource='fitted-grid', timingValidated=True, phraseEndSeconds=90.)
-        cues = dict(incoming=[], outgoing=[fitted], ending=None)
-        with patch.object(subbeats_prep_v2, 'decode', return_value=(np.zeros(90 * SR), SR)), \
-                patch.object(subbeats_prep_v2, '_incoming_grid_fallback', return_value=[]), \
-                patch.object(subbeats_cues, 'fitted_passages', return_value=cues), \
-                patch.object(subbeats_cues, 'natural_finish_grid_cues', return_value=([duplicate, terminal], {})) as fallback:
-            result = subbeats_prep_v2.prepare_request(request)['subbeats_prep_v2_result']
-        points = result['roles']['outgoing']['cuePoints']
-        self.assertEqual([point['sourceSeconds'] for point in points], [70., 74.])
-        self.assertEqual(points[1]['phraseEndSeconds'], 90.)
-        fallback.assert_called_once()
-
     def test_generates_and_returns_one_full_song_grid_when_none_is_cached(self):
         request = dict(path=str(self.path), complete=True, source_sha256=self.source_sha256,
                        source_bytes=self.source_bytes)
@@ -145,6 +124,21 @@ class PrepV2Test(unittest.TestCase):
         self.assertEqual(result['grid']['windowStartSeconds'], 0.)
         self.assertEqual(result['grid']['windowEndSeconds'], 90.)
         self.assertEqual(len(result['grid']['beatsSeconds']), len(beats))
+
+    def test_fallback_reuses_decoded_audio_and_reports_stage_metrics(self):
+        request = dict(path=str(self.path), complete=True, source_sha256=self.source_sha256,
+                       source_bytes=self.source_bytes,
+                       grid=grid(0., 90., self.source_sha256, self.source_bytes))
+        audio = np.zeros(90 * SR)
+        with patch.object(subbeats_prep_v2, 'decode', return_value=(audio, SR)) as decode, \
+                patch.object(subbeats_prep_v2, '_incoming_grid_fallback', return_value=[]) as fallback, \
+                patch.object(subbeats_cues, 'fitted_passages', return_value=dict(incoming=[], outgoing=[], ending=None)):
+            result = subbeats_prep_v2.prepare_request(request)['subbeats_prep_v2_result']
+        self.assertEqual(decode.call_count, 1)
+        self.assertIs(fallback.call_args.kwargs['audio'], audio)
+        self.assertTrue(result['diagnostics']['incomingFallbackUsed'])
+        self.assertEqual(result['diagnostics']['gridSource'], 'cached')
+        self.assertGreaterEqual(result['diagnostics']['stageTimingsMs']['totalAnalyzerMs'], 0)
 
 
 if __name__ == '__main__':

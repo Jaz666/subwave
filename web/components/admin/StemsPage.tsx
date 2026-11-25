@@ -16,6 +16,16 @@ import { MixingDeskStatusIcon, type MixingDeskStatus } from './subbeats/MixingDe
 const runLabels: Record<StemBeatsRun['status'], string> = {
   queued: 'Waiting', running: 'Preparing', complete: 'Up to date', paused: 'Paused', failed: 'Needs attention',
 };
+const prepStageLabels = { downloading: 'downloading source', analyzing: 'measuring beat grid and cues', saving: 'saving prep data' } as const;
+const extractionModeLabels = {
+  'stem-blend': 'Stem Blend', 'stem-beats-8-8': 'Stem Beats · 8 bar → 8 bar',
+  'stem-beats-8-16': 'Stem Beats · 8 bar → 16 bar', 'stem-beats-16-16': 'Stem Beats · 16 bar → 16 bar',
+  'stem-beats-other': 'Stem Beats · other measured sizes',
+} as const;
+type ExtractionMode = keyof typeof extractionModeLabels;
+type ExtractionSummary = { mode: ExtractionMode; samples: number; averageExtractionMs: number;
+  averageSourceAcquisitionMs: number | null; averageRenderMs: number | null; averageOutgoingBars: number; averageIncomingBars: number };
+const seconds = (milliseconds: number | null) => milliseconds == null ? '—' : `${(milliseconds / 1000).toFixed(1)}s`;
 
 export default function StemsPage() {
   const { adminFetch, hydrated, needsAuth } = useAdminAuth();
@@ -43,6 +53,12 @@ export default function StemsPage() {
     request: async (fetcher, signal) => (await adminJson<{ tracks: StemBeatsCandidate[] }>(
       fetcher, '/library/subbeats/prep-v2/candidates', undefined, signal,
     )).tracks,
+  });
+  const extractionMetrics = useAdminQuery<ExtractionSummary[]>({
+    key: ['library', 'stems', 'pick-time-metrics'], adminFetch, enabled: ready && enabled && newStyle, refetchInterval: 10_000,
+    request: async (fetcher, signal) => (await adminJson<{ summaries: ExtractionSummary[] }>(
+      fetcher, '/library/stems/pick-time-metrics', undefined, signal,
+    )).summaries,
   });
   const latestRun = runs.data?.filter(run => run.scope === 'library').at(-1);
   const activityRun = runs.data?.find(run => run.status === 'running')
@@ -130,12 +146,19 @@ export default function StemsPage() {
             {(failed + sourceChanged) > 0 && ` · ${failed + sourceChanged} need attention`}
           </p>}
           {latestRun && <p className="text-xs text-muted">Cue-ready: {incomingReady.toLocaleString()} incoming · {outgoingReady.toLocaleString()} outgoing</p>}
+          {latestRun?.timing?.measuredJobs ? <p className="text-xs text-muted">
+            Prep stages (averages across {latestRun.timing.measuredJobs} measured tracks): decode {seconds(latestRun.timing.averageDecodeMs ?? null)}
+            {' · '}Beat This {seconds(latestRun.timing.averageGridMs ?? null)}
+            {' · '}selected grid device: {latestRun.timing.selectedGpuGridJobs ?? 0} GPU / {latestRun.timing.selectedCpuGridJobs ?? 0} CPU
+            {' · '}cue fit {seconds(latestRun.timing.averageCueFitMs ?? null)}
+            {' · '}CPU rhythm fallback {seconds(latestRun.timing.averageIncomingFallbackMs ?? null)} on {latestRun.timing.incomingFallbackJobs ?? 0} tracks
+          </p> : null}
           {activityRun && <p className="border border-ink/25 px-3 py-2 text-sm text-muted" role="status">
             {activityRun.waitingReason === 'pick-time' ? 'Waiting for Pick Time to finish'
               : activityRun.waitingReason === 'automatic-preparation' ? 'Prioritising preparation for a track in the live rotation' : 'Preparing'}
             {activityRun.airplay ? ' automatically' : activityRun.scope === 'library-selected' ? ' selected tracks' : ' library'}
             {activityRun.counts && activityRun.total != null && ` · ${activityRun.counts.complete + activityRun.counts.failed + activityRun.counts.sourceChanged} of ${activityRun.total} tracks done`}
-            {activityRun.currentJob && ` · ${activityRun.waitingReason ? 'Next' : 'Now'}: ${activityRun.currentJob.title}${activityRun.currentJob.artist ? ` — ${activityRun.currentJob.artist}` : ''}`}
+            {activityRun.currentJob && ` · ${activityRun.waitingReason ? 'Next' : 'Now'}: ${activityRun.currentJob.title}${activityRun.currentJob.artist ? ` — ${activityRun.currentJob.artist}` : ''}${activityRun.currentJob.stage ? ` · ${prepStageLabels[activityRun.currentJob.stage]}` : ''}`}
           </p>}
           {!latestRun && !runs.isPending && <p className="text-sm text-muted">No library preparation run yet. Tracks can also prepare automatically as they play.</p>}
           {runs.isError && <p className="text-sm text-destructive" role="alert">Preparation status is unavailable.</p>}
@@ -154,6 +177,17 @@ export default function StemsPage() {
         {message && <p role="alert" className="text-sm text-destructive">{message}</p>}
       </section>
       {!blendsEnabled && <p className="text-sm text-muted">Stem Blend is off. Both features can be changed in <Link className="underline underline-offset-4" href={settingsUrl}>Stems settings</Link>.</p>}
+      <section className="grid gap-2 border border-ink/30 p-4" aria-labelledby="stem-extraction-times">
+        <div><h2 id="stem-extraction-times" className="font-display text-lg font-bold">Pick-time extraction</h2>
+          <p className="text-xs text-muted">Average separation time per completed extraction pair, using up to 100 recent samples. Source acquisition and rendering are separate; Stem Beats sizes use measured bar coverage.</p></div>
+        {extractionMetrics.isLoading && <p className="text-sm text-muted">Loading extraction timings…</p>}
+        {extractionMetrics.isError && <p className="text-sm text-destructive" role="alert">Extraction timings are unavailable.</p>}
+        {extractionMetrics.data && <ul className="grid gap-1">{extractionMetrics.data.map(summary => <li key={summary.mode} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+          <span className="font-semibold">{extractionModeLabels[summary.mode]}</span>
+          <span className="text-muted">{summary.samples ? `${summary.samples} pair${summary.samples === 1 ? '' : 's'}` : 'No samples yet'}</span>
+          {summary.samples > 0 && <span className="text-muted"> · {summary.averageOutgoingBars.toFixed(1)} → {summary.averageIncomingBars.toFixed(1)} bars · separation {seconds(summary.averageExtractionMs)} · source {seconds(summary.averageSourceAcquisitionMs)} · render {seconds(summary.averageRenderMs)}</span>}
+        </li>)}</ul>}
+      </section>
     </div>}
   </div>;
 }

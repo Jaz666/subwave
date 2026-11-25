@@ -854,6 +854,11 @@ def predict(y, sr, model, librosa=None):
     return _cue_tracker.track(y, sr, librosa)
 
 
+def active_device():
+    """Return the execution provider selected by the cached Beat This session."""
+    return getattr(_cue_tracker, 'device', None)
+
+
 def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowance, expected_cache_id):
     import librosa
     import numpy as np

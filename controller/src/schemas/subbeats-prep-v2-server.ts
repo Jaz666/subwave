@@ -4,6 +4,7 @@ export const SUBBEATS_PREP_V2_ALGORITHM_VERSION = 4;
 import { subbeatsCueCoverageSchema, subbeatsCuePointsSchema, subbeatsLyricEvidenceSchema, subbeatsStatusSchema, subbeatsSuitabilitySchema } from './subbeats.js';
 
 export const subbeatsPrepV2JobStatusSchema = z.enum(['queued', 'running', 'complete', 'failed', 'source-changed']);
+export const subbeatsPrepV2StageSchema = z.enum(['downloading', 'analyzing', 'saving']);
 export const subbeatsPrepV2RoleStatusSchema = z.enum(['pending', 'cue-ready', 'no-cue', 'failed', 'source-changed']);
 
 export const subbeatsPrepV2RoleSchema = z.object({
@@ -21,12 +22,33 @@ export const subbeatsPrepV2SourceSchema = z.object({
   durationSeconds: z.number().finite().positive(),
 });
 
+export const subbeatsPrepV2EventSchema = z.object({
+  at: z.string().datetime(),
+  kind: z.enum(['info', 'success', 'warning', 'error']),
+  text: z.string().max(1000),
+});
+
+export const subbeatsPrepV2DiagnosticsSchema = z.object({
+  gridSource: z.enum(['cached', 'computed']),
+  gridDevice: z.string().max(16),
+  stageTimingsMs: z.object({
+    decodeMs: z.number().int().nonnegative(),
+    gridMs: z.number().int().nonnegative(),
+    cueFitMs: z.number().int().nonnegative(),
+    incomingFallbackMs: z.number().int().nonnegative(),
+    totalAnalyzerMs: z.number().int().nonnegative(),
+  }),
+  incomingFallbackUsed: z.boolean(),
+});
+
 export const subbeatsPrepV2AnalyzerResultSchema = z.object({
   source: subbeatsPrepV2SourceSchema,
+  diagnostics: subbeatsPrepV2DiagnosticsSchema.optional(),
   grid: z.object({
     version: z.literal(1),
     backend: z.literal('beat-this-onnx'),
     model: z.literal('small0'),
+    device: z.enum(['cpu', 'gpu']).optional(),
     modelSha256: z.string().regex(/^[a-f0-9]{64}$/),
     preprocessingVersion: z.literal(1),
     sourceSha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -58,6 +80,7 @@ export const subbeatsPrepV2GridSchema = z.object({
   version: z.literal(1),
   backend: z.literal('beat-this-onnx'),
   model: z.literal('small0'),
+  device: z.enum(['cpu', 'gpu']).optional(),
   modelSha256: z.string().regex(/^[a-f0-9]{64}$/),
   preprocessingVersion: z.literal(1),
   sourceSha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -83,7 +106,9 @@ export const subbeatsPrepV2JobSchema = z.object({
   source: subbeatsPrepV2SourceSchema.nullable(),
   expectedSourceBytes: z.number().int().positive().optional(),
   startedAt: z.string().datetime().nullable().optional(),
+  stage: subbeatsPrepV2StageSchema.nullable().optional(),
   durationMs: z.number().int().nonnegative().nullable().optional(),
+  diagnostics: subbeatsPrepV2DiagnosticsSchema.optional(),
   v1: z.object({
     status: subbeatsStatusSchema,
     attempts: z.number().int().nonnegative(),
@@ -117,6 +142,7 @@ export const subbeatsPrepV2RunSchema = z.object({
   airplay: z.boolean().optional(),
   algorithmVersion: z.number().int().positive(),
   jobs: z.array(subbeatsPrepV2JobSchema).max(20_000),
+  events: z.array(subbeatsPrepV2EventSchema).max(100).optional(),
 });
 
 export const subbeatsPrepV2RunRequestSchema = z.object({

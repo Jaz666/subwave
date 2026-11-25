@@ -19,6 +19,9 @@ const legacyRootPath = (stateDir: string) => join(stateDir, 'subbeats', 'prep-v2
 const previousStemBeatsRootPath = (stemBeatsRoot: string) => join(stemBeatsRoot, 'prep-v2');
 const runPath = (root: string, runId: string) => join(root, 'runs', runId);
 const runFilePath = (root: string, runId: string) => join(runPath(root, runId), 'run.json');
+// Algorithm 3 is already used by station pick-time, and algorithm 4 adds
+// automatic cue candidates without changing the saved source/grid contract.
+const pickTimeAlgorithmVersions = new Set([3, SUBBEATS_PREP_V2_ALGORITHM_VERSION]);
 const emptyRole = () => ({
   status: 'pending' as const,
   reason: null,
@@ -105,9 +108,8 @@ function queuedJob(job: PrepV2JobInput, now: string): SubbeatsPrepV2Job {
 }
 
 export function createSubbeatsPrepV2Store(stateDir: string, stemBeatsRoot = join(stateDir, 'stems', 'stembeats')) {
-  // Keep preparation directly under the Stem Beats root: runs/, with their
-  // per-run artifacts, sit beside tmp/ and pick-time/ rather than adding an
-  // extra prep-v2/ directory level. Read both former locations in place.
+  // Keep preparation directly beneath the Stem Beats root, beside tmp/ and
+  // pick-time/. Continue reading both previous locations for existing runs.
   const runsRoot = stemBeatsRoot;
   const readRoots = [runsRoot, previousStemBeatsRootPath(stemBeatsRoot), legacyRootPath(stateDir)];
   let latestCompleteJobs: Map<string, { runId: string; createdAt: string; job: SubbeatsPrepV2Job }> | null = null;
@@ -127,18 +129,18 @@ export function createSubbeatsPrepV2Store(stateDir: string, stemBeatsRoot = join
     return [...ids].map(id => read(readRoots, id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   };
   const rememberCompleteJob = (run: SubbeatsPrepV2Run, job: SubbeatsPrepV2Job) => {
-    if (!latestCompleteJobs || run.algorithmVersion !== SUBBEATS_PREP_V2_ALGORITHM_VERSION
+    if (!latestCompleteJobs || !pickTimeAlgorithmVersions.has(run.algorithmVersion)
         || job.status !== 'complete' || !job.source) return;
     const previous = latestCompleteJobs.get(job.id);
     if (!previous || run.createdAt >= previous.createdAt)
       latestCompleteJobs.set(job.id, { runId: run.runId, createdAt: run.createdAt, job });
   };
   const rememberRun = (run: SubbeatsPrepV2Run) => {
+    for (const job of run.jobs) rememberCompleteJob(run, job);
     if (run.algorithmVersion !== SUBBEATS_PREP_V2_ALGORITHM_VERSION) return;
     if (run.airplay && (!airplayRun || run.createdAt >= airplayRun.createdAt))
       airplayRun = { runId: run.runId, createdAt: run.createdAt };
     for (const job of run.jobs) {
-      rememberCompleteJob(run, job);
       const previous = latestJobs?.get(job.id);
       if (!previous || run.createdAt >= previous.createdAt)
         latestJobs?.set(job.id, { runId: run.runId, createdAt: run.createdAt, job,
@@ -181,6 +183,11 @@ export function createSubbeatsPrepV2Store(stateDir: string, stemBeatsRoot = join
     },
     read: (runId: string) => { const run = read(readRoots, runId); rememberRun(run); return run; },
     listRuns,
+    addEvent(runId: string, kind: 'info' | 'success' | 'warning' | 'error', text: string): void {
+      const run = read(readRoots, runId);
+      run.events = [...(run.events ?? []), { at: new Date().toISOString(), kind, text: text.slice(0, 1000) }].slice(-100);
+      saveRun(rootForRun(readRoots, runId), run);
+    },
     latestJob: (id: string) => latestJobs?.get(id) ?? null,
     nextAirplayRun(): string | null {
       for (const entry of latestJobs?.values() ?? []) {
@@ -253,10 +260,19 @@ export function createSubbeatsPrepV2Store(stateDir: string, stemBeatsRoot = join
       job.attempts++;
       job.startedAt = new Date().toISOString();
       job.durationMs = null;
+      job.stage = 'downloading';
       job.updatedAt = job.startedAt;
       run.status = 'running';
       saveRun(rootForRun(readRoots, runId), run);
       return job;
+    },
+    setStage(runId: string, id: string, stage: NonNullable<SubbeatsPrepV2Job['stage']>): void {
+      const run = read(readRoots, runId);
+      const job = run.jobs.find(item => item.id === id);
+      if (!job || job.status !== 'running') return;
+      job.stage = stage;
+      job.updatedAt = new Date().toISOString();
+      save(rootForRun(readRoots, runId), run);
     },
     recover(runId: string): void {
       const run = read(readRoots, runId);
@@ -265,6 +281,7 @@ export function createSubbeatsPrepV2Store(stateDir: string, stemBeatsRoot = join
         job.status = 'queued';
         job.startedAt = null;
         job.durationMs = null;
+        job.stage = null;
         job.updatedAt = new Date().toISOString();
         changed = true;
       }
@@ -285,6 +302,7 @@ export function createSubbeatsPrepV2Store(stateDir: string, stemBeatsRoot = join
         job.error = null;
         job.startedAt = null;
         job.durationMs = null;
+        job.stage = null;
         for (const role of failedRoles) job.roles[role] = { ...emptyRole(), gridArtifact: job.roles[role].gridArtifact };
         job.updatedAt = new Date().toISOString();
         retried++;
@@ -294,14 +312,15 @@ export function createSubbeatsPrepV2Store(stateDir: string, stemBeatsRoot = join
       saveRun(rootForRun(readRoots, runId), run);
       return run;
     },
-    complete(runId: string, id: string, result: Pick<SubbeatsPrepV2Job, 'source' | 'roles'>): void {
+    complete(runId: string, id: string,
+      result: Pick<SubbeatsPrepV2Job, 'source' | 'roles' | 'diagnostics'>): void {
       const run = read(readRoots, runId);
       const job = run.jobs.find(item => item.id === id);
       if (!job || job.status !== 'running') throw new Error('V2 job is not running.');
       const completedAt = new Date().toISOString();
       const durationMs = job.startedAt ? Math.max(0, Date.parse(completedAt) - Date.parse(job.startedAt)) : null;
       const updated = subbeatsPrepV2JobSchema.parse({ ...job, ...result, status: 'complete', error: null,
-        durationMs, updatedAt: completedAt });
+        durationMs, stage: null, updatedAt: completedAt });
       Object.assign(job, updated);
       run.status = settleStatus(run);
       saveRun(rootForRun(readRoots, runId), run);
@@ -313,6 +332,7 @@ export function createSubbeatsPrepV2Store(stateDir: string, stemBeatsRoot = join
       const status = sourceChanged ? 'source-changed' : 'failed';
       const failedAt = new Date().toISOString();
       job.status = status;
+      job.stage = null;
       job.error = error.slice(0, 1000);
       job.durationMs = job.startedAt ? Math.max(0, Date.parse(failedAt) - Date.parse(job.startedAt)) : null;
       job.updatedAt = failedAt;
@@ -391,9 +411,28 @@ export function subbeatsPrepV2BaselineMatches(run: SubbeatsPrepV2Run, queueValue
 export function subbeatsPrepV2TimingSummary(run: SubbeatsPrepV2Run) {
   const completed = run.jobs.filter(job => job.status === 'complete' && typeof job.durationMs === 'number');
   const totalMs = completed.reduce((sum, job) => sum + job.durationMs!, 0);
+  const measured = completed.filter(job => job.diagnostics);
+  const computedGrid = measured.filter(job => job.diagnostics!.gridSource === 'computed');
+  const fallbackJobs = measured.filter(job => job.diagnostics!.incomingFallbackUsed);
+  const averageStage = (stage: keyof NonNullable<SubbeatsPrepV2Job['diagnostics']>['stageTimingsMs']) =>
+    measured.length ? Math.round(measured.reduce((sum, job) => sum + job.diagnostics!.stageTimingsMs[stage], 0) / measured.length) : null;
+  const averageFallback = fallbackJobs.length ? Math.round(fallbackJobs.reduce((sum, job) =>
+    sum + job.diagnostics!.stageTimingsMs.incomingFallbackMs, 0) / fallbackJobs.length) : null;
+  const averageGrid = computedGrid.length ? Math.round(computedGrid.reduce((sum, job) =>
+    sum + job.diagnostics!.stageTimingsMs.gridMs, 0) / computedGrid.length) : null;
   return {
     completedJobs: completed.length,
     averagePrepMs: completed.length ? Math.round(totalMs / completed.length) : null,
     totalPrepMs: totalMs,
+    measuredJobs: measured.length,
+    computedGridJobs: computedGrid.length,
+    selectedGpuGridJobs: computedGrid.filter(job => job.diagnostics!.gridDevice === 'gpu').length,
+    selectedCpuGridJobs: computedGrid.filter(job => job.diagnostics!.gridDevice === 'cpu').length,
+    incomingFallbackJobs: fallbackJobs.length,
+    averageDecodeMs: averageStage('decodeMs'),
+    averageGridMs: averageGrid,
+    averageCueFitMs: averageStage('cueFitMs'),
+    averageIncomingFallbackMs: averageFallback,
+    averageAnalyzerMs: averageStage('totalAnalyzerMs'),
   };
 }
