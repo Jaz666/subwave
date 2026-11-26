@@ -146,6 +146,29 @@ def t_facet_tail_is_pure_and_matches_analyze_outro():
     assert direct["lufs"] == -11.0, direct
 
 
+def t_flat_outro_keeps_tail_features_when_shared_grid_fails():
+    y = np.concatenate([tone(12.0), silence(8.0)])
+    logs = []
+
+    def fail_grid(*_args, **_kwargs):
+        raise RuntimeError("Beat This downbeats are not a subset of beats")
+
+    with Patched(load_audio=lambda *_a, **_k: (y, SR), measure_loudness=fixed_loudness,
+                 measure_bar_grid=fail_grid, log=logs.append):
+        try:
+            aw.analyze_outro("x.flac", FakeLibrosa, 200.0, True)
+            raise AssertionError("grid-specific tail request should fail closed")
+        except RuntimeError as err:
+            assert "downbeats are not a subset" in str(err), err
+
+        outro = aw.analyze_outro("x.flac", FakeLibrosa, 200.0, True, False)
+
+    assert outro["ending"] == "fade" and abs(outro["startMs"] - 192000) <= 100, outro
+    assert outro["lufs"] == -11.0, outro
+    assert "beats" not in outro and "bars" not in outro and "gridProvenance" not in outro, outro
+    assert any("outro shared beat grid failed" in line for line in logs), logs
+
+
 def t_decode_tail_refuses_unknown_short_track_without_decoding():
     with Patched(load_audio=no_decode):
         assert aw.decode_tail("x.flac", FakeLibrosa, 10.0, None) is None
@@ -614,6 +637,7 @@ def t_stems_facet_mount_lost_mid_pass_is_unavailable():
 
 
 test("facet_tail is pure and equals analyze_outro", t_facet_tail_is_pure_and_matches_analyze_outro)
+test("flat outro keeps tail features when the shared grid fails", t_flat_outro_keeps_tail_features_when_shared_grid_fails)
 test("decode_tail refuses a short track of unknown completeness before decoding",
      t_decode_tail_refuses_unknown_short_track_without_decoding)
 test("decode_tail length check counts samples, not channels", t_decode_tail_measures_samples_not_channels)

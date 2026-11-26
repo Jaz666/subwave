@@ -1406,7 +1406,7 @@ def decode_tail(path, librosa, duration_s, complete=None):
     return y_src, sr, offset
 
 
-def facet_tail(y_src, sr, offset, duration_s, librosa):
+def facet_tail(y_src, sr, offset, duration_s, librosa, require_grid=True):
     """Facet `tail`: features of the crossfade seam from an already-decoded
     window that is PROVEN to run to the end of the file (decode_tail, or later
     a ranged read). `offset` is the window's absolute start in seconds and
@@ -1497,8 +1497,9 @@ def facet_tail(y_src, sr, offset, duration_s, librosa):
         beats_ms, bars_ms, provenance = measure_bar_grid(y, sr, librosa, beat_frames, offset_s=offset)
     except Exception as e:  # noqa: BLE001 — a failed grid invalidates this facet
         log(f"outro shared beat grid failed: {e}")
-        raise
-    if provenance is None:
+        if require_grid:
+            raise
+    if require_grid and provenance is None:
         raise RuntimeError("required Beat This grid provenance is missing for tail window")
 
     out = {"startMs": int(round(wind_start_s * 1000.0)), "ending": ending}
@@ -1538,7 +1539,7 @@ def facet_tail(y_src, sr, offset, duration_s, librosa):
     return out
 
 
-def analyze_outro(path, librosa, duration_s, complete=None):
+def analyze_outro(path, librosa, duration_s, complete=None, require_grid=True):
     """Tail features for the crossfade seam — the outgoing track's ending is
     what actually decides whether a transition lands. Path-based wrapper:
     decode_tail proves and decodes the last OUTRO_SECONDS, facet_tail measures
@@ -1548,7 +1549,7 @@ def analyze_outro(path, librosa, duration_s, complete=None):
     if window is None:
         return None
     y_src, sr, offset = window
-    return facet_tail(y_src, sr, offset, duration_s, librosa)
+    return facet_tail(y_src, sr, offset, duration_s, librosa, require_grid=require_grid)
 
 
 # ── tail placed from the stored edges (tail v2) ─────────────────────────────
@@ -1591,13 +1592,13 @@ def tail_window_from_edges(edges):
     return parse_tail_window({"end_ms": int(round(dur - tail)), "duration_ms": int(round(dur))})
 
 
-def placed_outro(window, placement, librosa):
+def placed_outro(window, placement, librosa, require_grid=True):
     """(outro, (offset_s, length_s)) for a window placed from the edges:
     measured as if the file ended where the music does, with the trailing
     silence taken from the edges. outro is None when the window reads silent."""
     t_src, t_sr, t_off = window
     end_s = placement["end_ms"] / 1000.0
-    outro = facet_tail(t_src, t_sr, t_off, end_s, librosa)
+    outro = facet_tail(t_src, t_sr, t_off, end_s, librosa, require_grid=require_grid)
     if outro is not None:
         outro["tail_silence_ms"] = placement["duration_ms"] - placement["end_ms"]
         outro["tail_start_ms"] = placement["end_ms"]
@@ -4164,13 +4165,13 @@ def analyze(
                 if isinstance(window, str):
                     log(f"placed tail not measured: {window}")
                 else:
-                    outro, tail_span = placed_outro(window, placement, librosa)
+                    outro, tail_span = placed_outro(window, placement, librosa, require_grid=False)
             except Exception as e:  # noqa: BLE001 — outro is best-effort
                 log(f"outro analysis failed: {e}")
                 outro = None
         elif complete is not False and (complete is True or decoded_tmp is None):
             try:
-                outro = analyze_outro(path, librosa, duration_s, complete)
+                outro = analyze_outro(path, librosa, duration_s, complete, require_grid=False)
             except Exception as e:  # noqa: BLE001 — outro is best-effort
                 log(f"outro analysis failed: {e}")
                 outro = None
