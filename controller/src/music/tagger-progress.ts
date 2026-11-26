@@ -11,6 +11,7 @@ export type TaggerPhase =
   | 'propagate'
   | 'learn'
   | 'analyze'
+  | 'grids'
   | 'done';
 
 export interface TaggerProgress {

@@ -7,7 +7,7 @@ import type { TrackRecord } from './library-db.js';
 import type { BeatGridProvenance } from '../schemas/beat-grid.js';
 import { BoundedKeyMap } from '../util/bounded-key-map.js';
 import { bulkPassRunning } from './tagger-lock.js';
-import { acquireRegularStemSource } from './regular-stem-source.js';
+import { acquireRegularStemSource, retainRegularStemSources } from './regular-stem-source.js';
 import { upgradePending } from './beat-grid-upgrade.js';
 import { eightBarWindow } from '../broadcast/regular-stem-policy.js';
 import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
@@ -29,6 +29,10 @@ export function regularTailGridSeconds(row: Pick<TrackRecord, 'outro'>): number 
 }
 
 export function regularTailGridPending(id?: string): boolean { return id == null ? !!running : running?.id === id; }
+
+export function queueRegularGridForLibraryScan(id: string): void {
+  if (regularGridAwaiting(id, true)) db.enqueueRegularGridScan(id);
+}
 
 export function regularHeadGridSeconds(row: Pick<TrackRecord, 'bars'>): number {
   const bars = row.bars ?? [];
@@ -52,9 +56,9 @@ export function regularHeadGridAwaiting(id: string): boolean {
   return !!row && regularGridAwaiting(id) && headGridNeedsRepair(row);
 }
 
-export function regularGridAwaiting(id: string): boolean {
+export function regularGridAwaiting(id: string, libraryScan = false): boolean {
   if (running?.id === id) return true;
-  if (bulkPassRunning() || (failures.get(id) ?? 0) > Date.now()) return false;
+  if (!libraryScan && (bulkPassRunning() || (failures.get(id) ?? 0) > Date.now())) return false;
   const row = db.getTrack(id), head = row?.gridProvenance;
   if (!row) return false;
   if (headGridNeedsRepair(row)) return true;
@@ -66,13 +70,13 @@ export function regularGridAwaiting(id: string): boolean {
     || grid.windowEndMs-grid.windowStartMs < wantedMs-2;
 }
 
-export function regularTailGridDue(id: string): boolean {
-  return regularStemWorkingMode() && !running && !upgradePending() && regularGridAwaiting(id);
+export function regularTailGridDue(id: string, libraryScan = false): boolean {
+  return !running && (libraryScan || !upgradePending()) && regularGridAwaiting(id, libraryScan);
 }
 
 export function ensureRegularTailGrid(id: string, log: (message: string) => void, wake: () => void,
-  deadlineMs?: number, shouldContinue: () => boolean = () => true): void {
-  if (!regularStemWorkingMode() || !shouldContinue() || !regularTailGridDue(id)) return;
+  deadlineMs?: number, shouldContinue: () => boolean = () => true, libraryScan = false): Promise<void> {
+  if ((!libraryScan && !regularStemWorkingMode()) || !shouldContinue() || !regularTailGridDue(id, libraryScan)) return Promise.resolve();
   const row = db.getTrack(id)!;
   const label = [row.title, row.artist].filter(Boolean).join(' — ') || id;
   const seconds = regularTailGridSeconds(row);
@@ -133,4 +137,38 @@ export function ensureRegularTailGrid(id: string, log: (message: string) => void
     } finally { await source?.release(completed).catch(error => log(`Regular stems source cleanup unavailable: ${String(error)}`)); }
   })().finally(() => { running = null; wake(); });
   running = { id, work };
+  return work;
+}
+
+/** Process only the durable set of missing or short grids found at pick-time. */
+export async function prepareRegularTailGridsForLibraryScan(
+  log: (message: string) => void,
+  limit?: number,
+  report: (done: number, total: number, errors: number) => void = () => {},
+): Promise<{ queued: number; completed: number }> {
+  const ids = db.regularGridScanIds();
+  const pending = ids.filter(id => {
+    if (regularGridAwaiting(id, true)) return true;
+    db.removeRegularGridScan(id);
+    return false;
+  });
+  const selected = Number.isFinite(limit) && (limit as number) > 0 ? pending.slice(0, limit) : pending;
+  if (selected.length === 0) return { queued: 0, completed: 0 };
+  log(`Regular stems: library catch-up queued ${selected.length} pick-time track${selected.length === 1 ? '' : 's'} for tail-grid coverage`);
+  report(0, selected.length, 0);
+  let completed = 0;
+  let attempted = 0;
+  for (const id of selected) {
+    retainRegularStemSources(null, [id]);
+    await ensureRegularTailGrid(id, log, () => {}, undefined, () => true, true);
+    attempted++;
+    if (!regularGridAwaiting(id, true)) {
+      completed++;
+      db.removeRegularGridScan(id);
+    }
+    report(attempted, selected.length, attempted-completed);
+  }
+  retainRegularStemSources(null, []);
+  log(`Regular stems: library catch-up complete (${completed}/${selected.length} ready)`);
+  return { queued: selected.length, completed };
 }

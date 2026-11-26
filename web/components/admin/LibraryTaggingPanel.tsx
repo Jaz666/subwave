@@ -94,7 +94,7 @@ export interface AnalysisFailure {
 
 // Mirrors controller/src/music/tagger-progress.ts.
 export interface TaggerProgress {
-  phase: 'walk' | 'enrich' | 'embed' | 'seed' | 'propagate' | 'learn' | 'analyze' | 'done';
+  phase: 'walk' | 'enrich' | 'embed' | 'seed' | 'propagate' | 'learn' | 'analyze' | 'grids' | 'done';
   label: string;
   done?: number;
   total?: number; // absent → indeterminate (e.g. the Navidrome walk)
@@ -244,6 +244,7 @@ const PHASE_HINT: Record<TaggerProgress['phase'], string> = {
   propagate: 'Spreading tags from tagged tracks to their closest sonic neighbours.',
   learn: 'The DJ is re-checking tracks the automatic spread wasn’t confident about.',
   analyze: 'Measuring tempo and key, and fingerprinting how each track sounds.',
+  grids: 'Refreshing pick-time Stem Blend beat-grid coverage for tracks queued during playback.',
   done: 'Wrapping up.',
 };
 
@@ -257,16 +258,17 @@ const PHASE_LABEL: Record<string, string> = {
   propagate: 'spread',
   learn: 're-tag',
   analyze: 'acoustics',
+  grids: 'Stem Blend grids',
 };
 
 // Execution order, used to decide which phases are behind/ahead of the live one. Excludes 'done'.
 const PIPELINE: TaggerProgress['phase'][] = [
-  'walk', 'enrich', 'embed', 'seed', 'propagate', 'learn', 'analyze',
+  'walk', 'enrich', 'embed', 'seed', 'propagate', 'learn', 'analyze', 'grids',
 ];
 
 // Only the phases a given run mode can reach.
 function stepsForMode(mode: TaggerState['mode']): TaggerProgress['phase'][] {
-  if (mode === 'analyze') return ['analyze'];
+  if (mode === 'analyze') return ['analyze', 'grids'];
   if (mode === 'reconcile') return ['walk'];
   return PIPELINE;
 }

@@ -2,7 +2,8 @@
 // lack them, resumably. Shared by the `npm run tag` phase and `npm run analyze`.
 // The DSP lives in music/analyzer.ts; with no backend this is a clean no-op.
 
-import { regularStemWorkingMode, stemBeatsEnabled, stemsEnabled } from '../broadcast/regular-stem-mode.js';
+import { regularStemBlendsEnabled, regularStemWorkingMode, stemBeatsEnabled, stemsEnabled } from '../broadcast/regular-stem-mode.js';
+import { prepareRegularTailGridsForLibraryScan } from './regular-tail-grid.js';
 import { readFile, rm } from 'node:fs/promises';
 import * as db from './library-db.js';
 import * as analyzer from './analyzer.js';
@@ -289,6 +290,12 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
   const rest = stats.available
     ? await runWholeFileBackfill({ limit: opts.limit, ids: undefined, label: '', noticeSkip: true })
     : null;
+  if (stats.available && regularStemWorkingMode() && regularStemBlendsEnabled()) {
+    await prepareRegularTailGridsForLibraryScan(
+      message => console.log(`[analyze] ${message}`), opts.limit,
+      (done, total, errors) => reportProgress({ phase: 'grids', label: 'Preparing Stem Blend grids', done, total, errors: errors || undefined }),
+    );
+  }
   if (!lead && !rest) return stats;
   const wholeFile = {
     analyzed: (lead?.analyzed ?? 0) + (rest?.analyzed ?? 0),

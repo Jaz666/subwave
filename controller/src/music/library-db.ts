@@ -22,6 +22,7 @@ export * from './library-db/plays.js';
 export * from './library-db/stem-scan.js';
 export * from './library-db/facets.js';
 export * from './library-db/lyrics.js';
+export * from './library-db/regular-grid-scan.js';
 
 export { subbeatsCandidates, subbeatsEligibleTrack, recentlyPlayedSubbeatsTracks, subbeatsDanceCandidates } from './library-db/subbeats.js';
 export type { SubbeatsTrackRef } from './library-db/subbeats.js';

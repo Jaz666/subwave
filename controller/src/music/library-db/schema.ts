@@ -655,6 +655,10 @@ export async function migrate(embeddingDim: number, reseed = false, adoptStoredD
   // it, so it never takes a number from upstream's migration sequence. Runs
   // last because the seed reads track_audio_vectors.
   ensureFacetStatus(d);
+  runDdl(d, `CREATE TABLE IF NOT EXISTS regular_grid_scan_queue (
+    track_id TEXT PRIMARY KEY,
+    queued_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
   return effectiveDim;
 }
 

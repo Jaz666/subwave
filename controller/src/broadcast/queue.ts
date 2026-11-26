@@ -2258,6 +2258,7 @@ class Queue {
         && this.stemBeatsHasPriority(this.upcoming[first], this.upcoming[first+1]));
     };
     try {
+      if (enabled && this.current) regularTailGrid.queueRegularGridForLibraryScan(String(this.current.track.id));
       const gridTargets = [...(this.current ? [this.current] : []), ...this.upcoming]
         .filter(item => !!regularStemDb.getTrack(String(item.track.id))
           // Unsent queued tracks belong to the complete-source Regular
@@ -2289,6 +2290,7 @@ class Queue {
       }
       const evidence: RegularStemQueueEvidence[] = this.upcoming.map((item, index) => {
         const row = rows[index], next = rows[index+1], outro = outros[index];
+        if (enabled && !item.sent) regularTailGrid.queueRegularGridForLibraryScan(String(item.track.id));
         const tailGridPending = enabled && !item.sent && regularTailGrid.regularGridAwaiting(String(item.track.id));
         const nextGridPending = enabled && !!next && !this.upcoming[index+1]?.sent
           && regularTailGrid.regularHeadGridAwaiting(String(next.id));

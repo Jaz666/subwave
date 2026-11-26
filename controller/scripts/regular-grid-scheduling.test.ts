@@ -69,6 +69,7 @@ test('queued Regular grids have one owner and new grid phases yield to Stem Beat
     q.syncRegularStemPreparation();
     await waitFor(() => !!held);
     assert.deepEqual(requests.map(r => r.facets), [['head']], 'generic and Regular must not both own the queued track');
+    assert.deepEqual(db.regularGridScanIds(), ['a','b'], 'pick-time keeps only encountered due tracks for library catch-up');
     priority = true;
     q.syncRegularStemPreparation();
     held!.end(JSON.stringify(head())); held = undefined;
