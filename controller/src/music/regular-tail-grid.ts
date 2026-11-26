@@ -9,12 +9,30 @@ import { BoundedKeyMap } from '../util/bounded-key-map.js';
 import { bulkPassRunning } from './tagger-lock.js';
 import { acquireRegularStemSource, retainRegularStemSources } from './regular-stem-source.js';
 import { upgradePending } from './beat-grid-upgrade.js';
+import { readStemBlendTailAdmission } from './library-db/stem-blend-admission.js';
 import { eightBarWindow } from '../broadcast/regular-stem-policy.js';
 
 const failures = new BoundedKeyMap<number>({ maxKeys: 2048, isLive: (until, now) => until > now });
 let running: { id: string; work: Promise<void> } | null = null;
 const current = (grid?: BeatGridProvenance | null) => grid?.backend === 'beat-this-onnx'
   && grid.model === 'small0' && grid.preprocessingVersion === 1;
+
+// Use the same prepared tail for extraction and rendering. A cue takes
+// precedence over measured music end, which is used for tracks without a fade.
+export function preparedRegularTail(id: string, durationMs: number) {
+  const evidence = readStemBlendTailAdmission(id);
+  if (evidence?.gridStatus !== 'measured' || evidence.musicStartMs === null) return null;
+  const grid = evidence.gridProvenance;
+  const startMs = evidence.cueMs ?? evidence.musicEndMs;
+  if (!grid || !current(grid) || startMs === null) return null;
+  const musicStartMs = evidence.musicStartMs;
+  const bars = evidence.bars.filter(bar => bar >= musicStartMs);
+  if (!eightBarWindow(bars, {
+    startMs: grid.windowStartMs,
+    endMs: Math.min(startMs, grid.windowEndMs - 1, durationMs),
+  }, 'tail')) return null;
+  return { startMs, bars, gridProvenance: grid, lufs: null };
+}
 
 export function regularTailGridSeconds(row: Pick<TrackRecord, 'outro'>): number {
   const tail = row.outro, grid = tail?.gridProvenance;
@@ -83,6 +101,7 @@ export function regularGridAwaiting(id: string, libraryScan = false): boolean {
   const row = db.getTrack(id), head = row?.gridProvenance;
   if (!row) return false;
   if (headGridNeedsRepair(row, db.trackFileSize(id))) return true;
+  if (preparedRegularTail(id, (row.durationSec ?? 0) * 1000)) return false;
   const grid = row.outro?.gridProvenance;
   const endMs = analyzer.tailWindowFor(row)?.endMs ?? grid?.windowEndMs ?? (row.durationSec ?? 0) * 1000;
   const wantedMs = Math.min(regularTailGridSeconds(row) * 1000, endMs);

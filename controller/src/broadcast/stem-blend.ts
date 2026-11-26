@@ -14,6 +14,7 @@ import * as db from '../music/library-db.js';
 import * as library from '../music/library.js';
 import * as loudness from '../music/loudness.js';
 import * as stemCache from '../music/stem-cache.js';
+import { preparedRegularTail } from '../music/regular-tail-grid.js';
 import { bulkPassRunning } from '../music/tagger-lock.js';
 import { separationInFlight } from './pick-stems.js';
 import { renderStandsDown } from './pick-stems-policy.js';
@@ -120,15 +121,18 @@ async function renderBlend(
   const sides = blendSides(outTrack.id, inTrack.id);
   if (!sides) return reject('library analysis is missing');
   const { out, inn } = sides;
-  // Alignment data both sides. The render re-checks all of it; these gates only
-  // avoid pointless round-trips.
-  if (!out.outro?.bars?.length || !out.durationSec || !inn.bars?.length) return reject('a measured head or tail grid is missing');
-  if (opts.regularStyle && (out.outro.bars.length < 9 || inn.bars.length < 9)) {
-    return reject(`eight bars need nine markers (outgoing ${out.outro.bars.length}, incoming ${inn.bars.length})`);
+  const outro = (opts.regularStyle && preparedRegularTail(outTrack.id, (out.durationSec ?? 0) * 1000))
+    || out.outro;
+  // The renderer rechecks marker coverage against the extracted audio.
+  if (!outro?.bars?.length || !out.durationSec || !inn.bars?.length) return reject('a measured head or tail grid is missing');
+  if (opts.regularStyle && (outro.bars.length < 9 || inn.bars.length < 9)) {
+    return reject(`eight bars need nine markers (outgoing ${outro.bars.length}, incoming ${inn.bars.length})`);
   }
-  // A blend always starts at or after the outro wind-down, so a trimmed end
-  // at/before it can only cut the clip's source region. Exact test post-render.
-  if (opts.outTrimEndSec != null && opts.outTrimEndSec <= (out.outro.startMs ?? 0) / 1000) return reject('the outgoing silence trim cuts the blend region');
+  // Legacy starts after the wind-down. Regular uses the span before it
+  // and checks the actual cue against the silence trim after rendering.
+  if (!opts.regularStyle && opts.outTrimEndSec != null && opts.outTrimEndSec <= outro.startMs / 1000) {
+    return reject('the outgoing silence trim cuts the blend region');
+  }
   // Cache-hit-only: both windows must already be separated.
   const [outStems, inStems] = opts.workingSources ? [opts.workingSources.tail, opts.workingSources.head] : await Promise.all([
     stemCache.renderSource(outTrack.id, 'tail'),
@@ -178,9 +182,9 @@ async function renderBlend(
       // tail-meta.json, and treats stems without that sidecar as a cache miss.
       duration_s: out.durationSec,
       outro: {
-        start_ms: out.outro.startMs,
-        bars: out.outro.bars,
-        lufs: out.outro.lufs ?? null,
+        start_ms: outro.startMs,
+        bars: outro.bars,
+        lufs: outro.lufs ?? null,
       },
       // gain_db is what the worker uses; lufs stays on the wire so an older
       // analyzer image still renders.
@@ -257,6 +261,15 @@ export async function maybeRenderBlend(
   opts: Omit<NonNullable<Parameters<typeof renderBlend>[3]>, 'workingSources'> = {},
 ): Promise<BlendPlan | null> {
   if (!opts.regularStyle) return regularStemWorkingMode() ? null : renderBlend(out, incoming, remaining, opts);
+  // A library refresh can replace timing/source evidence without changing
+  // the queue objects. Recheck it after the async render, before arming.
+  const evidence=() => JSON.stringify([out.id,incoming.id].map(id => {
+    const row=db.getTrack(String(id));
+    const outro=library.get(String(id))?.outro ?? row?.outro;
+    return [row?.durationSec,row?.bpm,row?.bars,row?.gridProvenance,outro,
+      id === out.id ? preparedRegularTail(String(id), (row?.durationSec ?? 0) * 1000) : null];
+  }));
+  const before=evidence();
   const sources = await regularStemRuntime.sources(String(out.id), String(incoming.id));
   if (!sources) {
     const pair = regularStemRuntime.pair(String(out.id), String(incoming.id));
@@ -264,14 +277,6 @@ export async function maybeRenderBlend(
     opts.log?.('warn', `Regular stems fallback: working windows not ready at handoff${states}`);
     return null;
   }
-  // A library refresh can replace timing/source evidence without changing
-  // the queue objects. Recheck it after the async render, before arming.
-  const evidence=() => JSON.stringify([out.id,incoming.id].map(id => {
-    const row=db.getTrack(String(id));
-    const outro=library.get(String(id))?.outro ?? row?.outro;
-    return [row?.durationSec,row?.bpm,row?.bars,row?.gridProvenance,outro];
-  }));
-  const before=evidence();
   let completed = false;
   try {
     const result = await renderBlend(out, incoming, remaining, { ...opts, workingSources: sources });

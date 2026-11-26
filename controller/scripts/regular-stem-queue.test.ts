@@ -79,6 +79,24 @@ test('queue snapshots prepare in background, pending work holds only before dead
     assert.equal(snapshots[0].pairToNextAllowed,false,'incompatible shared-grid BPMs block extraction');
     assert.equal(snapshots.every(item=>item.regularEligible),true,'pair admission remains separate from independent extraction');
     db.upsertTrackAnalysis('b',{bpm:143.6,beats:[500,1000],bars:Array.from({length:12},(_,i)=>1000+i*3000),gridProvenance:originalGrid});
+    const { writeStemBlendTailAdmission } = await import('../src/music/library-db/stem-blend-admission.js');
+    const source = { sha256: 'b'.repeat(64), bytes: 12345, complete: true } as const;
+    const bars = Array.from({length: 10}, (_, i) => 201000 + i * 2000);
+    db.getDb()!.prepare('UPDATE tracks SET file_size=? WHERE id=?').run(source.bytes, 'a');
+    assert.ok(writeStemBlendTailAdmission('a', source.bytes, {
+      version: 1, source, requestedSeconds: 60, windowStartMs: 180000, windowEndMs: 240000,
+      musicStartMs: 201000, musicEndMs: 231000, cueMs: 220000, gridStatus: 'measured',
+      beats: bars, bars, gridProvenance: { ...originalGrid, source, windowStartMs: 180000, windowEndMs: 240000 },
+    }));
+    q.syncRegularStemPreparation();
+    assert.deepEqual(snapshots[0].tailBars, bars);
+    assert.equal(snapshots[0].windDownMs, 220000);
+    assert.equal(snapshots[0].tailGridPending, false);
+    db.getDb()!.prepare('UPDATE tracks SET file_size=? WHERE id=?').run(source.bytes + 1, 'a');
+    q.syncRegularStemPreparation(true);
+    assert.deepEqual(snapshots[0].tailBars, [200000,203000,206000], 'stale evidence falls back to the original outro');
+    db.getDb()!.prepare('UPDATE tracks SET file_size=NULL WHERE id=?').run('a');
+    db.getDb()!.prepare('DELETE FROM stem_blend_tail_admission WHERE track_id=?').run('a');
     pending=false;
     await queue.drainToLiquidsoap();
     assert.equal(q.upcoming[0].sent,true);

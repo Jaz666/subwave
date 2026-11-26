@@ -2291,9 +2291,12 @@ class Queue {
           () => gridWorkAllowed() && this.upcoming.includes(target) && !target.sent);
       }
       const evidence: RegularStemQueueEvidence[] = this.upcoming.map((item, index) => {
-        const row = rows[index], next = rows[index+1], outro = outros[index];
+        const row = rows[index], next = rows[index+1];
+        const durationMs = (row?.durationSec ?? 0) * 1000;
+        const preparedTail = enabled ? regularTailGrid.preparedRegularTail(String(item.track.id), durationMs) : null;
+        const outro = preparedTail ?? outros[index];
         if (enabled && !item.sent) regularTailGrid.queueRegularGridForLibraryScan(String(item.track.id));
-        const tailGridPending = enabled && !item.sent && regularTailGrid.regularGridAwaiting(String(item.track.id));
+        const tailGridPending = enabled && !item.sent && !preparedTail && regularTailGrid.regularGridAwaiting(String(item.track.id));
         const nextGridPending = enabled && !!next && !this.upcoming[index+1]?.sent
           && regularTailGrid.regularHeadGridAwaiting(String(next.id));
         if (!this.regularStemOccurrences.has(item)) this.regularStemOccurrences.set(item,randomBytes(8).toString('hex'));
@@ -2311,7 +2314,7 @@ class Queue {
             && !tailGridPending && !nextGridPending
             && regularStemTempoDecision(outro?.gridProvenance, next.gridProvenance).eligible
             && !!stemBlend.regularStemTestStyle(String(item.track.id), String(this.upcoming[index+1]?.track.id)),
-          durationMs: (row?.durationSec ?? 0)*1000,
+          durationMs,
           bars: row?.bars ?? [], tailBars: outro?.bars ?? [],
           windDownMs: outro?.startMs ?? (row?.durationSec ?? 0)*1000,
           headGrid: row?.gridProvenance ?? null, tailGrid: outro?.gridProvenance ?? null,

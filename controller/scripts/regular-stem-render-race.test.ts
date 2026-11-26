@@ -8,6 +8,7 @@ test('finished renders are rejected and removed if queue occurrence or library e
   let change: () => void = () => {};
   let clipPath='';
   let renderError: string | null = null;
+  let expectedTail: { start_ms: number; bars: number[]; lufs: null } | null = null;
   const server=createServer(async(req,res)=>{
     res.setHeader('Content-Type','application/json');
     if(req.url==='/health') {res.end(JSON.stringify({ok:true,engines:['analyze']}));return;}
@@ -15,6 +16,7 @@ test('finished renders are rejected and removed if queue occurrence or library e
     const body=JSON.parse(raw);
     assert.equal(body.out.regular_key,'tail-proof');
     assert.equal(body.in.regular_key,'head-proof');
+    if (expectedTail) assert.deepEqual(body.out.outro, expectedTail);
     if (renderError) { res.end(JSON.stringify({ok:false,error:renderError})); return; }
     clipPath=path.join(body.out_dir,body.clip_name);
     await mkdir(body.out_dir,{recursive:true});await writeFile(clipPath,'rendered seam');
@@ -98,6 +100,32 @@ test('finished renders are rejected and removed if queue occurrence or library e
       {regularStyle:'drums-late',log:(_kind,message)=>messages.push(message)});
     assert.ok(unknownTempo,'regular blends do not require BPM evidence');
     await rm(unknownTempo.clipPath,{force:true});
+
+    const { writeStemBlendTailAdmission } = await import('../src/music/library-db/stem-blend-admission.js');
+    const source = { sha256: 'b'.repeat(64), bytes: 12345, complete: true } as const;
+    const bars = Array.from({length: 12}, (_, i) => 204000 + i * 2000);
+    const prepared = {
+      version: 1, source, requestedSeconds: 60, windowStartMs: 180000, windowEndMs: 240000,
+      musicStartMs: 206000, musicEndMs: 232000, cueMs: null, gridStatus: 'measured',
+      beats: bars, bars, gridProvenance: { ...grid, source, windowStartMs: 180000, windowEndMs: 240000 },
+    } as const;
+    db.getDb()!.prepare('UPDATE tracks SET file_size=?, outro_json=NULL WHERE id=?').run(source.bytes, 'out');
+    assert.ok(writeStemBlendTailAdmission('out', source.bytes, prepared));
+    expectedTail = { start_ms: 232000, bars: bars.slice(1), lufs: null };
+    const withMusicEnd = await maybeRenderBlend({id:'out'}, {id:'in'}, 180,
+      {regularStyle:'drums-late',outTrimEndSec:231});
+    assert.ok(withMusicEnd, 'measured music end supports a blend without an original outro');
+    await rm(withMusicEnd.clipPath);
+
+    change = () => { assert.ok(writeStemBlendTailAdmission('out', source.bytes, {...prepared, cueMs:228000})); };
+    assert.equal(await maybeRenderBlend({id:'out'}, {id:'in'}, 180, {regularStyle:'drums-late'}), null);
+    await assert.rejects(access(clipPath));
+
+    expectedTail = {...expectedTail, start_ms:228000};
+    change = () => {};
+    const withFade = await maybeRenderBlend({id:'out'}, {id:'in'}, 180, {regularStyle:'drums-late'});
+    assert.ok(withFade, 'the detected fade takes precedence over measured music end');
+    await rm(withFade.clipPath);
 
   } finally {
     runtime.sources=original;analyzer.shutdown();db.close();server.closeAllConnections();
