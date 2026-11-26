@@ -15,9 +15,9 @@ npm run analyze -- --prepare-stem-blend-admission --limit 25 --dry-run
 npm run analyze -- --prepare-stem-blend-admission --limit 25
 ```
 
-Use `--ids id1,id2` or `--ids-file path` for a fixed cohort. The pass defaults
-to 25 tracks and accepts a limit of 1–200. The default scope is missing or
-failed evidence for known-size files. It picks queued grid misses first among
+Use `--ids id1,id2` or `--ids-file path` for a fixed cohort. Omit `--limit` to
+process the entire eligible scope, or pass a positive track count. Run selects
+missing or failed evidence for known-size files. It picks queued grid misses first among
 unattempted tracks. `--re-analyze` refreshes completed evidence. The CLI uses
 the existing acoustic maintenance lock, quiet-hours gate, progress reporting,
 and analyzer device defaults. Schedule the first listening-library cohort
@@ -41,8 +41,9 @@ the saved tail. **Re-scan → Re-scan Stem Blend grids** refreshes completed tai
 oldest first, and repairs heads that still need work. When both sides need
 measurement, the analyzer uses the same complete source for both requests.
 
-Both choices use the usual progress, log, and Stop controls. Select up to 25,
-100, or 200 tracks. These actions use the existing Library maintenance lock,
+Both choices use the usual progress, log, and Stop controls. Select 100, 500,
+5,000, 10,000 or all eligible tracks for Run and all prepared tracks for Re-scan.
+These actions use the existing Library maintenance lock,
 so choose a window where pick-time preparation can wait. A complete head
 measurement can record fewer than eight bars, including an empty grid.
 Failures are reported and eligible for retry. Existing transition policy

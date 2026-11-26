@@ -199,7 +199,7 @@ interface TaggingPanelProps {
   stemBlendPrepAvailable: boolean;
   legacyStemCacheAvailable: boolean;
   onStartStemBeatsPrep: (mode: 'missing' | 'refresh', limit: Batch) => void;
-  onStartStemBlendPrep: (mode: 'missing' | 'refresh', limit: number) => void;
+  onStartStemBlendPrep: (mode: 'missing' | 'refresh', batch: Batch) => void;
   onStop: () => void;
   onRescan: (opts: RescanOpts) => void;
   // Walk Navidrome and prune library entries for tracks that no longer exist.

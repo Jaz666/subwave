@@ -340,10 +340,11 @@ export function startAnalyzer(opts: { limit?: number; audio?: boolean; vocal?: b
   spawnChild('analyze', args, detail);
 }
 
-export function startStemBlendAdmission({ mode, limit }: { mode: 'missing' | 'refresh'; limit: number }) {
-  const args = ['src/music/analyze-library.ts', '--prepare-stem-blend-admission', '--limit', String(limit)];
+export function startStemBlendAdmission({ mode, limit }: { mode: 'missing' | 'refresh'; limit?: number }) {
+  const args = ['src/music/analyze-library.ts', '--prepare-stem-blend-admission'];
+  if (limit !== undefined) args.push('--limit', String(limit));
   if (mode === 'refresh') args.push('--re-analyze');
-  spawnChild('analyze', args, `Stem Blend grids, ${mode}, limit=${limit}`, { tailPreparation: true });
+  spawnChild('analyze', args, `Stem Blend grids, ${mode}, ${limit === undefined ? 'all eligible tracks' : `limit=${limit}`}`, { tailPreparation: true });
 }
 
 // Same managed process slot and process-group cancellation as ordinary analysis.

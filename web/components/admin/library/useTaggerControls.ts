@@ -225,7 +225,7 @@ export function useTaggerControls() {
     onDone: () => { notify.ok('audio analysis started'); setLogOpen(true); void reloadTagger(); },
   });
 
-  const stemBlendAdmissionM = useAdminMutation<{ tagger: TaggerState }, { mode: 'missing' | 'refresh'; limit: number }>({
+  const stemBlendAdmissionM = useAdminMutation<{ tagger: TaggerState }, { mode: 'missing' | 'refresh'; limit?: number }>({
     request: (body, fetcher) => adminJson(fetcher, '/library/stem-blend-admission', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     }),
@@ -353,8 +353,8 @@ export function useTaggerControls() {
     startStemBeatsLibraryPrep: (mode: 'missing' | 'refresh', limit: Batch) => {
       stemBeatsLibraryPrepM.mutate({ mode, limit });
     },
-    startStemBlendPreparation: (mode: 'missing' | 'refresh', limit: number) => {
-      stemBlendAdmissionM.mutate({ mode, limit });
+    startStemBlendPreparation: (mode: 'missing' | 'refresh', limit: Batch) => {
+      stemBlendAdmissionM.mutate({ mode, ...(limit === 'all' ? {} : { limit: Number(limit) }) });
     },
     reconcile: () => { reconcileM.mutate(); },
     resetLibrary: () => { resetM.mutate(); },

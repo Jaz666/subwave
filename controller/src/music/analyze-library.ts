@@ -193,10 +193,10 @@ async function main() {
   if (stemBlendAdmission) {
     const bound = stringFlag(args, '--limit');
     const selection = stemBlendAdmissionRunSchema.safeParse({
-      mode: reAnalyze ? 'refresh' : 'missing', limit: bound === undefined ? 25 : Number(bound),
+      mode: reAnalyze ? 'refresh' : 'missing', limit: bound === undefined ? undefined : Number(bound),
     });
     if (!selection.success) {
-      throw new Error('--prepare-stem-blend-admission accepts a limit of 1–200 tracks');
+      throw new Error('--limit must be a positive whole number');
     }
     const result = await prepareStemBlendAdmission({ ids: explicitIds(args), limit: selection.data.limit, rescan: reAnalyze, dryRun });
     analyzer.shutdown();

@@ -5,7 +5,7 @@ const time = z.number().int().nonnegative();
 
 export const stemBlendAdmissionRunSchema = z.object({
   mode: z.enum(['missing', 'refresh']),
-  limit: z.number().int().min(1).max(200),
+  limit: z.number().int().positive().optional(),
 }).strict();
 
 export const stemBlendTailAdmissionSchema = z.object({

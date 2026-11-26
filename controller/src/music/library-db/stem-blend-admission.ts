@@ -13,7 +13,7 @@ const SOURCE_MATCH = `
   END
 `;
 
-export function stemBlendAdmissionIds(limit: number, ids: readonly string[] | null, rescan: boolean): string[] {
+export function stemBlendAdmissionIds(limit: number | undefined, ids: readonly string[] | null, rescan: boolean): string[] {
   const scope = ids === null ? null : JSON.stringify(ids);
   const rows = requireDb().prepare(`
     SELECT t.id
@@ -25,7 +25,7 @@ export function stemBlendAdmissionIds(limit: number, ids: readonly string[] | nu
       AND (${rescan ? "a.status IN ('measured', 'no-grid')" : "(a.status IS NULL OR a.status = 'failed')"})
     ORDER BY a.attempted_at IS NOT NULL, a.attempted_at, q.queued_at IS NULL, q.queued_at, t.id
     LIMIT ?
-  `).all(scope, scope, limit) as { id: string }[];
+  `).all(scope, scope, limit ?? -1) as { id: string }[];
   return rows.map(row => row.id);
 }
 

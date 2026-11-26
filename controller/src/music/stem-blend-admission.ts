@@ -34,7 +34,7 @@ function tailSummary(ids: readonly string[]) {
   return summary;
 }
 
-export async function prepareStemBlendAdmission(options: { ids: string[] | null; limit: number; rescan: boolean; dryRun: boolean }) {
+export async function prepareStemBlendAdmission(options: { ids: string[] | null; limit?: number; rescan: boolean; dryRun: boolean }) {
   if (!regularStemWorkingMode() || !regularStemBlendsEnabled()) throw new Error('Enable New Style Stem Blends before preparing admission evidence');
   const tails = stemBlendAdmissionIds(options.limit, options.ids, options.rescan);
   const firstHeads: string[] = [], retryHeads: string[] = [];
@@ -43,8 +43,8 @@ export async function prepareStemBlendAdmission(options: { ids: string[] | null;
       if (headGridNeedsRepair(row, row.fileSize)) {
         (row.attemptedAt === null ? firstHeads : retryHeads).push(row.id);
       }
-      if (firstHeads.length === options.limit || firstHeads.length + tails.length + retryHeads.length >= options.limit
-          && row.attemptedAt !== null) break;
+      if (options.limit !== undefined && (firstHeads.length === options.limit
+          || (row.attemptedAt !== null && firstHeads.length + tails.length + retryHeads.length >= options.limit))) break;
     }
   }
   const selected = [...firstHeads, ...tails, ...retryHeads].slice(0, options.limit);

@@ -45,7 +45,7 @@ interface Props {
   intent: 'reembed' | null;
   onStart: (steps?: TagSteps) => void;
   onStartStemBeatsPrep: (mode: 'missing' | 'refresh', limit: Batch) => void;
-  onStartStemBlendPrep: (mode: 'missing' | 'refresh', limit: number) => void;
+  onStartStemBlendPrep: (mode: 'missing' | 'refresh', batch: Batch) => void;
   onReconcile: () => void;
   onRescan: (opts: RescanOpts) => void;
   // Wipe ALL tagging data and start fresh (deletes library.db server-side).
@@ -68,7 +68,6 @@ export default function LibraryTaggingModal(p: Props) {
   });
   const [runPrep, setRunPrep] = useState<StemPreparation>(null);
   const [refreshPrep, setRefreshPrep] = useState<StemPreparation>(null);
-  const [tailLimit, setTailLimit] = useState(25);
   const newStylePrep = p.newStylePrepAvailable && runPrep === 'beats';
   const newStyleRescan = p.newStylePrepAvailable && refreshPrep === 'beats';
   const blendPrepAvailable = p.stemBlendPrepAvailable && !p.analysisOff;
@@ -173,7 +172,7 @@ export default function LibraryTaggingModal(p: Props) {
   const startRun = () => {
     if (!anyStep || p.busy) return;
     if (blendPrep) {
-      p.onStartStemBlendPrep('missing', tailLimit);
+      p.onStartStemBlendPrep('missing', p.batch);
       p.onOpenChange(false);
       return;
     }
@@ -200,7 +199,7 @@ export default function LibraryTaggingModal(p: Props) {
   const runRescan = () => {
     if (!anyPass || p.busy) return;
     if (blendRescan) {
-      p.onStartStemBlendPrep('refresh', tailLimit);
+      p.onStartStemBlendPrep('refresh', p.batch);
       p.onOpenChange(false);
       return;
     }
@@ -311,17 +310,10 @@ export default function LibraryTaggingModal(p: Props) {
               )}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashed border-separator-strong pt-3.5">
-              {blendPrep ? <StemBlendLimit value={tailLimit} onChange={setTailLimit} /> : <div className="lib-batch">
-                <label htmlFor="modal-batch">{stemsOnly || newStylePrep ? 'Track limit' : 'Limit'}</label>
-                <select id="modal-batch" value={p.batch} onChange={e => p.setBatch(e.target.value as Batch)}>
-                  <option value="100">next 100</option>
-                  <option value="500">next 500</option>
-                  <option value="5000">next 5,000</option>
-                  <option value="10000">next 10,000</option>
-                  <option value="all">{stemsOnly || newStylePrep
-                    ? 'all eligible tracks' : `all${p.remaining != null ? ` ${num(p.remaining)}` : ''} remaining`}</option>
-                </select>
-              </div>}
+              <LibraryBatchSelect id="modal-batch" value={p.batch} onChange={p.setBatch}
+                label={stemsOnly || newStylePrep || blendPrep ? 'Track limit' : 'Limit'}
+                allLabel={stemsOnly || newStylePrep || blendPrep
+                  ? 'all eligible tracks' : `all${p.remaining != null ? ` ${num(p.remaining)}` : ''} remaining`} />
               <div className="flex items-center gap-2.5">
                 <Btn onClick={() => p.onOpenChange(false)}>Cancel</Btn>
                 <Btn lg tone="accent" onClick={startRun} disabled={!anyStep || p.busy}>
@@ -411,15 +403,9 @@ export default function LibraryTaggingModal(p: Props) {
               )}
               </>}
             </div>
-            {blendRescan && <StemBlendLimit value={tailLimit} onChange={setTailLimit} />}
-            {newStyleRescan && <div className="lib-batch">
-              <label htmlFor="modal-rescan-batch">Track limit</label>
-              <select id="modal-rescan-batch" value={p.batch} onChange={e => p.setBatch(e.target.value as Batch)}>
-                <option value="100">next 100</option><option value="500">next 500</option>
-                <option value="5000">next 5,000</option><option value="10000">next 10,000</option>
-                <option value="all">all prepared candidates</option>
-              </select>
-            </div>}
+            {(newStyleRescan || blendRescan) &&
+              <LibraryBatchSelect id="modal-rescan-batch" value={p.batch} onChange={p.setBatch} label="Track limit"
+                allLabel={blendRescan ? 'all prepared tracks' : 'all prepared candidates'} />}
             <div className="flex flex-wrap items-center justify-end gap-2.5 border-t border-dashed border-separator-strong pt-3.5">
               <Btn onClick={() => p.onOpenChange(false)}>Cancel</Btn>
               <Btn tone="accent" disabled={!anyPass || p.busy} onClick={runRescan}>
@@ -501,12 +487,18 @@ export default function LibraryTaggingModal(p: Props) {
   );
 }
 
-function StemBlendLimit({ value, onChange }: { value: number; onChange: (limit: number) => void }) {
+function LibraryBatchSelect({ id, value, onChange, label, allLabel }: {
+  id: string; value: Batch; onChange: (limit: Batch) => void; label: string; allLabel: string;
+}) {
   return (
     <div className="lib-batch">
-      <label htmlFor="stem-blend-tail-limit">Track limit</label>
-      <select id="stem-blend-tail-limit" value={value} onChange={e => onChange(Number(e.target.value))}>
-        {[25, 100, 200].map(n => <option key={n} value={n}>up to {n} tracks</option>)}
+      <label htmlFor={id}>{label}</label>
+      <select id={id} value={value} onChange={e => onChange(e.target.value as Batch)}>
+        <option value="100">next 100</option>
+        <option value="500">next 500</option>
+        <option value="5000">next 5,000</option>
+        <option value="10000">next 10,000</option>
+        <option value="all">{allLabel}</option>
       </select>
     </div>
   );
