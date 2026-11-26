@@ -323,15 +323,17 @@ export function startAnalyzer(opts: { limit?: number; audio?: boolean; vocal?: b
   const args = ['src/music/analyze-library.ts'];
   if (Number.isFinite(limit) && (limit as number) > 0) args.push('--limit', String(limit));
   if (audio) args.push('--audio');
-  if (vocal) args.push('--vocal');
+  if (vocal === true) args.push('--vocal');
+  if (vocal === false) args.push('--no-vocal');
   if (stemWaveformsOnly) args.push('--stem-waveforms-only', '--skip-walk');
   else if (stemsOnly) args.push('--stems-only', '--skip-walk');
-  else if (stems) args.push('--stems');
+  else if (stems === true) args.push('--stems');
+  else if (stems === false) args.push('--no-stems');
   if (stemWaveforms && !stemWaveformsOnly) args.push('--stem-waveforms');
   const detail = [
     Number.isFinite(limit) && (limit as number) > 0 ? `limit=${limit}` : null,
     audio ? 'audio' : null,
-    vocal ? 'vocal' : null,
+    vocal === true ? 'vocal' : vocal === false ? 'no-vocal' : null,
   ]
     .filter(Boolean)
     .join(', ');

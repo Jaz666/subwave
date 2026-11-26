@@ -13,6 +13,7 @@
 //                  music/prune-policy.ts lets it remove on its own
 //   --audio        backfill CLAP vectors on analysed tracks (implied by ANALYZE_AUDIO_EMBEDDING)
 //   --vocal        backfill Demucs vocal ranges (implied by ANALYZE_VOCAL_ACTIVITY)
+//   --no-vocal     skip vocal analysis even when the station setting is enabled
 //
 // The walk otherwise runs only on an empty catalogue (first-run bootstrap).
 //
@@ -171,7 +172,7 @@ async function main() {
   // undefined → runAnalysisPass falls back to the ANALYZE_AUDIO_EMBEDDING env.
   const audioBackfill = args.includes('--audio') ? true : undefined;
   // undefined → falls back to ANALYZE_VOCAL_ACTIVITY / settings.audio.vocalActivity.
-  const vocalBackfill = args.includes('--vocal') ? true : undefined;
+  const vocalBackfill = args.includes('--vocal') ? true : args.includes('--no-vocal') ? false : undefined;
   const stemOnly = args.includes('--stems-only');
   const stemBackfill = args.includes('--stems') || stemOnly ? true : args.includes('--no-stems') ? false : undefined;
 

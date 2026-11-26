@@ -230,8 +230,8 @@ router.post('/library/analyze', requireAdmin, (req, res) => {
   const limit = parseIntSafe(req.body?.limit, null);
   // `vocal:true` (#646) forces the Demucs vocal pass; a vocal run leaves audio at
   // its env default so the two backfills stay independently triggerable.
-  const vocal = req.body?.vocal === true;
-  startAnalyzer({ limit: limit ?? undefined, audio: vocal ? undefined : true, vocal: vocal || undefined });
+  const vocal = typeof req.body?.vocal === 'boolean' ? req.body.vocal : undefined;
+  startAnalyzer({ limit: limit ?? undefined, audio: vocal === true ? undefined : true, vocal });
   res.json({ ok: true, tagger });
 });
 

@@ -101,6 +101,10 @@ def bt_beats_downbeats(beat_logits, down_logits):
     downs = bt_peak_frames(down_logits) / BT_FPS
     if len(beats) > 0:
         downs = np.asarray([beats[int(np.argmin(np.abs(beats - d)))] for d in downs])
+    else:
+        # There is no beat to anchor a bar to. This is an unmeasurable grid,
+        # not corrupt inference; never invent beats from downbeat-only peaks.
+        downs = np.asarray([], dtype=np.float64)
     return beats, np.unique(downs)
 
 

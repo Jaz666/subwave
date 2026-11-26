@@ -107,6 +107,20 @@ def assert_grid(actual, expected):
     assert actual == expected, (actual, expected)
 
 
+def t_downbeat_only_output_is_an_empty_grid():
+    beat_logits = np.full(100, -1.0)
+    down_logits = np.full(100, -1.0)
+    down_logits[50] = 1.0
+    beats, downs = grid.bt_beats_downbeats(beat_logits, down_logits)
+    grid.validate_grid(beats, downs, 2.0)
+    assert len(beats) == len(downs) == 0, (beats, downs)
+
+    # Ordinary anchored downbeats still use their measured beat timestamps.
+    beat_logits[49] = 1.0
+    beats, downs = grid.bt_beats_downbeats(beat_logits, down_logits)
+    assert np.array_equal(beats, downs) and len(beats) == 1, (beats, downs)
+
+
 def assert_unavailable(call):
     try:
         call()
@@ -431,6 +445,7 @@ def t_source_fingerprint_survives_owned_cleanup():
         with_state(run, "beat-this", tracker=object())
 
 test("legacy setting cannot disable the required shared grid", t_legacy_setting_cannot_disable_grid)
+test("downbeat-only output is unmeasurable, not corrupt", t_downbeat_only_output_is_an_empty_grid)
 test("missing model fails the grid facet and logs once", t_missing_model_fails_grid_logged_once)
 test("missing onnxruntime fails the grid facet", t_missing_onnxruntime_fails_grid)
 test("a model that will not load fails the grid facet", t_unloadable_model_fails_grid)

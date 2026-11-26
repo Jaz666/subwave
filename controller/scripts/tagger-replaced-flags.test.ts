@@ -86,3 +86,20 @@ test('only an explicit true counts: this answer can clear the library\'s analysi
   assert.deepEqual(await flagsOf('/library/reconcile', { confirmReplaced: 'true', acceptReplaced: 1 }), []);
   assert.deepEqual(await flagsOf('/tag-library', { confirmReplaced: 'yes' }), []);
 });
+
+test('acoustics-only shortcut preserves unchecked vocal and stem options', async () => {
+  await flagsOf('/tag-library', { reconcile: false, enrich: false, tagMoods: false,
+    analyze: true, vocal: false, stems: false });
+  const args = started.at(-1)!;
+  assert.ok(args.includes('src/music/analyze-library.ts'), 'the standalone shortcut is exercised');
+  assert.ok(args.includes('--no-vocal'));
+  assert.ok(args.includes('--no-stems'));
+  assert.ok(!args.includes('--vocal'));
+});
+
+test('direct acoustics endpoint preserves an explicit vocal opt-out', async () => {
+  await flagsOf('/library/analyze', { vocal: false });
+  assert.ok(started.at(-1)!.includes('--no-vocal'));
+  await flagsOf('/library/analyze', { vocal: true });
+  assert.ok(started.at(-1)!.includes('--vocal'));
+});

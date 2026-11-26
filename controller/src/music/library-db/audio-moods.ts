@@ -1,7 +1,7 @@
 // Zero-shot audio moods: labels from scoring CLAP audio vectors against the
 // mood vocabulary's prompts, plus the vocab hash that decides a re-score.
 
-import { requireDb, SQL_HAS_MOODS } from './handle.js';
+import { requireDb, SQL_HAS_MOODS, SQL_HAS_MEASURED_OUTRO } from './handle.js';
 import {
   idsMissingLabels,
   iterateScoreMaps,
@@ -275,7 +275,7 @@ export function unanalysedAudioIds(limit?: number): string[] {
 export function needsVocalIds(limit?: number, includeTailMissing = false): string[] {
   const missing = includeTailMissing
     ? `(vocal_ranges_json IS NULL
-       OR (outro_json IS NOT NULL AND outro_json NOT LIKE '%"vocalRanges"%'))`
+       OR ((${SQL_HAS_MEASURED_OUTRO}) AND outro_json NOT LIKE '%"vocalRanges"%'))`
     : `vocal_ranges_json IS NULL`;
   const where = `${missing} AND ${analysisFailureExclusion()}`;
   const q =

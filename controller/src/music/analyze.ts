@@ -2,7 +2,7 @@
 // lack them, resumably. Shared by the `npm run tag` phase and `npm run analyze`.
 // The DSP lives in music/analyzer.ts; with no backend this is a clean no-op.
 
-import { regularStemBlendsEnabled, regularStemWorkingMode, stemBeatsEnabled, stemsEnabled } from '../broadcast/regular-stem-mode.js';
+import { regularStemBlendsEnabled, regularStemWorkingMode, stemsEnabled } from '../broadcast/regular-stem-mode.js';
 import { prepareRegularTailGridsForLibraryScan } from './regular-tail-grid.js';
 import { readFile, rm } from 'node:fs/promises';
 import * as db from './library-db.js';
@@ -29,9 +29,6 @@ import {
 import { probeListenerCount } from '../broadcast/listeners.js';
 import { sweepKeepLastFromDisk } from '../broadcast/pick-stems.js';
 import { planAcoustics, type AcousticsPlan, type WorkRequest } from './acoustics-plan.js';
-import { SUBBEATS_SCAN_PREFIX } from '../schemas/subbeats.js';
-import { readSubbeatsQueue } from './subbeats-store.js';
-import { queuedSubbeatsForScan, suppressRegularStems } from './subbeats-scan-policy.js';
 
 // Status events for the panel, mirrored to the `[analyze] …` console line.
 const logEvent = makeEventLogger('analyze');
@@ -56,7 +53,6 @@ export interface AnalyzeOptions {
   // tracks, each with its own worker flags. reAnalyze and the four widenings
   // are ignored. Absent = today's pass, unchanged.
   plan?: AcousticsPlan;
-  subbeatsScopeIds?: readonly string[];
 }
 
 // Env wins ON, never off; else the admin toggle (settings.audio.embeddings).
@@ -174,8 +170,11 @@ export interface AnalyzeStats {
   scope: number;
   // 0 when the backend has no CLAP model loaded.
   audioEmbedded: number;
-  // Includes instrumentals (stored as []). 0 when off or demucs is absent.
+  // Head ranges, including instrumentals (stored as []). 0 when off or absent.
   vocalAnalyzed: number;
+  // Tail ranges returned this pass, separately from retained/head-only data.
+  vocalTailAnalyzed?: number;
+  vocalTailPending?: number;
   // The opt-in whole-file backfill that followed the pass (absent when it
   // did not run).
   wholeFile?: { analyzed: number; failed: number; scope: number };
@@ -345,11 +344,6 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
     return { available: false, backend: 'none', analyzed: 0, failed: 0, scope: 0, audioEmbedded: 0, vocalAnalyzed: 0 };
   }
   const backend = analyzer.backendLabel();
-  // Snapshot before this pass starts. Selections added during the scan wait for
-  // the next one and cannot change its regular-stem admission decisions.
-  let queuedSubbeatsJobs: ReturnType<typeof readSubbeatsQueue>['jobs'] = [];
-  if (stemBeatsEnabled()) try { queuedSubbeatsJobs = readSubbeatsQueue(config.stateDir).jobs; }
-  catch { logEvent('warning', 'Sub/Beats selections could not be read; regular analysis will continue'); }
   logEvent('info', `Audio engine: ${backend}`);
 
   // Resolved up front so a --re-analyze not redoing vocal preserves existing
@@ -406,17 +400,6 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   }
 
   const cap = opts.limit && opts.limit > 0 ? opts.limit : undefined;
-  const selectedSubbeatsScan = stemBeatsEnabled() && (opts.stemOnly || opts.stemBackfill === true)
-    && analyzer.vocalActivityAvailable() !== false;
-  const demucsScan = opts.stemBackfill !== false && (selectedSubbeatsScan || (plan
-    ? plan.facets.some(facet => facet === 'stems' || facet === 'vocal') && analyzer.vocalActivityAvailable() !== false
-    : stemCache || vocalBackfill));
-  const queuedForSubbeats = new Set(demucsScan
-    ? queuedSubbeatsForScan(queuedSubbeatsJobs, opts.subbeatsScopeIds ? new Set(opts.subbeatsScopeIds) : null, opts.limit, stemBeatsEnabled())
-    : []);
-  const reportSubbeatsReady = () => {
-    if (queuedForSubbeats.size) console.log(SUBBEATS_SCAN_PREFIX + JSON.stringify([...queuedForSubbeats]));
-  };
   // A facet plan brings its own scope: skip the legacy scope queries entirely.
   const bpmIds = opts.stemOnly ? [] : plan
     ? []
@@ -489,7 +472,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
     // The loop spends stemSlotsLeft in ids order and the earlier widenings'
     // tracks run FIRST, draining slots before this slice is reached. Reserve
     // them up front, or the announcement over-promises.
-    const reserved = ids.filter(id => !queuedForSubbeats.has(id) && !existingStemDirs.has(id) && db.canCacheStems(id, stemSignals)).length;
+    const reserved = ids.filter(id => !existingStemDirs.has(id) && db.canCacheStems(id, stemSignals)).length;
     const backfillSlots = Math.max(0, stemSlotsLeft - reserved);
     if (backfillSlots <= 0) {
       console.log(
@@ -507,7 +490,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
       // signals it reads are resolved here because library-db must not import
       // the likes store.
       const needing = db.needsStemsIds(undefined, stemSignals)
-        .filter(id => !seen.has(id) && !queuedForSubbeats.has(id));
+        .filter(id => !seen.has(id));
       // Under --limit, only the slots the bpm/CLAP/vocal scopes haven't already
       // spent are available — sizing off the raw cap would log stem tracks a
       // final slice then silently drops, the exact "reads as finished"
@@ -532,7 +515,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   // Vocal work applies to every id; stem work only to eligible recordings.
   const fullAnalysisIds = new Set(bpmIds);
   for (const id of ids) {
-    if (vocalBackfill || (stemCache && !queuedForSubbeats.has(id) && db.canCacheStems(id, stemSignals))) fullAnalysisIds.add(id);
+    if (vocalBackfill || (stemCache && db.canCacheStems(id, stemSignals))) fullAnalysisIds.add(id);
   }
 
   // A facet plan replaces everything the widenings above decided: the plan's
@@ -597,7 +580,6 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
 
   if (ids.length === 0) {
     console.log('[analyze] nothing to analyse — all tracks current');
-    reportSubbeatsReady();
     // Zero-shot scoring can still have work (older vectors, changed vocabulary).
     await scoreAudioMoods();
     return { available: true, backend, analyzed: 0, failed: 0, scope: 0, audioEmbedded: 0, vocalAnalyzed: 0 };
@@ -627,6 +609,8 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   };
   let audioEmbedded = 0;
   let vocalAnalyzed = 0;
+  let vocalTailAnalyzed = 0;
+  let vocalTailPending = 0;
   // Only the quiet-clock state lives here, so it carries across tracks.
   const quietGate: QuietGate = { state: { quietSince: null }, paused: false };
   {
@@ -654,21 +638,35 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
     const f = useFacets ? plannedFacets.get(songId) : undefined;
     return !!f && f.length > 0 && f.every((x) => db.WHOLE_FILE_FACETS.includes(x));
   };
-  const prefetch = (songId: string): Prefetch =>
-    wholeFileOnly(songId)
-      ? Promise.resolve({ unstaged: true as const })
-      : analyzer.downloadCapped(songId).then((r) => r, (err) => ({ err }));
+  const tailRequested = (songId: string) => {
+    const facets = plannedFacets.get(songId);
+    return facets ? analyzer.usesTailWindow(facets) : vocalBackfill || stemCache;
+  };
+  const completeTailNeeded = (songId: string) => tailRequested(songId)
+    && !analyzer.tailWindowFor(db.getTrack(songId));
+  const prefetch = (songId: string): Prefetch => {
+    if (wholeFileOnly(songId)) return Promise.resolve({ unstaged: true as const });
+    // A head prefix cannot finish selected tail work. Without measured edges
+    // for a separate tail fetch, bound a complete download by the library size.
+    const bytes = completeTailNeeded(songId) ? db.trackFileSize(songId) : null;
+    const opts = bytes != null && Number.isSafeInteger(bytes) && bytes > 0 && bytes < Number.MAX_SAFE_INTEGER
+      ? { maxBytes: Math.max(analyzer.ANALYZE_MAX_BYTES, bytes + 1),
+        timeoutMs: Math.max(config.analyzer.requestTimeoutMs, config.analyzer.wholeFileTimeoutMs) }
+      : undefined;
+    return analyzer.downloadCapped(songId, opts).then((r) => r, (err) => ({ err }));
+  };
 
   type TrackWorkResult = { kind: 'skipped' } | {
     kind: 'analyzed';
     audioEmbedded: boolean;
     vocalAnalyzed: boolean;
+    vocalTailAnalyzed?: boolean;
+    vocalTailPending?: boolean;
   };
 
   const allocateStems = (id: string): string | undefined => {
     // A queued Sub/Beats request will create the richer bundle after this scan.
     // Preserve any existing regular stems, but avoid a duplicate new allocation.
-    if (suppressRegularStems(id, queuedForSubbeats)) return undefined;
     const want = planned.get(id);
     // A planned track gets stems only when its plan asks for them.
     if (plan && (!want?.stems || planStemsOffline)) return undefined;
@@ -835,7 +833,11 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
       audioMetaStamped = true;
     }
     db.writeFacetResults(id, w);
-    return { kind: 'analyzed', audioEmbedded: wroteClap, vocalAnalyzed: !!w.vocal };
+    return { kind: 'analyzed', audioEmbedded: wroteClap, vocalAnalyzed: !!w.vocal,
+      vocalTailAnalyzed: w.vocal?.tailVocalRanges != null || (tailVocals && w.tail != null
+        && !('unmeasurable' in w.tail) && w.tail.outro?.vocalRanges != null),
+      vocalTailPending: !!w.vocal && w.vocal.tailVocalRanges == null && db.getTrack(id)?.outro?.vocalRanges == null
+        && db.getTrack(id)?.outro != null };
   };
 
   const runTrack = async (
@@ -855,12 +857,15 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
       if ('err' in settled) {
         const err: any = settled.err;
         // A non-audio response (stale library entry) is not retryable by url.
-        if (err instanceof analyzer.NonAudioResponseError) throw err;
+        if (err instanceof analyzer.NonAudioResponseError || completeTailNeeded(id)) throw err;
         // Otherwise a transient fetch failure — fall back to the url path.
         console.error(`[analyze] ${id} prefetch failed (${err?.message || err}); using url path`);
       } else if ('path' in settled) {
         localPath = settled.path;
         localComplete = settled.complete;
+      }
+      if (localComplete === false && completeTailNeeded(id)) {
+        throw new Error('Selected tail analysis needs the complete recording; download reached its byte limit. Refresh library file metadata before retrying.');
       }
       if (useFacets && plannedFacets.has(id)) {
         return await runFacetTrack(id, localPath, localComplete, admittedStems);
@@ -879,7 +884,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
       // separation, which an explicit vocal=false would veto in the worker.
       const vocal = want
         ? (want.vocal ? (lyricVocal && !stems_dir ? false : true) : (stems_dir ? undefined : false))
-        : vocalBackfill ? (lyricVocal && !stems_dir ? false : true) : undefined;
+        : vocalBackfill ? (lyricVocal && !stems_dir ? false : true) : (stems_dir ? undefined : false);
       let viaUrl = !localPath;
       // The tail window ends where the music stops, when the edges are known.
       const placement = embeddingOnly ? {} : analyzer.flatTailOpts(id, analyzer.tailWindowFor(db.getTrack(id)));
@@ -892,7 +897,12 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
             stems_require_marker: stems_dir ? true : undefined,
             embedding_only: embeddingOnly || undefined,
             ...placement,
-          }, () => { viaUrl = true; })
+          }, () => {
+            // An unplaced URL retry would fetch another capped prefix and
+            // silently lose the complete source this tail job required.
+            if (completeTailNeeded(id)) throw new Error('Selected tail analysis needs the complete staged recording, but the analyzer cannot read it. Check the shared state mount.');
+            viaUrl = true;
+          })
         : await analyzer.analyze(id, {
             embed,
             vocal,
@@ -902,6 +912,8 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
             ...(placement.tail_window ? { tail_window: placement.tail_window } : {}),
           });
       let storedVocal = false;
+      let storedVocalTail = false;
+      let pendingVocalTail = false;
       if (!embeddingOnly) {
         // Lyrics win over the worker's vocal output: a synced onset beats the
         // energy heuristic the worker returns once Demucs is skipped.
@@ -949,11 +961,13 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
             : (localComplete === true ? 'full' : localComplete === false ? 'capped' : 'unknown'),
         });
         storedVocal = vocalRanges != null;
-        // Surface the tail-vocal stuck case rather than retargeting it forever.
-        if (a.outro == null && (lyricVocal != null || (vocal && a.vocalRanges != null))) {
+        if (vocalWantedHere && storedVocal) {
+          storedVocalTail = outro?.vocalRanges != null;
           const prior = db.getTrack(id);
-          if (prior?.outro && prior.outro.vocalRanges == null) {
-            console.log(`[analyze] ${id}: tail vocals not computable (incomplete download; stored outro predates tail detection) — stays in the vocal backfill scope`);
+          pendingVocalTail = prior?.outro != null && prior.outro.vocalRanges == null;
+          if (pendingVocalTail) {
+            const reason = a.outro == null ? 'no usable acoustic tail returned' : 'tail vocal measurement returned no ranges';
+            console.log(`[analyze] ${id}: tail vocal analysis pending: ${reason} (head completed)`);
           }
         }
       }
@@ -970,7 +984,8 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
           console.error(`[analyze] ${id} audio-vector write failed: ${err?.message || err}`);
         }
       }
-      return { kind: 'analyzed', audioEmbedded: storedAudio, vocalAnalyzed: storedVocal };
+      return { kind: 'analyzed', audioEmbedded: storedAudio, vocalAnalyzed: storedVocal,
+        vocalTailAnalyzed: storedVocalTail, vocalTailPending: pendingVocalTail };
     } finally {
       // Best-effort, regardless of outcome.
       if (localPath) await rm(localPath, { force: true }).catch(() => {});
@@ -987,6 +1002,8 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
         analyzed += 1;
         if (outcome.value.audioEmbedded) audioEmbedded += 1;
         if (outcome.value.vocalAnalyzed) vocalAnalyzed += 1;
+        if (outcome.value.vocalTailAnalyzed) vocalTailAnalyzed += 1;
+        if (outcome.value.vocalTailPending) vocalTailPending += 1;
         // A success proves the buffered failures were about their files.
         flushFailureStamps();
         consecutiveFailures = 0;
@@ -1129,9 +1146,12 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
     'success',
     `Audio analysed — ${analyzed.toLocaleString('en-GB')} tracks` +
       (audioEmbedded > 0 ? `, ${audioEmbedded.toLocaleString('en-GB')} sounds-like` : '') +
-      (vocalAnalyzed > 0 ? `, ${vocalAnalyzed.toLocaleString('en-GB')} vocal` : '') +
+      (vocalAnalyzed > 0 ? `, ${vocalAnalyzed.toLocaleString('en-GB')} vocal heads` : '') +
+      (passVocal ? `, ${vocalTailAnalyzed.toLocaleString('en-GB')} vocal tails` : '') +
+      (vocalTailPending > 0 ? ` · ${vocalTailPending.toLocaleString('en-GB')} vocal tails pending` : '') +
       (failed > 0 ? ` · ${failed.toLocaleString('en-GB')} failed` : ''),
   );
   reportSubbeatsReady();
-  return { available: true, backend, analyzed, failed, scope: ids.length, audioEmbedded, vocalAnalyzed };
+  return { available: true, backend, analyzed, failed, scope: ids.length, audioEmbedded, vocalAnalyzed,
+    vocalTailAnalyzed, vocalTailPending };
 }

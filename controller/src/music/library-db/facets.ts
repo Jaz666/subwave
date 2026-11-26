@@ -40,7 +40,7 @@
 // read off analysis_version and would otherwise drift without any write.
 
 import type Database from 'better-sqlite3';
-import { ANALYSIS_VERSION, requireDb } from './handle.js';
+import { ANALYSIS_VERSION, requireDb, SQL_HAS_MEASURED_OUTRO } from './handle.js';
 import { MAX_ANALYSIS_FAILURES, analysisFailureExclusion } from '../analyze-capability.js';
 import { YEAR_MAX_ATTEMPTS, yearRetryDue } from '../original-year-policy.js';
 import { eraSuspectSql } from '../era-suspect.js';
@@ -219,7 +219,7 @@ export interface FacetSourceRow {
   analysis_version: number | null;
   has_loudness: number;      // loudness_lufs IS NOT NULL
   has_tail_silence: number;  // tail_silence_ms IS NOT NULL
-  has_outro: number;         // outro_json IS NOT NULL
+  has_outro: number;         // a measured ending cue, not a shared-grid-only record
   outro_has_vocals: number;  // outro_json carries a "vocalRanges" key
   has_vocal: number;         // vocal_ranges_json IS NOT NULL ('[]' is measured, counts)
   has_stems: number;         // stems_at IS NOT NULL
@@ -240,7 +240,7 @@ export const FACET_SOURCE_SELECT =
   `analysis_version,
    loudness_lufs IS NOT NULL                          AS has_loudness,
    tail_silence_ms IS NOT NULL                        AS has_tail_silence,
-   outro_json IS NOT NULL                             AS has_outro,
+   (${SQL_HAS_MEASURED_OUTRO})                         AS has_outro,
    COALESCE(instr(outro_json, '"vocalRanges"'), 0) > 0 AS outro_has_vocals,
    vocal_ranges_json IS NOT NULL                      AS has_vocal,
    stems_at IS NOT NULL                               AS has_stems,
@@ -572,7 +572,8 @@ export function facetDerivationStamp(): string {
   // Revision 6 marks a placed tail without its loudness curve `no-curve`.
   // Adding a facet changes FACET_VERSIONS, so the year facet's rows were
   // derived for every track on the first open after it landed.
-  return JSON.stringify({ revision: 6, analysis: ANALYSIS_VERSION, facets: FACET_VERSIONS });
+  // Revision 7 no longer calls a grid-only record a measured acoustic outro.
+  return JSON.stringify({ revision: 7, analysis: ANALYSIS_VERSION, facets: FACET_VERSIONS });
 }
 
 function readFacetStamp(d: Database.Database): string | null {
@@ -625,6 +626,13 @@ export function ensureFacetStatus(d: Database.Database): number {
     // versions: nothing to do, and no per-open scan of the table. A missing
     // stamp (a table created before the meta row existed) re-derives once.
     if (readFacetStamp(d) === facetDerivationStamp()) return 0;
+    // The old mandatory-grid path counted a missing Beat This grid against
+    // the recording. Give those failures one retry after this upgrade; leave
+    // actual decode/download failures and every stored measurement intact.
+    const recovered = d.prepare(`UPDATE tracks SET analyze_fail_count = NULL,
+      analyze_error = NULL, analyze_failed_at = NULL
+      WHERE analyze_error = 'analyze sidecar 500: required Beat This beat grid is unavailable'`).run().changes;
+    if (recovered) console.log(`[library-db] returned ${recovered} tracks excluded by earlier shared-grid failures to analysis`);
     const t0 = Date.now();
     const n = resyncAllFacets(d);
     console.log(`[library-db] track_facet_status re-derived for ${n} tracks (facet derivation changed, ${Date.now() - t0} ms)`);

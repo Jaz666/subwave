@@ -39,6 +39,13 @@ export const SQL_NO_MOODS = `(moods IS NULL OR json_array_length(moods) = 0)`;
 export const SQL_TAIL_VOCAL_RANGES =
   `CASE WHEN json_valid(outro_json) THEN outro_json -> '$.vocalRanges' END`;
 
+// A shared grid may occupy outro_json before an acoustic outro is measured.
+// Only an actual ending cue creates work for the legacy tail-vocal backfill.
+export const SQL_HAS_MEASURED_OUTRO = `CASE WHEN json_valid(outro_json) THEN
+  COALESCE(json_type(outro_json, '$.startMs') IN ('integer', 'real')
+  AND json_extract(outro_json, '$.startMs') >= 0
+  AND json_extract(outro_json, '$.ending') IN ('fade', 'cold'), 0) ELSE 0 END`;
+
 let db: Database.Database | null = null;
 let currentEmbeddingDim: number | null = null;
 // Minted per open(), so change tokens from different handles are never

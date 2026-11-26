@@ -126,12 +126,48 @@ await test('a failed track carries its attempts on every facet', () => {
 
 await test('seeded table matches the columns and every legacy scope', assertConsistent);
 
+await test('grid-only outro records do not reopen settled head vocals', () => {
+  db.upsertTrackMeta('grid-only', { title: 'Grid only', artist: 'A', duration: 240 });
+  db.upsertTrackAnalysis('grid-only', { bpm: 120, vocalRanges: [] });
+  sql.prepare('UPDATE tracks SET outro_json = ? WHERE id = ?').run(
+    JSON.stringify({ beats: [1000, 1500], bars: [1000], gridProvenance: {} }), 'grid-only');
+  db.syncTrackFacets('grid-only');
+  assert.ok(!db.needsVocalIds(undefined, true).includes('grid-only'));
+  assert.ok(!db.facetNeedsIds('vocal').includes('grid-only'));
+  assertConsistent();
+});
+
 await test('reopening does not re-seed or change anything', async () => {
   const before = JSON.stringify(db.requireDb().prepare('SELECT * FROM track_facet_status ORDER BY track_id, facet').all());
   db.close();
   await db.open({ embeddingDim: 8, adoptStoredDim: true });
   const after = JSON.stringify(db.requireDb().prepare('SELECT * FROM track_facet_status ORDER BY track_id, facet').all());
   assert.equal(after, before);
+});
+
+await test('upgrading repairs old grid failure exclusions once, preserving other failures and measurements', async () => {
+  for (const id of ['grid-failed', 'decode-failed']) {
+    db.upsertTrackMeta(id, { title: id, artist: 'A', duration: 240 });
+    db.upsertTrackAnalysis(id, { bpm: 120, vocalRanges: [] });
+    for (let i = 0; i < db.MAX_ANALYSIS_FAILURES; i++) db.recordAnalysisFailure(id,
+      id === 'grid-failed' ? 'analyze sidecar 500: required Beat This beat grid is unavailable' : 'decode failed');
+  }
+  const stamp = JSON.parse(db.facetDerivationStamp());
+  sql.prepare('UPDATE track_facet_meta SET stamp = ? WHERE pk = 1').run(JSON.stringify({ ...stamp, revision: 6 }));
+  db.close();
+  await db.open({ embeddingDim: 8, adoptStoredDim: true });
+  assert.ok(!db.analysisFailures().some(r => r.id === 'grid-failed'));
+  assert.equal(db.getTrack('grid-failed')!.bpm, 120);
+  assert.deepEqual(db.getTrack('grid-failed')!.vocalRanges, []);
+  assert.ok(db.analysisFailures().find(r => r.id === 'decode-failed')!.excluded);
+  // It is a one-time recovery, not an unlimited exception to the retry limit.
+  db.recordAnalysisFailure('grid-failed', 'analyze sidecar 500: required Beat This beat grid is unavailable');
+  db.close();
+  await db.open({ embeddingDim: 8, adoptStoredDim: true });
+  assert.equal(db.analysisFailures().find(r => r.id === 'grid-failed')!.attempts, 1);
+  db.clearAnalysisFailures('grid-failed');
+  db.clearAnalysisFailures('decode-failed');
+  assertConsistent();
 });
 
 await test('the seed records the versions it derived under', () => {
