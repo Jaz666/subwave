@@ -50,6 +50,7 @@ import type { HostSpeechStamp, TurnMeta } from './session.js';
 import { promptRecapEntries, VERBATIM_META } from './prompt-memory.js';
 import { getFullContext, getClockContext, energyForDaypart } from '../context.js';
 import * as settings from '../settings.js';
+import { regularStemWorkingMode } from './regular-stem-mode.js';
 import { showKeyAt } from './show-boundary.js';
 import { programmeShowKey } from './resume-show.js';
 import { TRANSITION_EFFECTS, type TransitionEffect } from '../settings/vocab.js';
@@ -2259,18 +2260,19 @@ class Queue {
     };
     try {
       if (enabled && this.current) regularTailGrid.queueRegularGridForLibraryScan(String(this.current.track.id));
-      const gridTargets = [...(this.current ? [this.current] : []), ...this.upcoming]
-        .filter(item => !!regularStemDb.getTrack(String(item.track.id))
-          // Unsent queued tracks belong to the complete-source Regular
-          // refresher. Its wider grids must never race a capped refresh.
-          && (!enabled || item === this.current || item.sent))
-        .map(item => String(item.track.id));
-      // Gradually upgrade every library track as it enters the working queue.
-      // One CPU refresh at a time avoids a burst of eight analyzer jobs.
-      const gridTarget = gridWorkAllowed() && !regularTailGrid.regularTailGridPending()
-        ? gridTargets.find(id => beatGridUpgrade.upgradeDue(id)) : undefined;
-      if (gridTarget) void beatGridUpgrade.ensureCurrent(gridTarget, message => this.log('mix', message))
-        .then(() => { void this.drainToLiquidsoap(); });
+      if (regularStemWorkingMode()) {
+        const gridTargets = [...(this.current ? [this.current] : []), ...this.upcoming]
+          .filter(item => !!regularStemDb.getTrack(String(item.track.id))
+            && (!enabled || item === this.current || item.sent)
+            && !regularTailGrid.regularTailGridPending(String(item.track.id)))
+          .map(item => String(item.track.id));
+        // Gradually upgrade New Style library tracks as they enter the queue.
+        // One complete-source refresh at a time avoids a burst of analyzer jobs.
+        const gridTarget = gridWorkAllowed() && !regularTailGrid.regularTailGridPending()
+          ? gridTargets.find(id => beatGridUpgrade.upgradeDue(id)) : undefined;
+        if (gridTarget) void beatGridUpgrade.ensureCurrent(gridTarget, message => this.log('mix', message))
+          .then(() => { void this.drainToLiquidsoap(); });
+      }
     } catch (error) { this.log('warn',`Pick-time shared beat grid upgrade unavailable: ${String(error)}`); }
     try {
       const rows = this.upcoming.map(item => regularStemDb.getTrack(String(item.track.id)));

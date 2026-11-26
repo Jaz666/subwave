@@ -3,8 +3,10 @@
 // their per-window provenance are replaced.
 import * as analyzer from './analyzer.js';
 import * as db from './library-db.js';
+import * as settings from '../settings.js';
 import type { BeatGridProvenance } from '../schemas/beat-grid.js';
 import { BoundedKeyMap } from '../util/bounded-key-map.js';
+import { acquireRegularStemSource } from './regular-stem-source.js';
 import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
 
 const inFlight = new Map<string, Promise<boolean>>();
@@ -18,8 +20,9 @@ function current(provenance: BeatGridProvenance | null | undefined): provenance 
 
 export function trackGridCurrent(id: string): boolean {
   const row = db.getTrack(id);
-  if (!row || !row.beats?.length || !row.bars?.length || !current(row.gridProvenance)) return false;
-  return !row.outro?.bars?.length || current(row.outro.gridProvenance);
+  if (!row || !Array.isArray(row.beats) || !Array.isArray(row.bars) || !current(row.gridProvenance)
+      || !row.gridProvenance.source?.complete) return false;
+  return !Array.isArray(row.outro?.bars) || current(row.outro.gridProvenance);
 }
 
 export function upgradeDue(id: string): boolean {
@@ -36,27 +39,44 @@ export function ensureCurrent(id: string, log: (message: string) => void): Promi
   if (running) return running;
   if ((failuresUntil.get(id) ?? 0) > Date.now()) return Promise.resolve(false);
   const work = (async () => {
+    let source: Awaited<ReturnType<typeof acquireRegularStemSource>> | undefined;
+    let completed = true;
     try {
       const before = db.getTrack(id);
       if (!before) throw new Error('track is no longer in the library');
       const sourceSize = db.trackFileSize(id);
+      source = await acquireRegularStemSource(id, {
+        ...(sourceSize == null ? {} : { expectedBytes: sourceSize }),
+        expectedSha256: before.gridProvenance?.source?.complete
+          ? before.gridProvenance.source.sha256 : undefined,
+        log,
+      });
+      completed = false;
       const result = await analyzer.analyzeFacets(id, {
         facets: ['head', 'tail'],
+        localPathRequired: true,
+        complete: true,
+        beat_grid_device: settings.get().transitions.pickTimeDevice,
         tailWindow: analyzer.tailWindowFor(before),
-      });
+      }, source.path);
+      completed = true;
       const head = result.facets.head;
       const headGrid = head?.result.gridProvenance;
       if (head?.status !== 'ok' || !current(headGrid)
-          || !head.result.beats?.length || !head.result.bars?.length) {
+          || !headGrid.source?.complete || headGrid.source.sha256 !== source.sha256
+          || headGrid.source.bytes !== source.bytes
+          || !Array.isArray(head.result.beats) || !Array.isArray(head.result.bars)) {
         throw new Error(head?.reason ?? 'shared head beat grid unavailable');
       }
-      if (sourceSize != null && headGrid.source?.complete === true && headGrid.source.bytes !== sourceSize) {
+      if (sourceSize != null && headGrid.source.bytes !== sourceSize) {
         throw new Error('the audio source changed during grid refresh');
       }
       const tail = result.facets.tail;
       const outro = tail?.result.outro;
       const tailGrid = outro?.gridProvenance;
-      const tailReady = tail?.status === 'ok' && !!outro?.beats?.length && !!outro.bars?.length && current(tailGrid);
+      const tailReady = tail?.status === 'ok' && Array.isArray(outro?.beats) && Array.isArray(outro.bars)
+        && current(tailGrid) && tailGrid.source?.complete === true
+        && tailGrid.source.sha256 === source.sha256 && tailGrid.source.bytes === source.bytes;
       const wrote = db.writeBeatGridUpgrade(id, {
         beats: head.result.beats, bars: head.result.bars, gridProvenance: headGrid,
       }, tailReady ? {
@@ -72,7 +92,7 @@ export function ensureCurrent(id: string, log: (message: string) => void): Promi
       failuresUntil.set(id, Date.now() + 5 * 60_000);
       log(`Pick-time shared beat grid unavailable for ${id}: ${String(error)}`);
       return false;
-    }
+    } finally { await source?.release(completed).catch(error => log(`Pick-time grid source cleanup unavailable: ${String(error)}`)); }
   })().finally(() => inFlight.delete(id));
   inFlight.set(id, work);
   return work;

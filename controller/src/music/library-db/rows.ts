@@ -81,7 +81,7 @@ export function parseOutroJson(s: string): TrackOutro | null {
     if (!Number.isFinite(startMs) || startMs < 0) return null;
     if (ending !== 'fade' && ending !== 'cold') return null;
     const msList = (x: unknown): number[] | null =>
-      Array.isArray(x) && x.length ? x.filter((n): n is number => Number.isFinite(n)) : null;
+      Array.isArray(x) ? x.filter((n): n is number => Number.isFinite(n)) : null;
     // Gate on KEY PRESENCE: absent stays null (not computed), present-but-empty
     // survives as [] (no detected tail vocals). Malformed entries drop
     // span-by-span — a wholesale [] would fake "no tail vocals" and
@@ -141,8 +141,7 @@ function parseMsArray(s: string): number[] | null {
   try {
     const v = JSON.parse(s);
     if (!Array.isArray(v)) return null;
-    const out = v.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
-    return out.length ? out : null;
+    return v.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
   } catch {
     return null;
   }
