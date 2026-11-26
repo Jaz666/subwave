@@ -12,6 +12,9 @@ import RunHoldsBanner from './library/RunHoldsBanner';
 import SceneVocabSection from './library/SceneVocabSection';
 import { useTaggerRunLog } from './library/useTaggerRunLog';
 import { notify } from '../../lib/notify';
+import { adminJson, useAdminQuery } from '../../lib/admin-query';
+import { useAdminAuth } from '../../lib/adminAuth';
+import { stemBeatsRunsKey, type StemBeatsRun } from './stembeats/runs';
 
 export interface Coverage {
   tagged: number;
@@ -34,6 +37,7 @@ export interface Coverage {
   // null = still probing; false = no analysis backend (sidecar/librosa) running.
   analysisAvailable?: boolean | null;
   analysisBackend?: string | null;
+  analysisBeatGridUsesGpu?: boolean;
   // false = engine up but on an image without the CLAP stack; null = still probing.
   audioAnalysisAvailable?: boolean | null;
   // Audio vectors stored + CLAP text tower not reported absent. Absent on old controllers.
@@ -94,7 +98,7 @@ export interface AnalysisFailure {
 
 // Mirrors controller/src/music/tagger-progress.ts.
 export interface TaggerProgress {
-  phase: 'walk' | 'enrich' | 'embed' | 'seed' | 'propagate' | 'learn' | 'analyze' | 'grids' | 'done';
+  phase: 'walk' | 'enrich' | 'embed' | 'seed' | 'propagate' | 'learn' | 'analyze' | 'grids' | 'stem-beats' | 'done';
   label: string;
   done?: number;
   total?: number; // absent → indeterminate (e.g. the Navidrome walk)
@@ -247,6 +251,7 @@ const PHASE_HINT: Record<TaggerProgress['phase'], string> = {
   learn: 'The DJ is re-checking tracks the automatic spread wasn’t confident about.',
   analyze: 'Measuring tempo and key, and fingerprinting how each track sounds.',
   grids: 'Measuring beat-grid coverage for Stem Blends.',
+  'stem-beats': 'Measuring beat grids and finding Stem Beats cues.',
   done: 'Wrapping up.',
 };
 
@@ -261,6 +266,7 @@ const PHASE_LABEL: Record<string, string> = {
   learn: 're-tag',
   analyze: 'acoustics',
   grids: 'Stem Blend grids',
+  'stem-beats': 'Stem Beats cues',
 };
 
 // Execution order, used to decide which phases are behind/ahead of the live one. Excludes 'done'.
@@ -324,6 +330,35 @@ function beautifyLog(raw: string): { text: string; cls: string } {
 }
 
 export default function TaggingPanel(p: TaggingPanelProps) {
+  const { adminFetch, hydrated, needsAuth } = useAdminAuth();
+  const stemBeatsRuns = useAdminQuery<StemBeatsRun[]>({
+    key: stemBeatsRunsKey,
+    adminFetch,
+    enabled: hydrated && !needsAuth,
+    refetchInterval: 3_000,
+    toastOnError: false,
+    request: async (fetcher, signal) => (await adminJson<{ runs: StemBeatsRun[] }>(
+      fetcher, '/library/subbeats/prep-v2/runs', undefined, signal,
+    )).runs,
+  });
+  const prepRuns = (!p.tagger?.running ? stemBeatsRuns.data ?? [] : [])
+    .filter(run => run.airplay !== true && (run.active || run.waitingReason || (p.newStylePrepAvailable && run.events?.length)))
+    .sort((a, b) => (b.events?.at(-1)?.at ?? b.createdAt).localeCompare(a.events?.at(-1)?.at ?? a.createdAt));
+  const isFinished = (run: StemBeatsRun) => run.status === 'complete' || run.status === 'failed' || run.status === 'cancelled';
+  const activePrep = prepRuns.find(run => !isFinished(run) && (run.active || run.waitingReason))
+    ?? prepRuns.find(run => !isFinished(run));
+  const latestFinishedPrep = prepRuns.find(isFinished);
+  const lastTaggerAt = p.tagger?.lastRun?.finishedAt ?? p.tagger?.startedAt ?? '';
+  const latestPrepAt = latestFinishedPrep?.events?.at(-1)?.at ?? latestFinishedPrep?.createdAt ?? '';
+  const visiblePrep = activePrep ?? (latestPrepAt > lastTaggerAt ? latestFinishedPrep : undefined);
+  const prepPaused = activePrep?.status === 'paused';
+  const prepInterrupted = !!activePrep && !prepPaused && !activePrep.active && !activePrep.waitingReason;
+  const prepCanResume = (prepPaused && !activePrep?.active) || prepInterrupted;
+  const prepFailed = (visiblePrep?.counts?.failed ?? 0) + (visiblePrep?.counts?.sourceChanged ?? 0);
+  const prepDone = (visiblePrep?.counts?.complete ?? 0) + prepFailed;
+  const prepTotal = visiblePrep?.total ?? visiblePrep?.jobs?.length;
+  const [prepActionBusy, setPrepActionBusy] = useState(false);
+  const [prepActionError, setPrepActionError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [modalIntent, setModalIntent] = useState<'reembed' | null>(null);
   // Keyed on the run's finishedAt so a NEW failure re-shows the banner.
@@ -339,21 +374,25 @@ export default function TaggingPanel(p: TaggingPanelProps) {
   // (or with no run since the controller started) the snapshot's short tail
   // stands in, keyed by position.
   const ownLog = runLog.log && runLog.log.runId === p.tagger?.runLogId ? runLog.log : null;
-  const logRows: { key: number | string; line: string | TaggerEvent }[] = ownLog
-    ? ownLog.entries.map(e => ({ key: e.seq, line: e.line }))
-    : (p.tagger?.lastLog ?? []).map((line, i) => ({ key: `tail-${i}`, line }));
+  const logRows: { key: number | string; line: string | TaggerEvent }[] = visiblePrep
+    ? (visiblePrep.events ?? []).map((line, i) => ({ key: `${visiblePrep.runId}-${line.at}-${i}`, line }))
+    : ownLog
+      ? ownLog.entries.map(e => ({ key: e.seq, line: e.line }))
+      : (p.tagger?.lastLog ?? []).map((line, i) => ({ key: `tail-${i}`, line }));
   // Moves with every new line, including once the page holds its 5000 and
   // the count has stopped growing.
   const logEnd = logRows.length ? logRows[logRows.length - 1]!.key : null;
   // A picked run that retention has since removed falls back to the newest.
-  const pickedLogId = runLog.files.some(f => f.id === pickedLog) ? pickedLog : runLog.files[0]?.id;
+  const prepLogId = visiblePrep?.events?.length ? visiblePrep.runId : undefined;
+  const pickedLogId = pickedLog === prepLogId || runLog.files.some(f => f.id === pickedLog)
+    ? pickedLog : prepLogId ?? runLog.files[0]?.id;
   const moodFillRef = useRef<HTMLSpanElement>(null);
   const acousticFillRef = useRef<HTMLSpanElement>(null);
   const audioFillRef = useRef<HTMLSpanElement>(null);
   const vocalFillRef = useRef<HTMLSpanElement>(null);
   const runFillRef = useRef<HTMLSpanElement>(null);
   // Pinned at phase entry so the rate is a stable phase-average; reset by the effect below.
-  const etaRef = useRef<{ phase: string; round: number | null; done: number; at: number } | null>(null);
+  const etaRef = useRef<{ runId: string | null; phase: string; round: number | null; done: number; at: number } | null>(null);
 
   const tagged = p.coverage?.tagged ?? p.libStats?.total ?? null;
   const total = p.coverage?.total ?? null;
@@ -371,6 +410,22 @@ export default function TaggingPanel(p: TaggingPanelProps) {
   // Drive the button + layout off the OPTIMISTIC settings prop so a toggle applies at once.
   const vocalOptedIn = p.vocalEnabled ?? vocalWanted;
 
+  const updatePrep = async (action: 'pause' | 'resume' | 'cancel') => {
+    if (!activePrep) return;
+    setPrepActionBusy(true);
+    setPrepActionError('');
+    try {
+      await adminJson(adminFetch, `/library/subbeats/prep-v2/runs/${activePrep.runId}/${action === 'cancel' ? 'cancel' : 'pause'}`, action === 'cancel'
+        ? { method: 'POST' }
+        : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused: action === 'pause' }) });
+      await stemBeatsRuns.refetch();
+    } catch (error) {
+      setPrepActionError(error instanceof Error ? error.message : 'Stem Beats preparation could not be updated.');
+    } finally {
+      setPrepActionBusy(false);
+    }
+  };
+
   // Out-of-range or unparsable values snap back to the persisted setting.
   const commitQuietMinutes = (el: HTMLInputElement) => {
     const v = Math.floor(Number(el.value));
@@ -385,6 +440,8 @@ export default function TaggingPanel(p: TaggingPanelProps) {
   const anyWorkDone = (tagged ?? 0) > 0 || (analysed ?? 0) > 0 || audioOn || vocalOn;
   const remaining = total != null && tagged != null ? Math.max(0, total - tagged) : null;
   const running = !!p.tagger?.running;
+  const prepIsWorking = !!activePrep && !prepCanResume;
+  const runStartedAt = activePrep?.createdAt ?? p.tagger?.startedAt;
   const scanning = !!p.coverage?.scanning;
   // A first count still in flight: `total` is null but a number is coming.
   const awaitingFirstCount = scanning && total == null;
@@ -492,7 +549,16 @@ export default function TaggingPanel(p: TaggingPanelProps) {
   const staleSoundUnqueued = Math.max(0, staleSound - (p.coverage?.forgottenSoundQueued ?? 0));
 
   // Comes from the tagger child, so it survives page reloads and runs started elsewhere.
-  const progress = running ? (p.tagger?.progress ?? null) : null;
+  const prepLabel = prepPaused
+    ? activePrep?.active ? 'Pausing Stem Beats preparation…' : 'Stem Beats preparation paused'
+    : prepInterrupted ? 'Stem Beats preparation interrupted'
+    : activePrep?.waitingReason === 'pick-time' ? 'Stem Beats preparation waiting for pick-time'
+    : activePrep?.waitingReason === 'automatic-preparation' ? 'Stem Beats preparation waiting for a track in rotation'
+    : 'Preparing Stem Beats cues';
+  const progress: TaggerProgress | null = activePrep
+    ? { phase: 'stem-beats', label: prepLabel, done: prepDone, total: prepTotal,
+        errors: prepFailed, updatedAt: activePrep.events?.at(-1)?.at ?? activePrep.createdAt }
+    : running ? p.tagger?.progress ?? null : null;
   const runPct = progress?.total
     ? Math.min(100, Math.round(((progress.done ?? 0) / progress.total) * 100))
     : null;
@@ -500,7 +566,7 @@ export default function TaggingPanel(p: TaggingPanelProps) {
   const legEntries = progress?.llm ? Object.entries(progress.llm.legs) : [];
 
   // Each stage is done/active/pending by its position relative to the live phase.
-  const stepList = progress
+  const stepList = activePrep ? [] : progress
     ? (() => {
         const curIdx =
           progress.phase === 'done' ? PIPELINE.length : PIPELINE.indexOf(progress.phase);
@@ -514,42 +580,48 @@ export default function TaggingPanel(p: TaggingPanelProps) {
 
   // In state, not a render-time derivation, because it needs Date.now().
   const [etaMs, setEtaMs] = useState<number | null>(null);
-  // Re-pin the baseline whenever the phase or active-learn round changes.
+  const etaRunId = activePrep?.runId ?? p.tagger?.runLogId ?? null;
+  const etaPhase = activePrep && (!activePrep.active || prepPaused || activePrep.waitingReason) ? null : progress?.phase;
+  const etaRound = progress?.round ?? null;
+  const etaDone = progress?.done;
+  const etaTotal = progress?.total;
+  // Reset the baseline on a new phase, round or resume.
   useEffect(() => {
-    if (!progress || progress.phase === 'done') {
+    if (!etaPhase || etaPhase === 'done') {
       etaRef.current = null;
       setEtaMs(null);
       return;
     }
     const b = etaRef.current;
-    if (!b || b.phase !== progress.phase || b.round !== (progress.round ?? null)) {
+    if (!b || b.runId !== etaRunId || b.phase !== etaPhase || b.round !== etaRound) {
       // Fresh phase — hold off on an estimate until the next poll gives a rate.
       etaRef.current = {
-        phase: progress.phase,
-        round: progress.round ?? null,
-        done: progress.done ?? 0,
+        runId: etaRunId,
+        phase: etaPhase,
+        round: etaRound,
+        done: etaDone ?? 0,
         at: Date.now(),
       };
       setEtaMs(null);
       return;
     }
-    if (progress.total == null || progress.done == null) {
+    if (etaTotal == null || etaDone == null) {
       setEtaMs(null);
       return;
     }
     const elapsed = Date.now() - b.at;
-    const advanced = progress.done - b.done;
-    const remaining = progress.total - progress.done;
+    const advanced = etaDone - b.done;
+    const remaining = etaTotal - etaDone;
     setEtaMs(
       elapsed >= 10_000 && advanced > 0 && remaining > 0
         ? (remaining / advanced) * elapsed
         : null,
     );
-  }, [progress]);
+  }, [etaRunId, etaPhase, etaRound, etaDone, etaTotal]);
 
   // broadcast/tagger.ts keeps the child's final 'done' event post-exit.
   const lastTimings =
-    !running && p.tagger?.progress?.phase === 'done' ? p.tagger.progress.timings : undefined;
+    !running && !visiblePrep && p.tagger?.progress?.phase === 'done' ? p.tagger.progress.timings : undefined;
   const lastTimingEntries = lastTimings
     ? Object.entries(lastTimings)
         .filter(([, ms]) => ms > 0)
@@ -579,7 +651,8 @@ export default function TaggingPanel(p: TaggingPanelProps) {
     if (p.logOpen && logRef.current && logStick.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [p.logOpen, logRows.length, logEnd, logTall]);
   const downloadLog = (id: string) => {
-    runLog.download(id).catch((e: unknown) => notify.err(e instanceof Error ? e.message : String(e)));
+    const events = id === prepLogId ? visiblePrep?.events : undefined;
+    runLog.download(id, events).catch((e: unknown) => notify.err(e instanceof Error ? e.message : String(e)));
   };
 
   const openModal = (intent: 'reembed' | null = null) => {
@@ -1152,7 +1225,7 @@ export default function TaggingPanel(p: TaggingPanelProps) {
         </div>
       )}
 
-      {!running ? (
+      {!running && !activePrep ? (
         <div className="flex flex-wrap items-center gap-4 p-4 sm:p-6">
           <div className="min-w-0 flex-1 text-[13px] sm:min-w-[220px]">
             {awaitingFirstCount ? (
@@ -1185,7 +1258,7 @@ export default function TaggingPanel(p: TaggingPanelProps) {
         <div className="flex flex-col gap-3 p-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3.5">
             <span className="flex items-center gap-2.5 text-[13px] font-bold">
-              <span className="lib-livedot" />
+              {(!activePrep || prepIsWorking) && <span className="lib-livedot" />}
               {progress ? (
                 <>
                   {progress.label}
@@ -1206,16 +1279,31 @@ export default function TaggingPanel(p: TaggingPanelProps) {
               )}
             </span>
             <span className="caption mono-num !tracking-[0.04em]">
-              {runPct != null && `${runPct}% · `}
-              {etaMs != null && `${fmtEta(etaMs)} · `}
-              {p.tagger?.pid ? `pid ${p.tagger.pid}` : ''}
-              {p.tagger?.startedAt
-                ? ` · started ${new Date(p.tagger.startedAt).toLocaleTimeString('en-GB')}`
-                : ''}
+              {[
+                runPct != null && `${runPct}%`,
+                etaMs != null && (!activePrep || (activePrep.active && !prepPaused)) && fmtEta(etaMs),
+                !activePrep && p.tagger?.pid && `pid ${p.tagger.pid}`,
+                runStartedAt && `started ${new Date(runStartedAt).toLocaleTimeString('en-GB')}`,
+              ].filter(Boolean).join(' · ')}
             </span>
-            <Btn sm tone="danger" onClick={p.onStop} disabled={p.busy}>
-              <Square size={11} /> Stop
-            </Btn>
+            {activePrep ? (
+              <div className="flex flex-wrap items-center gap-2.5">
+                {prepCanResume && <Btn sm onClick={() => openModal()} disabled={p.busy || prepActionBusy}>
+                  <Play size={11} /> Start tagging
+                </Btn>}
+                <Btn sm tone={prepCanResume ? 'accent' : 'danger'} onClick={() => void updatePrep(prepCanResume ? 'resume' : 'pause')}
+                  disabled={p.busy || prepActionBusy || (prepPaused && !!activePrep.active)}>
+                  {prepCanResume ? <><Play size={11} /> Resume</> : <><Square size={11} /> Pause</>}
+                </Btn>
+                <Btn sm tone="danger" disabled={p.busy || prepActionBusy} onClick={() => void updatePrep('cancel')}>
+                  Cancel scan
+                </Btn>
+              </div>
+            ) : (
+              <Btn sm tone="danger" onClick={p.onStop} disabled={p.busy}>
+                <Square size={11} /> Stop
+              </Btn>
+            )}
           </div>
           {stepList.length > 0 && (
             <div className="lib-steps">
@@ -1253,26 +1341,33 @@ export default function TaggingPanel(p: TaggingPanelProps) {
               )}
             </div>
           )}
+          {activePrep?.currentJob && (
+            <div className="text-[11px] text-muted">
+              {activePrep.currentJob.status === 'running' ? 'Current track' : 'Next track'}
+              {' · '}{activePrep.currentJob.title}
+              {activePrep.currentJob.artist && ` — ${activePrep.currentJob.artist}`}
+            </div>
+          )}
           <div className="caption !tracking-[0.04em] !normal-case">
-            {(progress && PHASE_HINT[progress.phase]) ||
+            {prepCanResume ? 'Resume to continue with the next track.' : (progress && PHASE_HINT[progress.phase]) ||
               (p.tagger?.mode === 'analyze'
                 ? 'The analysis engine is listening to each track: measuring tempo and key, and fingerprinting how it sounds.'
                 : p.tagger?.mode === 'reconcile'
                   ? 'Checking every track against Navidrome and removing entries for files that no longer exist.'
                   : 'The DJ is listening to each new track and deciding its mood & energy.')}{' '}
-            You can keep browsing. This runs in the background.
+            {activePrep && prepIsWorking ? 'Pause finishes the current track.' : !activePrep ? 'You can keep browsing. This runs in the background.' : ''}
           </div>
         </div>
       )}
 
-      {lastTimingEntries.length > 0 && (
+      {(lastTimingEntries.length > 0 || (visiblePrep && !activePrep)) && (
         <div className="border-t border-dashed border-separator-strong px-4 py-3 text-[11px] text-muted sm:px-6">
           <span className="font-bold text-ink">Last run</span>
           <span className="!normal-case">
             {' · '}
-            {lastTimingEntries
-              .map(([ph, ms]) => `${PHASE_LABEL[ph] ?? ph} ${fmtDur(ms)}`)
-              .join(' · ')}
+            {visiblePrep
+              ? `Stem Beats cues${visiblePrep.status === 'cancelled' ? ' · Cancelled' : ''} · ${num(prepDone)} / ${num(prepTotal)} checked${prepFailed ? ` · ${num(prepFailed)} failed` : ''}`
+              : lastTimingEntries.map(([ph, ms]) => `${PHASE_LABEL[ph] ?? ph} ${fmtDur(ms)}`).join(' · ')}
           </span>
         </div>
       )}
@@ -1297,7 +1392,7 @@ export default function TaggingPanel(p: TaggingPanelProps) {
             {logTall ? <Minimize2 size={13} /> : <Maximize2 size={13} />} {logTall ? 'Shrink log' : 'Expand log'}
           </button>
         )}
-        {p.logOpen && runLog.files.length > 0 && (
+        {p.logOpen && pickedLogId && (
           <span className="inline-flex items-center gap-2 text-[11px] text-muted">
             <select
               aria-label="Run log to download"
@@ -1305,6 +1400,9 @@ export default function TaggingPanel(p: TaggingPanelProps) {
               value={pickedLogId}
               onChange={e => setPickedLog(e.target.value)}
             >
+              {prepLogId && visiblePrep && (
+                <option value={prepLogId}>{new Date(visiblePrep.createdAt).toLocaleString()} · Stem Beats</option>
+              )}
               {runLog.files.map(f => (
                 <option key={f.id} value={f.id}>
                   {new Date(f.startedAt).toLocaleString()} · {f.mode} · {Math.max(1, Math.round(f.bytes / 1024))} KB
@@ -1314,13 +1412,18 @@ export default function TaggingPanel(p: TaggingPanelProps) {
             <button
               type="button"
               className="inline-flex items-center gap-1.5 font-bold text-muted hover:text-ink"
-              onClick={() => downloadLog(pickedLogId!)}
+              onClick={() => downloadLog(pickedLogId)}
             >
               <Download size={13} /> Download log
             </button>
           </span>
         )}
       </div>
+      {((activePrep && prepActionError) || (p.newStylePrepAvailable && stemBeatsRuns.isError)) && (
+        <p role="alert" className="px-4 py-2 text-[11px] text-vermilion sm:px-6">
+          {prepActionError || 'Stem Beats preparation status is unavailable.'}
+        </p>
+      )}
 
       {p.logOpen && (
         <pre
@@ -1335,8 +1438,11 @@ export default function TaggingPanel(p: TaggingPanelProps) {
             logStick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
           }}
         >
-          {ownLog?.gap && (
+          {!visiblePrep && ownLog?.gap && (
             <div className="text-muted">… earlier lines are no longer held here; download the log for the whole run.</div>
+          )}
+          {(visiblePrep?.events?.length ?? 0) >= 100 && (
+            <div className="text-muted">Showing the latest 100 Stem Beats events.</div>
           )}
           {logRows.length
             ? logRows.map(({ key, line }) => {
@@ -1367,7 +1473,7 @@ export default function TaggingPanel(p: TaggingPanelProps) {
         intent={modalIntent}
         batch={p.batch}
         setBatch={p.setBatch}
-        busy={p.busy || running}
+        busy={p.busy || running || prepIsWorking}
         remaining={remaining}
         libraryTotal={total}
         analysisOff={analysisOff}
@@ -1380,6 +1486,7 @@ export default function TaggingPanel(p: TaggingPanelProps) {
         onStart={p.onStart}
         newStylePrepAvailable={p.newStylePrepAvailable}
         stemBlendPrepAvailable={p.stemBlendPrepAvailable}
+        beatGridUsesGpu={p.coverage?.analysisBeatGridUsesGpu === true}
         legacyStemCacheAvailable={p.legacyStemCacheAvailable}
         onStartStemBeatsPrep={p.onStartStemBeatsPrep}
         onStartStemBlendPrep={p.onStartStemBlendPrep}

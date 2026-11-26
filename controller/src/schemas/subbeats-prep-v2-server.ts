@@ -136,7 +136,7 @@ export const subbeatsPrepV2RunSchema = z.object({
   version: z.literal(1),
   runId: z.string().regex(/^[a-f0-9-]{36}$/),
   createdAt: z.string(),
-  status: z.enum(['queued', 'running', 'complete', 'paused', 'failed']),
+  status: z.enum(['queued', 'running', 'complete', 'paused', 'failed', 'cancelled']),
   baselineSha256: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
   scope: z.enum(['supported', 'selected', 'track', 'library', 'library-selected']).optional(),
   airplay: z.boolean().optional(),

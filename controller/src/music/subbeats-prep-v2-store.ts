@@ -67,7 +67,7 @@ function readGridArtifact(roots: string[], runId: string, key: string): unknown 
 }
 
 function settleStatus(run: SubbeatsPrepV2Run): SubbeatsPrepV2Run['status'] {
-  if (run.status === 'paused') return 'paused';
+  if (run.status === 'paused' || run.status === 'cancelled') return run.status;
   if (run.jobs.some(job => job.status === 'running')) return 'running';
   if (run.jobs.some(job => job.status === 'queued')) return 'queued';
   return 'complete';
@@ -188,7 +188,10 @@ export function createSubbeatsPrepV2Store(stateDir: string, stemBeatsRoot = join
       run.events = [...(run.events ?? []), { at: new Date().toISOString(), kind, text: text.slice(0, 1000) }].slice(-100);
       saveRun(rootForRun(readRoots, runId), run);
     },
-    latestJob: (id: string) => latestJobs?.get(id) ?? null,
+    latestJob: (id: string) => {
+      const entry = latestJobs?.get(id);
+      return entry?.runStatus === 'cancelled' && ['queued', 'running'].includes(entry.job.status) ? null : entry ?? null;
+    },
     nextAirplayRun(): string | null {
       for (const entry of latestJobs?.values() ?? []) {
         if (entry.airplay && entry.runStatus !== 'paused'
@@ -253,7 +256,7 @@ export function createSubbeatsPrepV2Store(stateDir: string, stemBeatsRoot = join
     },
     claim(runId: string, id: string): SubbeatsPrepV2Job | null {
       const run = read(readRoots, runId);
-      if (run.status === 'paused' || run.status === 'complete' || run.status === 'failed') return null;
+      if (run.status === 'cancelled' || run.status === 'paused' || run.status === 'complete' || run.status === 'failed') return null;
       const job = run.jobs.find(item => item.id === id);
       if (!job || job.status !== 'queued') return null;
       job.status = 'running';
@@ -286,12 +289,13 @@ export function createSubbeatsPrepV2Store(stateDir: string, stemBeatsRoot = join
         changed = true;
       }
       if (changed) {
-        if (run.status !== 'paused') run.status = 'queued';
+        if (run.status !== 'paused' && run.status !== 'cancelled') run.status = 'queued';
         saveRun(rootForRun(readRoots, runId), run);
       }
     },
     retryFailed(runId: string): SubbeatsPrepV2Run {
       const run = read(readRoots, runId);
+      if (run.status === 'cancelled') throw new Error('This scan was cancelled. Start a new scan.');
       if (run.status === 'paused') throw new Error('Resume the V2 run before retrying failed recordings.');
       let retried = 0;
       for (const job of run.jobs) {
@@ -345,9 +349,17 @@ export function createSubbeatsPrepV2Store(stateDir: string, stemBeatsRoot = join
       run.status = settleStatus(run);
       saveRun(rootForRun(readRoots, runId), run);
     },
+    cancel(runId: string): boolean {
+      const run = read(readRoots, runId);
+      if (run.airplay) throw new Error('Automatic preparation cannot be cancelled here.');
+      if (run.status === 'complete' || run.status === 'failed' || run.status === 'cancelled') return false;
+      run.status = 'cancelled';
+      saveRun(rootForRun(readRoots, runId), run);
+      return true;
+    },
     pause(runId: string, paused: boolean): void {
       const run = read(readRoots, runId);
-      if (run.status === 'complete' || run.status === 'failed') return;
+      if (run.status === 'complete' || run.status === 'failed' || run.status === 'cancelled') return;
       run.status = paused ? 'paused' : settleStatus({ ...run, status: 'queued' });
       saveRun(rootForRun(readRoots, runId), run);
     },

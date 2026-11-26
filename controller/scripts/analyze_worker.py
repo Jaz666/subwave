@@ -5158,6 +5158,7 @@ def main():
         "stembeats_stem_windows_version": 1,
         "subbeats_capable": vocal_capable,
         "shared_beat_grid_capable": _downbeat_tracker is not None and not _downbeat_failed,
+        "beat_grid_uses_gpu": _downbeat_tracker is not None and _downbeat_tracker.device == "gpu",
         "subbeats_cache_version": 2,
         "subbeats_suitability_version": 1,
         # Version signal: tail answers carry the short-term loudness curve

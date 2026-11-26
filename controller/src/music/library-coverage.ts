@@ -95,6 +95,7 @@ export function hasCount(): boolean {
 let analysisAvail: {
   available: boolean;
   backend: string;
+  beatGridUsesGpu: boolean;
   audioCapable: boolean | null;
   vocalCapable: boolean | null;
   audioError: string | null;
@@ -112,6 +113,7 @@ function refreshAnalysisAvail() {
       analysisAvail = {
         available,
         backend: analyzer.backendLabel(),
+        beatGridUsesGpu: analyzer.beatGridUsesGpu(),
         audioCapable: analyzer.audioEmbeddingAvailable(),
         vocalCapable: analyzer.vocalActivityAvailable(),
         audioError: analyzer.audioEmbeddingError(),
@@ -120,7 +122,7 @@ function refreshAnalysisAvail() {
       };
     } catch {
       analysisAvail = {
-        available: false, backend: 'none',
+        available: false, backend: 'none', beatGridUsesGpu: false,
         audioCapable: null, vocalCapable: null,
         audioError: null, vocalError: null,
         checkedAt: Date.now(),
@@ -280,6 +282,7 @@ export async function get() {
     // When false, acoustic coverage stays 0 by design.
     analysisAvailable: analysisAvail ? analysisAvail.available : null,
     analysisBackend: analysisAvail ? analysisAvail.backend : null,
+    analysisBeatGridUsesGpu: analysisAvail?.beatGridUsesGpu ?? false,
     // null = unknown.
     audioAnalysisAvailable: analysisAvail ? analysisAvail.audioCapable : null,
     // Optimistic on an unknown text tower, like the picker's searchBySound tool;

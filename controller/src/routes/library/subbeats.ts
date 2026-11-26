@@ -1,7 +1,5 @@
 // New Style Stem Beats preparation and pick-time extraction metrics.
 import express from 'express';
-import { join } from 'node:path';
-import { config } from '../../config.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { validateBody } from '../../middleware/validate.js';
 import * as db from '../../music/library-db.js';
@@ -10,12 +8,11 @@ import * as stemCache from '../../music/stem-cache.js';
 import { createStemExtractionMetricsStore, summarizeStemExtractions } from '../../music/stem-extraction-metrics.js';
 import { SUBBEATS_PREP_V2_ALGORITHM_VERSION, subbeatsPrepV2CreateRequestSchema } from '../../schemas/subbeats-prep-v2-server.js';
 import { subbeatsPauseSchema } from '../../schemas/subbeats.js';
-import { createSubbeatsPrepV2Store, subbeatsPrepV2TimingSummary } from '../../music/subbeats-prep-v2-store.js';
-import { pauseSubbeatsPrepV2, startSubbeatsPrepV2, subbeatsPrepV2RunActive, subbeatsPrepV2WaitingForPickTime, subbeatsPrepV2WaitingReason } from '../../music/subbeats-prep-v2-library.js';
+import { subbeatsPrepV2TimingSummary } from '../../music/subbeats-prep-v2-store.js';
+import { stemBeatsPrepStore as prepV2Store, cancelSubbeatsPrepV2, pauseSubbeatsPrepV2, startSubbeatsPrepV2, subbeatsPrepV2RunActive, subbeatsPrepV2WaitingForPickTime, subbeatsPrepV2WaitingReason } from '../../music/subbeats-prep-v2-library.js';
 import { trackGridCurrent } from '../../music/beat-grid-upgrade.js';
 
 export const router = express.Router();
-const prepV2Store = createSubbeatsPrepV2Store(config.stateDir, join(stemCache.stemsRoot(), 'stembeats'));
 
 function prepV2RunStatus(run: ReturnType<typeof prepV2Store.read>) {
   const counts = { queued: 0, running: 0, complete: 0, failed: 0, sourceChanged: 0,
@@ -156,6 +153,13 @@ router.post<{runId:string}>('/library/subbeats/prep-v2/runs/:runId/retry-failed'
     startSubbeatsPrepV2(run.runId);
     res.status(202).set('Cache-Control', 'no-store').json(prepV2Store.read(run.runId));
   } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Stem Beats retry could not start.' }); }
+});
+
+router.post<{runId:string}>('/library/subbeats/prep-v2/runs/:runId/cancel', requireAdmin, (req, res) => {
+  try {
+    cancelSubbeatsPrepV2(req.params.runId);
+    res.set('Cache-Control', 'no-store').json(prepV2RunStatus(prepV2Store.read(req.params.runId)));
+  } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Stem Beats scan could not be cancelled.' }); }
 });
 
 router.post<{runId:string}>('/library/subbeats/prep-v2/runs/:runId/pause', requireAdmin, validateBody(subbeatsPauseSchema), (req, res) => {

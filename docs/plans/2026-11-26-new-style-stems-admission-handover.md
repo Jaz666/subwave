@@ -3,6 +3,92 @@
 Updated: 26 November 2026. Scope: make as many tracks as practicable available
 to later pick-time decisions by improving their measured head/tail evidence.
 
+## Station pilot
+
+The station checkout ran the pilot from `3ad545dd1` (based on `8f8367ab0`).
+The controller and CUDA analyzer source support the admission scan. The
+operator runs all container rebuilds unless they explicitly ask otherwise.
+
+The fixed 25-track cohort is in `state/admission-pilot-20261126.ids`. Its
+read-only baseline is in `state/admission-pilot-20261126.before.json`. It
+contains eight short tail grids, seven tracks without a matched tail, six
+eight-bar controls, and four short recordings. Existing source-matched
+grids had at least four bars before the saved cue on 14 tracks, six bars
+on 11 tracks, and eight bars on six tracks.
+
+The scan completed all 25 tracks in 28 seconds with zero errors. The new
+evidence had at least four, six and eight bars on 24 tracks. The eight short
+grids and seven missing matched tails all gained eight bars. All six
+controls kept theirs, and three of the four short recordings gained eight
+bars. Banco de Gaia's “Gates Does Windows” was the only no-grid result.
+The same 24 tracks qualified when the new grids were evaluated against the
+original cue positions. The comparison found no source mismatches or changes
+to the existing outro fields. Per-track results are in
+`state/admission-pilot-20261126.comparison.csv`.
+
+The operator listened to Warmduscher's “Gold Teeth” and accepted the new
+fade cue at 3:53.623 (previously 4:09.406). They also accepted the measured
+music end at 0:50.911 for Floydhead's “One of My Days” (previous fade cue
+0:43.427) and noted that it is an unusual recording.
+
+After the operator rebuilt the controller and web, the Library **Run**
+action completed a second batch of 25 tracks in about 40 seconds. It stored
+25 grids, with 22 fade cues and three music-end fallbacks. All 25 had four
+bars and 24 had eight bars. The managed analyzer exited successfully with
+zero failures. See `state/tagger-logs/tagger-run-20261126-124021-analyze.log`.
+This verifies the Library Run path. The initial pilot and these results
+complete the current tail preparation check. Next, assess and repair missing
+or short heads in the bounded preparation batch while the complete source is
+available.
+
+The fixed head repair pilot is in `state/admission-head-pilot-20261126.ids`.
+The baseline is in `state/admission-head-pilot-20261126.before.json`. The
+cohort includes three head-only repairs with saved tails, eight missing
+head grids, five incomplete or stale heads, four short grids, and five
+usable controls. Compare the saved tail fingerprints and attempt times for
+the head-only tracks and the original outro fields for the full cohort.
+
+The first head pilot finished all 25 tracks on 26 November. The 22 new tails
+were saved, the three head-only tails stayed intact, and all 25 original
+outros were preserved. All 20 head attempts failed because the station's
+extended head facet used the tail-style `gridProvenance` field. The controller
+reads `grid_provenance` for heads, and the analyzer also uses that field
+when binding the source fingerprint. The station source now returns the
+correct field. A stubbed facet check verified the response and fingerprint.
+After the operator rebuilds the analyzer, retry the same IDs in Run mode
+so the saved tails stay in place.
+
+After the analyzer rebuild from `9dd98df0b`, the retry saved all 20
+outstanding head grids in about 14 seconds with zero failures. Three heads
+showed wider coverage could help. A second bounded pass measured just those
+three and gave two of them eight bars. The final dry run selected zero tracks.
+Across the 25 recordings, 19 now have eight measured head bars (up from five),
+17 have eight tail bars, and 16 have both. Four heads were measured with no
+bar markers. All 25 saved tails and original outro fields stayed in place.
+See `state/admission-head-pilot-20261126.comparison.csv`. These are track
+measurements for the Library pilot. Live pair selection and rendering remain
+separate work.
+
+## Library grid timing
+
+On 26 November 2026, the same 100 recently aired tracks took **7m 41s on
+CPU** (Ryzen 5 2600) and **1m 43s on GPU** (RTX 3060). Both runs started
+from identical copies of the library rows and fetched complete recordings.
+All 100 already had usable head grids, so the runs measured fresh tails.
+Each saved 100 tails with zero errors and found eight bars on 99 tracks.
+The analyzer confirmed the Beat This provider for each run. CPU ran first,
+so the GPU run may have benefited from warmer file caches. The live GPU
+batch from the same afternoon took about **2½ minutes** for 100 tracks
+and included 50 head repairs. These are end-to-end grid scan timings.
+The station kept the fixed track list and both logs in
+`state/stem-blend-timing-20261126/`.
+
+Library Tagging labels the Stem Blend grid passes **Medium** when the
+analyzer reports that Beat This uses GPU, and **Slow** otherwise. The
+Stem Beats pass uses the same Library progress and log display. Its Pause
+control finishes the current track before the run stops, and the
+display and download use the most recent 100 retained prep events.
+
 ## First implementation
 
 Branch `codex/stem-blend-admission-20261126` starts from draft PR #10 commit
@@ -46,8 +132,12 @@ Both choices use the usual progress, log, and Stop controls. Select 100, 500,
 These actions use the existing Library maintenance lock,
 so choose a window where pick-time preparation can wait. A complete head
 measurement can record fewer than eight bars, including an empty grid.
-Failures are reported and eligible for retry. Existing transition policy
-continues to read the shared head grid and the original tail fields.
+Failures are reported and eligible for retry. New Style pick time reuses the
+shared head grid and a source-matched Library tail when it has eight usable
+bars. Extraction and rendering use the same tail. A missing, stale or
+unusable Library tail falls back to the original outro. The station
+controller was rebuilt with this path, and the queue and render tests
+passed. A compatible pair still needs to verify saved-tail reuse on air.
 
 ## Start here
 

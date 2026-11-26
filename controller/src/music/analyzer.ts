@@ -277,6 +277,7 @@ function localConfigured(): boolean {
 // A line of JSON from the stdio worker, or the sidecar's /analyze body — same
 // payload; ready/fatal/id are worker-only.
 interface WorkerMessage {
+  beat_grid_uses_gpu?: boolean;
   stem_blend_preview?: string;
   stem_blend_report?: unknown;
   subbeats_preview?: string;
@@ -381,6 +382,7 @@ let _localWholeFileCapable: boolean | null = null;
 let _localLoudnessCurveCapable: boolean | null = null;
 let _localRegularStems = false;
 let _localStemBeatsWindows = false;
+let _localBeatGridUsesGpu = false;
 let _localSubbeatsSuitability = false;
 let _localSubbeatsShared = false;
 let _localSubbeatsCapable: boolean | null = null;
@@ -449,6 +451,7 @@ function startWorker(): Promise<void> {
           _localLoudnessCurveCapable = typeof msg.loudness_curve_capable === 'boolean' ? msg.loudness_curve_capable : null;
           _localRegularStems = msg.regular_stems_version === 2;
           _localStemBeatsWindows = msg.stembeats_stem_windows_version === 1;
+          _localBeatGridUsesGpu = msg.beat_grid_uses_gpu === true;
           _localSubbeatsShared = msg.subbeats_cache_version === 2;
           _localSubbeatsSuitability = msg.subbeats_suitability_version === 1;
           _localSubbeatsCapable = msg.subbeats_capable === true && _localSubbeatsShared && _localSubbeatsSuitability;
@@ -657,6 +660,7 @@ let _sidecarTailCurveCapable: boolean | null = null;
 let _sidecarWholeFileConcurrency: number | null = null;
 let _sidecarRegularStems = false;
 let _sidecarStemBeatsWindows = false;
+let _sidecarBeatGridUsesGpu = false;
 let _sidecarSubbeatsSuitability = false;
 let _sidecarSubbeatsShared = false;
 let _sidecarSubbeatsCapable: boolean | null = null;
@@ -693,6 +697,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       analyze_whole_file_concurrency?: number | null;
       analyze_regular_stems_version?: number | null;
       analyze_stembeats_stem_windows_version?: number | null;
+      analyze_beat_grid_uses_gpu?: boolean;
       analyze_subbeats_capable?: boolean | null;
       analyze_subbeats_cache_version?: number;
       analyze_subbeats_suitability_version?:number;
@@ -715,6 +720,7 @@ async function probeSidecar(url: string): Promise<boolean> {
         ? (body.analyze_whole_file_concurrency as number) : null;
       _sidecarRegularStems = body.analyze_regular_stems_version === 2;
       _sidecarStemBeatsWindows = body.analyze_stembeats_stem_windows_version === 1;
+      _sidecarBeatGridUsesGpu = body.analyze_beat_grid_uses_gpu === true;
       _sidecarSubbeatsShared = body.analyze_subbeats_cache_version === 2;
       _sidecarSubbeatsSuitability = body.analyze_subbeats_suitability_version === 1;
       _sidecarSubbeatsCapable = body.analyze_subbeats_capable === true && _sidecarSubbeatsShared && _sidecarSubbeatsSuitability;
@@ -736,6 +742,7 @@ async function sidecarReachable(): Promise<boolean> {
   for (const url of config.analyzer.urls) {
     if (await probeSidecar(url)) return true;
   }
+  _sidecarBeatGridUsesGpu = false;
   return false;
 }
 
@@ -830,6 +837,10 @@ export async function isAvailable(): Promise<boolean> {
 
 export function backendLabel(): string {
   return _backend || 'none';
+}
+
+export function beatGridUsesGpu(): boolean {
+  return _backend === 'sidecar' ? _sidecarBeatGridUsesGpu : _backend === 'local' && ready && _localBeatGridUsesGpu;
 }
 
 // null = unknown (not yet probed); false = built without the CLAP stack, which

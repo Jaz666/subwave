@@ -23,7 +23,7 @@ export type StemBeatsJob = {
 export type StemBeatsRun = {
   runId: string;
   createdAt: string;
-  status: 'queued' | 'running' | 'complete' | 'paused' | 'failed';
+  status: 'queued' | 'running' | 'complete' | 'paused' | 'failed' | 'cancelled';
   scope?: string;
   airplay?: boolean;
   waitingForPickTime?: boolean;

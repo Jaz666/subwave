@@ -784,6 +784,7 @@ async def health():
         # older workers never emit the key, so this stays None and the
         # controller keeps sending flat requests to them.
         "analyze_facets_capable": analyzer_pool.capability("facets_capable", "facets"),
+        "analyze_beat_grid_uses_gpu": bool(ready) and all(w.ready_meta.get("beat_grid_uses_gpu") is True for w in ready),
         # Whole-file facets (loudness v2 over the whole file, silence edges and
         # the decoded length): needs ffmpeg in the worker image. None on older
         # workers, which never emit the key.

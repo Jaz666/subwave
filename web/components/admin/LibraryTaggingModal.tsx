@@ -29,6 +29,7 @@ interface Props {
   analysisOff: boolean;
   newStylePrepAvailable: boolean;
   stemBlendPrepAvailable: boolean;
+  beatGridUsesGpu: boolean;
   legacyStemCacheAvailable: boolean;
   vocalWanted: boolean;
   // The dimension is enabled AND the engine can produce fingerprints. false →
@@ -68,9 +69,10 @@ export default function LibraryTaggingModal(p: Props) {
   });
   const [runPrep, setRunPrep] = useState<StemPreparation>(null);
   const [refreshPrep, setRefreshPrep] = useState<StemPreparation>(null);
-  const newStylePrep = p.newStylePrepAvailable && runPrep === 'beats';
-  const newStyleRescan = p.newStylePrepAvailable && refreshPrep === 'beats';
+  const newStylePrep = p.newStylePrepAvailable && !p.analysisOff && runPrep === 'beats';
+  const newStyleRescan = p.newStylePrepAvailable && !p.analysisOff && refreshPrep === 'beats';
   const blendPrepAvailable = p.stemBlendPrepAvailable && !p.analysisOff;
+  const blendGridSpeed = p.beatGridUsesGpu ? 'medium' : 'slow';
   const blendPrep = blendPrepAvailable && runPrep === 'blend-tails';
   const blendRescan = blendPrepAvailable && refreshPrep === 'blend-tails';
   const toggleStep = (k: keyof TagSteps) => {
@@ -252,10 +254,10 @@ export default function LibraryTaggingModal(p: Props) {
             <p className="text-[12px] leading-[1.55] text-muted">
               {blendPrep
                 ? 'Prepare missing Stem Blend grids as a separate batch. Pick-time preparation waits during the scan.'
-                : stemsOnly
-                ? 'Process the selected unprepared library tracks within the track limit and saved cache budget.'
                 : newStylePrep
-                  ? 'Prepare missing New Style transition data for eligible Dance Candidates. No stem extraction is performed in this library run.'
+                ? 'Prepare Stem Beats cues for eligible Dance Candidates within the track limit.'
+                : stemsOnly
+                ? 'Process selected tracks within the track limit and saved cache budget.'
                 : 'Process new / untagged tracks. Untick a step to skip it this run — the badge shows what each one costs.'}
             </p>
             <div className="grid gap-2.5">
@@ -284,21 +286,6 @@ export default function LibraryTaggingModal(p: Props) {
                   : p.soundsLikeActive
                     ? 'Tempo, key & intro, plus sounds-like fingerprints. The slow step; vocal separation is split out below.'
                     : 'Tempo, key & intro for every track — the slow step. Sounds-like fingerprints are off; enable them on the library page to include them.'} />
-              {p.newStylePrepAvailable ? (
-                <Pass on={newStylePrep} onClick={() => toggleRunPrep('beats')}
-                  name="Prepare New Style transition data" tag="slow · cue analysis"
-                  hint="Prepare missing beat-grid and Stem Beats cue data for eligible Dance Candidates. This does not extract stems; pick-time handles extraction when a compatible pair is selected." />
-              ) : p.legacyStemCacheAvailable ? (
-                <Pass on={effSteps.stems} onClick={() => toggleStep('stems')}
-                  name="Prepare stem caches" tag="very slow · Demucs"
-                  hint="Run the library Demucs stem pass on eligible tracks. Can run on its own; the shared stem-cache budget applies." />
-              ) : null}
-              {p.stemBlendPrepAvailable && (
-                <Pass on={blendPrep} onClick={() => toggleRunPrep('blend-tails')} disabled={p.analysisOff}
-                  name="Prepare Stem Blend grids"
-                  hint={p.analysisOff ? 'Start the analyzer to prepare Stem Blend grids.'
-                    : 'Measure wider tails and repair missing or short head grids.'} />
-              )}
               {p.vocalWanted && (
                 <div className="pl-6">
                   <Pass on={effAnalyze && steps.vocal} onClick={() => toggleStep('vocal')}
@@ -307,6 +294,22 @@ export default function LibraryTaggingModal(p: Props) {
                       ? 'Part of acoustic analysis — tick "Analyze acoustics" first.'
                       : 'Source-separate each track to detect instrumental vs vocal. Very heavy on CPU (~10-30s/track) — untick to do bpm/key + sounds-like without it.'} />
                 </div>
+              )}
+              {p.newStylePrepAvailable ? (
+                <Pass on={newStylePrep} onClick={() => toggleRunPrep('beats')} disabled={p.analysisOff}
+                  name="Prepare Stem Beats cues" tag="slow · cue analysis"
+                  hint={p.analysisOff ? 'Start the analyzer to prepare Stem Beats cues.'
+                    : 'Measure missing beat grids and cues for eligible Dance Candidates in a separate batch. Stems are extracted at pick time.'} />
+              ) : p.legacyStemCacheAvailable ? (
+                <Pass on={effSteps.stems} onClick={() => toggleStep('stems')} disabled={analyzeLocked}
+                  name="Prepare stem caches" tag="very slow · Demucs"
+                  hint="Run the library Demucs stem pass on eligible tracks. Can run on its own; the shared stem-cache budget applies." />
+              ) : null}
+              {p.stemBlendPrepAvailable && (
+                <Pass on={blendPrep} onClick={() => toggleRunPrep('blend-tails')} disabled={p.analysisOff}
+                  name="Prepare Stem Blend grids" tag={blendGridSpeed}
+                  hint={p.analysisOff ? 'Start the analyzer to prepare Stem Blend grids.'
+                    : 'Measure wider tails and repair missing or short head grids.'} />
               )}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashed border-separator-strong pt-3.5">
@@ -349,16 +352,6 @@ export default function LibraryTaggingModal(p: Props) {
               </button>
             </div>
             <div className="grid gap-2.5">
-              {p.newStylePrepAvailable && <Pass on={newStyleRescan} onClick={() => toggleRefreshPrep('beats')}
-                name="Re-scan New Style transition preparation" tag="slow · cue analysis"
-                hint="Refresh preparation for eligible tracks with existing results. Earlier runs and Legacy Sub/Beats data remain available." />}
-              {p.stemBlendPrepAvailable && (
-                <Pass on={blendRescan} onClick={() => toggleRefreshPrep('blend-tails')} disabled={p.analysisOff}
-                  name="Re-scan Stem Blend grids"
-                  hint={p.analysisOff ? 'Start the analyzer to re-scan Stem Blend grids.'
-                    : 'Refresh saved tails, oldest first, and repair heads that need it. Pick-time preparation waits during the scan.'} />
-              )}
-              {!newStyleRescan && !blendRescan && <>
               <Pass on={!!passes.reEnrich} onClick={() => togglePass('reEnrich')} name="Re-enrich metadata" tag="network"
                 hint="Re-fetch Last.fm tags + lyrics for tracks you've already enriched. External API calls — slow on a big library." />
               <Pass on={!!passes.reseed} onClick={() => togglePass('reseed')} name="Re-embed all tracks" tag="slow"
@@ -401,7 +394,16 @@ export default function LibraryTaggingModal(p: Props) {
                       : 'Also redo Demucs vocal separation. Untick to keep your existing vocal ranges and skip the slow pass (~10-30s/track).'} />
                 </div>
               )}
-              </>}
+              {p.newStylePrepAvailable && <Pass on={newStyleRescan} onClick={() => toggleRefreshPrep('beats')} disabled={p.analysisOff}
+                name="Re-scan Stem Beats cues" tag="slow · cue analysis"
+                hint={p.analysisOff ? 'Start the analyzer to re-scan Stem Beats cues.'
+                  : 'Refresh beat grids and cues for eligible tracks with existing results in a separate batch.'} />}
+              {p.stemBlendPrepAvailable && (
+                <Pass on={blendRescan} onClick={() => toggleRefreshPrep('blend-tails')} disabled={p.analysisOff}
+                  name="Re-scan Stem Blend grids" tag={blendGridSpeed}
+                  hint={p.analysisOff ? 'Start the analyzer to re-scan Stem Blend grids.'
+                    : 'Refresh saved tails, oldest first, and repair heads that need it. Pick-time preparation waits during the scan.'} />
+              )}
             </div>
             {(newStyleRescan || blendRescan) &&
               <LibraryBatchSelect id="modal-rescan-batch" value={p.batch} onChange={p.setBatch} label="Track limit"

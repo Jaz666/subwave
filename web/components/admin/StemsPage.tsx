@@ -14,7 +14,7 @@ import StemBeatsCueReadyList, { type StemBeatsCandidate } from './StemBeatsCueRe
 import { MixingDeskStatusIcon, type MixingDeskStatus } from './subbeats/MixingDeskStatusIcon';
 
 const runLabels: Record<StemBeatsRun['status'], string> = {
-  queued: 'Waiting', running: 'Preparing', complete: 'Up to date', paused: 'Paused', failed: 'Needs attention',
+  queued: 'Waiting', running: 'Preparing', complete: 'Up to date', paused: 'Paused', failed: 'Needs attention', cancelled: 'Cancelled',
 };
 const prepStageLabels = { downloading: 'downloading source', analyzing: 'measuring beat grid and cues', saving: 'saving prep data' } as const;
 const extractionModeLabels = {
@@ -60,6 +60,8 @@ export default function StemsPage() {
       fetcher, '/library/stems/pick-time-metrics', undefined, signal,
     )).summaries,
   });
+  const cancellableRuns = runs.data?.filter(run => !run.airplay && ['queued', 'running', 'paused'].includes(run.status));
+  const cancellableRun = cancellableRuns?.find(run => run.active || run.waitingReason) ?? cancellableRuns?.at(-1);
   const latestRun = runs.data?.filter(run => run.scope === 'library').at(-1);
   const activityRun = runs.data?.find(run => run.status === 'running')
     ?? runs.data?.find(run => run.waitingReason);
@@ -89,7 +91,7 @@ export default function StemsPage() {
     }
   };
 
-  const updateRun = async (run: StemBeatsRun, action: 'pause' | 'start' | 'retry-failed') => {
+  const updateRun = async (run: StemBeatsRun, action: 'pause' | 'start' | 'retry-failed' | 'cancel') => {
     setBusy(true);
     setMessage('');
     try {
@@ -167,7 +169,9 @@ export default function StemsPage() {
             <Button variant="outline" className="min-h-10" disabled={busy || runs.isLoading || !latestRun} onClick={() => void startPrep('refresh')}>Re-scan</Button>
             {latestRun?.status === 'running' && <Button variant="outline" className="min-h-10" disabled={busy} onClick={() => void updateRun(latestRun, 'pause')}>Pause</Button>}
             {latestRun?.status === 'paused' && <Button variant="outline" className="min-h-10" disabled={busy} onClick={() => void updateRun(latestRun, 'start')}>Resume</Button>}
-            {latestRun && (latestRun.status === 'failed' || failed > 0) && <Button variant="outline" className="min-h-10" disabled={busy} onClick={() => void updateRun(latestRun, 'retry-failed')}>Retry failed</Button>}
+            {cancellableRun && <Button variant="outline" className="min-h-10" disabled={busy}
+              onClick={() => void updateRun(cancellableRun, 'cancel')}>Cancel scan</Button>}
+            {latestRun && latestRun.status !== 'cancelled' && (latestRun.status === 'failed' || failed > 0) && <Button variant="outline" className="min-h-10" disabled={busy} onClick={() => void updateRun(latestRun, 'retry-failed')}>Retry failed</Button>}
           </div>
           <StemBeatsCueReadyList tracks={candidates.data ?? []} loading={candidates.isPending} error={candidates.isError}
             scanDisabled={runs.data?.some(run => run.status === 'running' || !!run.waitingReason) === true}

@@ -15,7 +15,8 @@ import * as settings from '../settings.js';
 import { stemBeatsEnabled } from '../broadcast/regular-stem-mode.js';
 import { quietOnlyEnabled } from './analyze-quiet-pure.js';
 
-const store = createSubbeatsPrepV2Store(config.stateDir, join(stemCache.stemsRoot(), 'stembeats'));
+export const stemBeatsPrepStore = createSubbeatsPrepV2Store(config.stateDir, join(stemCache.stemsRoot(), 'stembeats'));
+const store = stemBeatsPrepStore;
 let active: { runId: string; work: Promise<void> } | null = null;
 let airplayMayRun: () => boolean = () => false;
 let pickTimeHasPriority: () => boolean = () => false;
@@ -136,12 +137,12 @@ export function startSubbeatsPrepV2(runId: string): void {
   }
   store.recover(runId);
   const run = store.read(runId);
-  if (run.status === 'complete') return;
+  if (run.status === 'complete' || run.status === 'cancelled') return;
   store.addEvent(runId, 'info', 'Stem Beats preparation started.');
   const work = (async () => {
     while (true) {
       const current = store.read(runId);
-      if (current.status === 'paused') break;
+      if (current.status === 'paused' || current.status === 'cancelled') break;
       if (current.airplay && !airplayPreparationAllowed()) break;
       const job = current.jobs.find(item => item.status === 'queued');
       if (!job) break;
@@ -186,6 +187,17 @@ export function startSubbeatsPrepV2(runId: string): void {
     scheduleAirplayPreparation();
   });
   active = { runId, work };
+}
+
+export function cancelSubbeatsPrepV2(runId: string): void {
+  if (store.cancel(runId)) {
+    store.addEvent(runId, 'warning', active?.runId === runId
+      ? 'Scan cancelled. The current track can finish.' : 'Scan cancelled.');
+  }
+  if (deferredManualRunId === runId) {
+    deferredManualRunId = null;
+    deferredManualReason = null;
+  }
 }
 
 export function pauseSubbeatsPrepV2(runId: string, paused: boolean): void {

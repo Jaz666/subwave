@@ -20,6 +20,7 @@ import type {
   TaggerState,
 } from '../LibraryTaggingPanel';
 import type { SettingsResponse } from './types';
+import { stemBeatsRunsKey } from '../stembeats/runs';
 
 // The tagging/analysis half of the library page: the slow /settings poll and
 // every operator action the Tagging panel fires. The tagger snapshot's fast
@@ -201,10 +202,12 @@ export function useTaggerControls() {
       await adminJson(fetcher, `/library/subbeats/prep-v2/runs/${created.runId}/start`, { method: 'POST' });
       return created;
     },
-    onDone: (_data, { mode }) => {
+    onDone: (_data, { mode }, client) => {
       notify.ok(mode === 'missing'
-        ? 'New Style library preparation started — existing results are kept.'
-        : 'New Style preparation refresh started — previous results are kept.');
+        ? 'Stem Beats preparation started'
+        : 'Stem Beats re-scan started');
+      setLogOpen(true);
+      void client.invalidateQueries({ queryKey: stemBeatsRunsKey });
     },
   });
 

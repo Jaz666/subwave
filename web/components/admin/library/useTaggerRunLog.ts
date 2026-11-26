@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminJson, adminResponse } from '../../../lib/admin-query';
-import type { TaggerState } from '../LibraryTaggingPanel';
+import type { TaggerEvent, TaggerState } from '../LibraryTaggingPanel';
 import { useLibrary } from './LibraryContext';
 import { libraryKeys } from './queries';
 
@@ -65,10 +65,11 @@ export function useTaggerRunLog(open: boolean, tagger: TaggerState | null) {
     }
   }, [running, runId, open, qc]);
 
-  const download = useCallback(async (id: string) => {
+  const download = useCallback(async (id: string, events?: TaggerEvent[]) => {
     // admin-query-imperative: tagger-log-download
-    const r = await adminResponse(adminFetch, `/library/tagger/logs/${encodeURIComponent(id)}`);
-    const blob = await r.blob();
+    const blob = events
+      ? new Blob(events.map(event => `${event.at} [${event.kind}] ${event.text}\n`), { type: 'text/plain' })
+      : await (await adminResponse(adminFetch, `/library/tagger/logs/${encodeURIComponent(id)}`)).blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

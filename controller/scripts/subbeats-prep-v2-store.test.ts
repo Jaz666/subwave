@@ -275,3 +275,21 @@ test('V2 pick-time roles require a current source-bound grid and filter cues by 
   if (outgoing.state === 'cue-ready') assert.deepEqual(outgoing.cues.map(item => item.sourceSeconds), [75]);
   assert.equal(store.latestCueRole('track-a', 'incoming', 8192).state, 'source-changed');
 });
+
+test('cancelling a paused scan persists and releases its unfinished tracks', async () => {
+  const root = tempRoot();
+  const store = createSubbeatsPrepV2Store(root);
+  const run = store.createRun({ baselineSha256: null, algorithmVersion: 4,
+    jobs: [{ id: 'cancel-track', title: 'Track', artist: 'Artist', album: 'Album' }] });
+  await store.primeLatestCompleteJobs();
+  assert.equal(store.latestJob('cancel-track')?.job.status, 'queued');
+  store.pause(run.runId, true);
+  assert.equal(store.cancel(run.runId), true);
+  store.pause(run.runId, false);
+  assert.equal(store.claim(run.runId, 'cancel-track'), null);
+  assert.equal(store.latestJob('cancel-track'), null);
+  const reopened = createSubbeatsPrepV2Store(root);
+  await reopened.primeLatestCompleteJobs();
+  assert.equal(reopened.read(run.runId).status, 'cancelled');
+  assert.equal(reopened.latestJob('cancel-track'), null);
+});
