@@ -54,7 +54,7 @@ import { walkFileInfo } from './tag-library/flags.js';
 import { backfillSubbeatsStemWaveforms } from './stem-waveform-peaks.js';
 import { reembedNewlyMarked } from './tag-library/embed.js';
 import { prepareStemBlendAdmission } from './stem-blend-admission.js';
-import { stemBlendAdmissionRunSchema } from '../schemas/stem-blend-admission.js';
+import { stemBlendAdmissionRunSchema } from '../schemas/stem-blend-admission-server.js';
 
 const logEvent = makeEventLogger('analyze');
 
@@ -202,9 +202,10 @@ async function main() {
     analyzer.shutdown();
     console.log('[analyze] Stem Blend admission:', JSON.stringify(result));
     if (result.after) {
-      if (!result.selected) logEvent('info', reAnalyze ? 'No prepared Stem Blend tails to re-scan.' : 'No tracks need Stem Blend tail preparation.');
+      if (!result.selected) logEvent('info', reAnalyze ? 'No prepared Stem Blend tails to re-scan.' : 'No tracks need Stem Blend grid preparation.');
       else logEvent(result.errors ? 'warning' : 'success',
-        `Stem Blend tails checked: ${result.attempted}/${result.selected} · ${result.after.eightBars} with eight bars · ${result.errors} failed.`);
+        `Stem Blend grids checked: ${result.attempted}/${result.selected} · ${result.after.eightBars} with eight-bar tails · `
+        + `${result.heads.saved}/${result.heads.attempted} head grids saved (${result.heads.withEightBars} with eight bars) · ${result.errors} tracks with failures.`);
     }
     process.exit('errors' in result && result.errors ? 1 : 0);
   }

@@ -1492,10 +1492,16 @@ export function parseFacetAnswer(msg: WorkerMessage): FacetAnalysis {
       tail_vocal_ranges?: unknown;
       tail_admission?: unknown;
     };
+    const result = toAnalysisResult(data);
+    // An explicitly empty, proven head grid is a completed measurement.
+    if (name === 'head' && result.gridProvenance) {
+      if (Array.isArray(data.beats) && data.beats.length === 0) result.beats = [];
+      if (Array.isArray(data.bars) && data.bars.length === 0) result.bars = [];
+    }
     facets[name as FacetName] = {
       status,
       reason: typeof cell.reason === 'string' ? cell.reason : null,
-      result: toAnalysisResult(data),
+      result,
       tailVocalRanges: parseVocalRanges(data.tail_vocal_ranges),
       ...(data.tail_admission === undefined ? {} : { tailAdmission: data.tail_admission }),
     };

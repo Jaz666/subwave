@@ -34,13 +34,19 @@ Four-, six-, and eight-bar counts are derived from the saved markers before
 the fade cue or fallback endpoint. Use the before and after report for the
 same selected cohort.
 
-In the Library Tagging dialog, **Run → Prepare Stem Blend tails** processes
-missing and failed measurements. **Re-scan → Re-scan Stem Blend tails**
-refreshes completed measurements, oldest first. Both choices use the usual
-progress, log, and Stop controls. Select up to 25, 100, or 200 tracks. These
-actions use the existing Library maintenance lock, so choose a window where
-pick-time preparation can wait. Head preparation and live transitions keep
-their existing readers.
+In the Library Tagging dialog, **Run → Prepare Stem Blend grids** processes
+missing and failed measurements. It checks previously prepared tails for
+missing or short heads before taking new tail work. A head-only repair keeps
+the saved tail. **Re-scan → Re-scan Stem Blend grids** refreshes completed tails,
+oldest first, and repairs heads that still need work. When both sides need
+measurement, the analyzer uses the same complete source for both requests.
+
+Both choices use the usual progress, log, and Stop controls. Select up to 25,
+100, or 200 tracks. These actions use the existing Library maintenance lock,
+so choose a window where pick-time preparation can wait. A complete head
+measurement can record fewer than eight bars, including an empty grid.
+Failures are reported and eligible for retry. Existing transition policy
+continues to read the shared head grid and the original tail fields.
 
 ## Start here
 

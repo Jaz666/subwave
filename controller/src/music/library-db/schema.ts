@@ -665,8 +665,16 @@ export async function migrate(embeddingDim: number, reseed = false, adoptStoredD
     source_sha256 TEXT,
     status TEXT NOT NULL,
     evidence_json TEXT,
-    attempted_at INTEGER NOT NULL
+    attempted_at INTEGER NOT NULL,
+    head_attempted_at INTEGER
   )`);
+  const hasHeadAttempt = () => (d.pragma('table_info(stem_blend_tail_admission)') as Array<{ name: string }>)
+    .some(column => column.name === 'head_attempted_at');
+  if (!hasHeadAttempt()) {
+    d.transaction(() => {
+      if (!hasHeadAttempt()) runDdl(d, 'ALTER TABLE stem_blend_tail_admission ADD COLUMN head_attempted_at INTEGER');
+    }).immediate();
+  }
   return effectiveDim;
 }
 

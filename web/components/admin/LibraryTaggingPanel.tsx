@@ -246,7 +246,7 @@ const PHASE_HINT: Record<TaggerProgress['phase'], string> = {
   propagate: 'Spreading tags from tagged tracks to their closest sonic neighbours.',
   learn: 'The DJ is re-checking tracks the automatic spread wasn’t confident about.',
   analyze: 'Measuring tempo and key, and fingerprinting how each track sounds.',
-  grids: 'Measuring Stem Blend beat-grid coverage at the ends of tracks.',
+  grids: 'Measuring beat-grid coverage for Stem Blends.',
   done: 'Wrapping up.',
 };
 

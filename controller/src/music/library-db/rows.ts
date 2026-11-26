@@ -137,7 +137,7 @@ function parseKeyRanges(s: string): TrackKeyRange[] | null {
 }
 
 // Parse a JSON array of ms timestamps → finite number[] or null (empty → null).
-function parseMsArray(s: string): number[] | null {
+export function parseMsArray(s: string): number[] | null {
   try {
     const v = JSON.parse(s);
     if (!Array.isArray(v)) return null;
@@ -244,7 +244,7 @@ export function rowToEnergyPool(row: EnergyPoolRow): EnergyPoolRecord {
   };
 }
 
-function parseGridProvenanceJson(value: string | null | undefined) {
+export function parseGridProvenanceJson(value: string | null | undefined) {
   try { return value ? parseBeatGridProvenance(JSON.parse(value)) : null; }
   catch { return null; }
 }

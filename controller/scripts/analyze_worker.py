@@ -4585,8 +4585,10 @@ def regular_head_grid(librosa, source, seconds):
     if sr != ANALYZE_SR or audio is None or np.ndim(audio) != 1 or abs(len(audio)-round(end*sr)) > 2:
         raise FacetRequestError("extended head grid decode is incomplete")
     beats, bars, provenance = measure_bar_grid(audio, sr, librosa, [], offset_s=0.)
-    if not provenance or not beats or not bars:
+    if not provenance:
         raise FacetRequestError("extended head beat grid is unavailable")
+    if source.duration_s <= seconds:
+        provenance["reachesSourceEnd"] = True
     return {"beats": beats, "bars": bars, "grid_provenance": provenance}
 
 

@@ -10,6 +10,9 @@ export const beatGridProvenanceSchema = z.object({
   preprocessingVersion: z.literal(1),
   windowStartMs: z.number().int().nonnegative(),
   windowEndMs: z.number().int().positive(),
+  // Set by complete-source head measurement when the recording is shorter
+  // than the requested window. Avoids retrying a fully measured short head.
+  reachesSourceEnd: z.literal(true).optional(),
   evidence: z.object({
     medianBpm: z.number().positive().nullable(),
     intervalSupport: z.number().min(0).max(1).nullable(),

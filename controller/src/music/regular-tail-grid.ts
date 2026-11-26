@@ -41,19 +41,40 @@ export function regularHeadGridSeconds(row: Pick<TrackRecord, 'bars'>): number {
     + 10 * (intervals[Math.floor(intervals.length/2)] ?? 4000))/1000)));
 }
 
-function headGridNeedsRepair(row: TrackRecord): boolean {
+export function headGridNeedsRepair(
+  row: Pick<TrackRecord, 'beats' | 'bars' | 'gridProvenance' | 'durationSec'>,
+  fileSize: number | null,
+): boolean {
   const grid = row.gridProvenance;
   if (!current(grid) || !grid?.source?.complete || !Array.isArray(row.beats) || !Array.isArray(row.bars)) return true;
-  const fileSize = db.trackFileSize(String(row.id));
   if (fileSize != null && grid.source.bytes !== fileSize) return true;
   if (grid.windowStartMs !== 0) return true;
-  return !eightBarWindow(row.bars, { startMs: grid.windowStartMs, endMs: grid.windowEndMs - 1 }, 'head')
+  return !grid.reachesSourceEnd
+    && !eightBarWindow(row.bars, { startMs: grid.windowStartMs, endMs: grid.windowEndMs - 1 }, 'head')
     && grid.windowEndMs < Math.min(regularHeadGridSeconds(row)*1000, (row.durationSec ?? 0)*1000)-2;
+}
+
+export function saveRegularHeadGrid(
+  id: string, answer: analyzer.FacetAnalysis, source: { sha256: string; bytes: number },
+  requestedSeconds: number, fileSize: number | null,
+): { markers: number; eightBars: boolean } {
+  const head = answer.facets.head, grid = head?.result.gridProvenance;
+  const window = Math.min(requestedSeconds, answer.source.durationS ?? requestedSeconds) * 1000;
+  if (head?.status !== 'ok' || !Array.isArray(head.result.beats) || !Array.isArray(head.result.bars)
+      || !current(grid) || !grid?.source?.complete || grid.source.sha256 !== source.sha256
+      || grid.source.bytes !== source.bytes || grid.windowStartMs !== 0
+      || grid.windowEndMs < window - 2 || grid.windowEndMs > requestedSeconds * 1000 + 1
+      || !db.writeRegularHeadGrid(id, {
+        beats: head.result.beats, bars: head.result.bars, gridProvenance: grid }, fileSize)) {
+    throw new Error(head?.reason ?? 'complete head grid unavailable');
+  }
+  return { markers: head.result.bars.length, eightBars: !!eightBarWindow(head.result.bars,
+    { startMs: grid.windowStartMs, endMs: grid.windowEndMs - 1 }, 'head') };
 }
 
 export function regularHeadGridAwaiting(id: string): boolean {
   const row = db.getTrack(id);
-  return !!row && regularGridAwaiting(id) && headGridNeedsRepair(row);
+  return !!row && regularGridAwaiting(id) && headGridNeedsRepair(row, db.trackFileSize(id));
 }
 
 export function regularGridAwaiting(id: string, libraryScan = false): boolean {
@@ -61,7 +82,7 @@ export function regularGridAwaiting(id: string, libraryScan = false): boolean {
   if (!libraryScan && (bulkPassRunning() || (failures.get(id) ?? 0) > Date.now())) return false;
   const row = db.getTrack(id), head = row?.gridProvenance;
   if (!row) return false;
-  if (headGridNeedsRepair(row)) return true;
+  if (headGridNeedsRepair(row, db.trackFileSize(id))) return true;
   const grid = row.outro?.gridProvenance;
   const endMs = analyzer.tailWindowFor(row)?.endMs ?? grid?.windowEndMs ?? (row.durationSec ?? 0) * 1000;
   const wantedMs = Math.min(regularTailGridSeconds(row) * 1000, endMs);
@@ -93,7 +114,7 @@ export function ensureRegularTailGrid(id: string, log: (message: string) => void
         if (timeoutMs <= 0) throw new Error('regular grid preparation deadline passed');
         return { localPathRequired: true, complete: true, timeoutMs };
       };
-      if (headGridNeedsRepair(row)) {
+      if (headGridNeedsRepair(row, fileSize)) {
         try {
           const headSeconds = regularHeadGridSeconds(row);
           log(`Regular stems: measuring head grid for ${label}`);
@@ -101,15 +122,8 @@ export function ensureRegularTailGrid(id: string, log: (message: string) => void
           completed = false;
           const result = await analyzer.analyzeFacets(id, { ...request, facets: ['head'], headGridSeconds: headSeconds }, source.path);
           completed = true;
-          const head = result.facets.head, grid = head?.result.gridProvenance;
-          if (head?.status !== 'ok' || !Array.isArray(head.result.beats) || !Array.isArray(head.result.bars)
-              || !current(grid) || !grid?.source?.complete || grid.source.sha256 !== source.sha256
-              || grid.source.bytes !== source.bytes || grid.windowStartMs !== 0
-              || grid.windowEndMs < Math.min(headSeconds*1000, (row.durationSec ?? 0)*1000)-2
-              || !db.writeRegularHeadGrid(id, {
-                beats: head.result.beats, bars: head.result.bars, gridProvenance: grid }, fileSize))
-            throw new Error(head?.reason ?? 'complete head grid unavailable');
-          log(head.result.beats.length && head.result.bars.length
+          const head = saveRegularHeadGrid(id, result, source, headSeconds, fileSize);
+          log(head.markers
             ? `Regular stems: head grid ready for ${label}`
             : `Regular stems: head window measured for ${label}, but no usable beat grid was found`);
           wake();

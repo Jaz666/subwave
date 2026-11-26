@@ -71,7 +71,7 @@ export function writeRegularHeadGrid(id: string, measured: {
       { file_size: number | null; grid_provenance_json: string | null } | undefined;
     if (!row || row.file_size !== expectedFileSize || (expectedFileSize != null && expectedFileSize !== source.bytes)) return false;
     const before = parseBeatGridProvenance(row.grid_provenance_json ? JSON.parse(row.grid_provenance_json) : null);
-    if (before?.source?.complete && before.source.sha256 !== source.sha256) return false;
+    if (before?.source?.complete && before.source.bytes === source.bytes && before.source.sha256 !== source.sha256) return false;
     d.prepare('UPDATE tracks SET beats_json=?, bars_json=?, grid_provenance_json=? WHERE id=?')
       .run(JSON.stringify(measured.beats), JSON.stringify(measured.bars), JSON.stringify(measured.gridProvenance), id);
     return true;

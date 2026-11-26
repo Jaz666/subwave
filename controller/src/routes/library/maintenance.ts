@@ -25,7 +25,7 @@ import { bulkPassRunning } from '../../music/tagger-lock.js';
 import { subbeatsPrepV2RunActive } from '../../music/subbeats-prep-v2-library.js';
 import { validateBody, validateBodyAsync } from '../../middleware/validate.js';
 import { manualTagSchema, originalYearSchema } from '../../schemas/library.js';
-import { stemBlendAdmissionRunSchema } from '../../schemas/stem-blend-admission.js';
+import { stemBlendAdmissionRunSchema } from '../../schemas/stem-blend-admission-server.js';
 import type { z } from 'zod';
 import { parseIntSafe, encodeCursor, decodeCursor } from './params.js';
 

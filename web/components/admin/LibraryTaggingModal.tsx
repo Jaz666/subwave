@@ -252,7 +252,7 @@ export default function LibraryTaggingModal(p: Props) {
           <>
             <p className="text-[12px] leading-[1.55] text-muted">
               {blendPrep
-                ? 'Prepare missing Stem Blend tails as a separate batch. Choose a time when pick-time preparation can wait.'
+                ? 'Prepare missing Stem Blend grids as a separate batch. Pick-time preparation waits during the scan.'
                 : stemsOnly
                 ? 'Process the selected unprepared library tracks within the track limit and saved cache budget.'
                 : newStylePrep
@@ -296,9 +296,9 @@ export default function LibraryTaggingModal(p: Props) {
               ) : null}
               {p.stemBlendPrepAvailable && (
                 <Pass on={blendPrep} onClick={() => toggleRunPrep('blend-tails')} disabled={p.analysisOff}
-                  name="Prepare Stem Blend tails"
-                  hint={p.analysisOff ? 'Start the analyzer to prepare Stem Blend tails.'
-                    : 'Measure wider beat grids and ending cues for tracks that still need preparation.'} />
+                  name="Prepare Stem Blend grids"
+                  hint={p.analysisOff ? 'Start the analyzer to prepare Stem Blend grids.'
+                    : 'Measure wider tails and repair missing or short head grids.'} />
               )}
               {p.vocalWanted && (
                 <div className="pl-6">
@@ -362,9 +362,9 @@ export default function LibraryTaggingModal(p: Props) {
                 hint="Refresh preparation for eligible tracks with existing results. Earlier runs and Legacy Sub/Beats data remain available." />}
               {p.stemBlendPrepAvailable && (
                 <Pass on={blendRescan} onClick={() => toggleRefreshPrep('blend-tails')} disabled={p.analysisOff}
-                  name="Re-scan Stem Blend tails"
-                  hint={p.analysisOff ? 'Start the analyzer to re-scan Stem Blend tails.'
-                    : 'Refresh tracks with a saved tail measurement, oldest first. Pick-time preparation waits during the scan.'} />
+                  name="Re-scan Stem Blend grids"
+                  hint={p.analysisOff ? 'Start the analyzer to re-scan Stem Blend grids.'
+                    : 'Refresh saved tails, oldest first, and repair heads that need it. Pick-time preparation waits during the scan.'} />
               )}
               {!newStyleRescan && !blendRescan && <>
               <Pass on={!!passes.reEnrich} onClick={() => togglePass('reEnrich')} name="Re-enrich metadata" tag="network"

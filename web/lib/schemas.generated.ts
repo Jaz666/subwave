@@ -21,6 +21,9 @@ export const beatGridProvenanceSchema = z.object({
   preprocessingVersion: z.literal(1),
   windowStartMs: z.number().int().nonnegative(),
   windowEndMs: z.number().int().positive(),
+  // Set by complete-source head measurement when the recording is shorter
+  // than the requested window. Avoids retrying a fully measured short head.
+  reachesSourceEnd: z.literal(true).optional(),
   evidence: z.object({
     medianBpm: z.number().positive().nullable(),
     intervalSupport: z.number().min(0).max(1).nullable(),
@@ -6409,6 +6412,10 @@ export const subbeatsPlaybackSchema = z.object({
   timing:subbeatsLiveTimingSchema,loudnessSettings:z.string(),
   gainsDb:z.array(z.number().finite().min(-120).max(40)).length(2),
   clipPath:z.string().min(1),leadPath:z.string().nullable(),incomingDurationSeconds:z.number().positive(),
+  previewWindows:z.object({
+    outgoing:z.object({directory:z.string().min(1),startSeconds:z.number().finite().nonnegative(),endSeconds:z.number().finite().positive(),evidence:stemBeatsWindowEvidenceSchema}),
+    incoming:z.object({directory:z.string().min(1),startSeconds:z.number().finite().nonnegative(),endSeconds:z.number().finite().positive(),evidence:stemBeatsWindowEvidenceSchema}),
+  }).optional(),
 });
 export const subbeatsPairPlanSchema = z.object({
   version:z.literal(1),method:z.literal('live-pair'),outgoingId:z.string(),incomingId:z.string(),
