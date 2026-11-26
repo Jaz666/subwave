@@ -69,6 +69,9 @@ export class RegularStemWorkingCache {
     }
     return false;
   }
+  isTrackBusy(id: string): Promise<boolean> {
+    return this.busyDirectory(this.directoryFor(id));
+  }
   async hasBusyJob(): Promise<boolean> {
     try {
       for (const entry of await readdir(this.root, { withFileTypes: true })) {

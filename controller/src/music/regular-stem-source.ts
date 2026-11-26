@@ -46,6 +46,7 @@ export async function acquireRegularStemSource(id: string, opts: {
   opts.signal?.throwIfAborted();
   if (!opts.cache) await membership;
   const cache = opts.cache ?? workingCache;
+  if (opts.cache && await cache.isTrackBusy(id)) throw new Error('A previous analysis may still be reading this recording.');
   opts.signal?.throwIfAborted();
   const lease = await cache.acquire(id);
   if (!lease) throw new Error('recording is no longer in the regular working queue');
@@ -153,11 +154,20 @@ export async function acquireRegularStemSource(id: string, opts: {
     }
     if (source.bytes !== bytes || (opts.expectedSha256 && source.sha256 !== opts.expectedSha256))
       throw new Error('complete recording differs from the requested stem window');
-    return { ...source, release: async (completed = true) => {
+    const busyPath = path.join(lease.directory, '.regular-busy.json');
+    let markedBusy = false;
+    const markBusy = async () => {
+      await writeFile(busyPath, JSON.stringify({ until: Date.now() + 15 * 60_000 }));
+      markedBusy = true;
+    };
+    return { ...source, markBusy, release: async (completed = true) => {
       // After a transport timeout the sidecar may still read/hash this file.
-      if (!completed) await writeFile(path.join(lease.directory, '.regular-busy.json'),
-        JSON.stringify({ until: Date.now() + 15 * 60_000 }));
-      await release();
+      try {
+        if (!completed && !markedBusy) await markBusy();
+        else if (completed && markedBusy) await rm(busyPath, { force: true });
+      } finally {
+        await release();
+      }
     } };
   } catch (error) { await release(); throw error; }
 }

@@ -16,7 +16,7 @@ import { stemStampDecision } from './stem-stamp-policy.js';
 import { runAudioMoodPass } from './audio-moods.js';
 import { runAudioDescriptorPass } from './audio-descriptor-pass.js';
 import { audioEnergyOptions, runAudioEnergyPass } from './propagated-energy.js';
-import { reportProgress, makeEventLogger } from './tagger-progress.js';
+import { reportProgress, makeEventLogger, type TaggerProgress } from './tagger-progress.js';
 import { quietAfterMinutes, quietGateDecision, quietOnlyEnabled, type QuietState } from './analyze-quiet-pure.js';
 import { dispatchAnalysis, type DispatchOutcome } from './analyze-dispatch.js';
 import {
@@ -120,7 +120,10 @@ export interface QuietGate {
 
 // Block until the gate allows the next track. Sits BETWEEN tracks, so only the
 // next compute waits. Unbounded by design (Stop button / admin toggle).
-export async function waitForQuiet(gate: QuietGate, progress: { done: number; total: number }, shouldStop?: () => boolean): Promise<boolean> {
+export async function waitForQuiet(gate: QuietGate, progress: { done: number; total: number },
+  shouldStop?: () => boolean,
+  active: Pick<TaggerProgress, 'phase' | 'label'> = { phase: 'analyze', label: 'Analysing audio' },
+): Promise<boolean> {
   for (;;) {
     if (shouldStop?.()) return false;
     const quiet = await readQuietConfig();
@@ -138,7 +141,7 @@ export async function waitForQuiet(gate: QuietGate, progress: { done: number; to
         gate.paused = false;
         logEvent('info', 'Stream is quiet — resuming analysis');
         // The per-track reporter only fires every 25 tracks, so restore now.
-        reportProgress({ phase: 'analyze', label: 'Analysing audio', done: progress.done, total: progress.total });
+        reportProgress({ ...active, ...progress });
       }
       return true;
     }
@@ -152,7 +155,7 @@ export async function waitForQuiet(gate: QuietGate, progress: { done: number; to
       );
     }
     reportProgress({
-      phase: 'analyze',
+      phase: active.phase,
       label: `Waiting for quiet (${why})`,
       waitingForQuiet: true,
       done: progress.done,

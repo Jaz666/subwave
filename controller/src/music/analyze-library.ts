@@ -54,6 +54,7 @@ import { walkFileInfo } from './tag-library/flags.js';
 import { backfillSubbeatsStemWaveforms } from './stem-waveform-peaks.js';
 import { reembedNewlyMarked } from './tag-library/embed.js';
 import { prepareStemBlendAdmission } from './stem-blend-admission.js';
+import { stemBlendAdmissionRunSchema } from '../schemas/stem-blend-admission.js';
 
 const logEvent = makeEventLogger('analyze');
 
@@ -191,13 +192,20 @@ async function main() {
 
   if (stemBlendAdmission) {
     const bound = stringFlag(args, '--limit');
-    const selectionLimit = bound === undefined ? 25 : Number(bound);
-    if (!Number.isInteger(selectionLimit) || selectionLimit < 1 || selectionLimit > 200) {
+    const selection = stemBlendAdmissionRunSchema.safeParse({
+      mode: reAnalyze ? 'refresh' : 'missing', limit: bound === undefined ? 25 : Number(bound),
+    });
+    if (!selection.success) {
       throw new Error('--prepare-stem-blend-admission accepts a limit of 1–200 tracks');
     }
-    const result = await prepareStemBlendAdmission({ ids: explicitIds(args), limit: selectionLimit, rescan: reAnalyze, dryRun });
+    const result = await prepareStemBlendAdmission({ ids: explicitIds(args), limit: selection.data.limit, rescan: reAnalyze, dryRun });
     analyzer.shutdown();
     console.log('[analyze] Stem Blend admission:', JSON.stringify(result));
+    if (result.after) {
+      if (!result.selected) logEvent('info', reAnalyze ? 'No prepared Stem Blend tails to re-scan.' : 'No tracks need Stem Blend tail preparation.');
+      else logEvent(result.errors ? 'warning' : 'success',
+        `Stem Blend tails checked: ${result.attempted}/${result.selected} · ${result.after.eightBars} with eight bars · ${result.errors} failed.`);
+    }
     process.exit('errors' in result && result.errors ? 1 : 0);
   }
 

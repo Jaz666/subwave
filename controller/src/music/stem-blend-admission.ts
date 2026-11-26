@@ -9,7 +9,7 @@ import { readStemBlendTailAdmission, stemBlendAdmissionIds, writeStemBlendTailAd
 import { acquireRegularStemSource } from './regular-stem-source.js';
 import { regularTailGridSeconds } from './regular-tail-grid.js';
 import { stemsRoot } from './stem-cache.js';
-import { reportProgress } from './tagger-progress.js';
+import { reportProgress, type TaggerProgress } from './tagger-progress.js';
 
 class TailAdmissionProtocolError extends Error {}
 
@@ -36,16 +36,19 @@ export async function prepareStemBlendAdmission(options: { ids: string[] | null;
   const selected = stemBlendAdmissionIds(options.limit, options.ids, options.rescan);
   const before = tailSummary(selected);
   if (options.dryRun) return { selected: selected.length, before };
+  if (selected.length === 0) return { selected: 0, attempted: 0, errors: 0, before, after: before };
+  if (!await analyzer.isAvailable()) throw new Error('Start the analyzer before preparing Stem Blend tails.');
 
   const cache = new RegularStemWorkingCache(join(stemsRoot(), 'stemblends', 'admission-sources'));
   const quiet: QuietGate = { state: { quietSince: null }, paused: false };
   let done = 0;
   let errors = 0;
-  const progress = () => reportProgress({ phase: 'grids', label: 'Preparing Stem Blend tail evidence', done, total: selected.length, errors });
+  const active: Pick<TaggerProgress, 'phase' | 'label'> = { phase: 'grids', label: 'Preparing Stem Blend tails' };
+  const progress = () => reportProgress({ ...active, done, total: selected.length, errors });
   progress();
   try {
     for (const id of selected) {
-      await waitForQuiet(quiet, { done, total: selected.length });
+      await waitForQuiet(quiet, { done, total: selected.length }, undefined, active);
       if (!regularStemWorkingMode() || !regularStemBlendsEnabled()) break;
       const row = db.getTrack(id);
       const size = db.trackFileSize(id);
@@ -61,6 +64,8 @@ export async function prepareStemBlendAdmission(options: { ids: string[] | null;
             expectedSha256: headSource?.complete && headSource.bytes === size ? headSource.sha256 : undefined,
           });
           const seconds = regularTailGridSeconds(row);
+          // Stop can end this process while the analyzer still has the source open.
+          await source.markBusy();
           completed = false;
           const { facets } = await analyzer.analyzeFacets(id, {
             facets: ['tail'], tailAdmission: true, tailGridSeconds: seconds, tailWindow: analyzer.tailWindowFor(row),

@@ -3,6 +3,11 @@ import { beatGridProvenanceSchema } from './beat-grid.js';
 
 const time = z.number().int().nonnegative();
 
+export const stemBlendAdmissionRunSchema = z.object({
+  mode: z.enum(['missing', 'refresh']),
+  limit: z.number().int().min(1).max(200),
+}).strict();
+
 export const stemBlendTailAdmissionSchema = z.object({
   version: z.literal(1),
   source: z.object({

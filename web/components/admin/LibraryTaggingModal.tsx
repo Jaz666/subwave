@@ -12,6 +12,7 @@ import { num } from './LibraryTaggingPanel';
 import ScheduledTaggingCard from './library/ScheduledTaggingCard';
 
 type Tab = 'run' | 'rescan' | 'reset';
+type StemPreparation = 'beats' | 'blend-tails' | null;
 
 interface Props {
   open: boolean;
@@ -27,6 +28,7 @@ interface Props {
   // sub-toggles hidden until the operator opts vocal in on the panel (#646).
   analysisOff: boolean;
   newStylePrepAvailable: boolean;
+  stemBlendPrepAvailable: boolean;
   legacyStemCacheAvailable: boolean;
   vocalWanted: boolean;
   // The dimension is enabled AND the engine can produce fingerprints. false →
@@ -43,6 +45,7 @@ interface Props {
   intent: 'reembed' | null;
   onStart: (steps?: TagSteps) => void;
   onStartStemBeatsPrep: (mode: 'missing' | 'refresh', limit: Batch) => void;
+  onStartStemBlendPrep: (mode: 'missing' | 'refresh', limit: number) => void;
   onReconcile: () => void;
   onRescan: (opts: RescanOpts) => void;
   // Wipe ALL tagging data and start fresh (deletes library.db server-side).
@@ -63,16 +66,28 @@ export default function LibraryTaggingModal(p: Props) {
   const [steps, setSteps] = useState<TagSteps>({
     reconcile: true, enrich: true, tagMoods: true, analyze: true, stems: false, stemWaveforms: false, vocal: false,
   });
-  const [newStylePrep, setNewStylePrep] = useState(false);
+  const [runPrep, setRunPrep] = useState<StemPreparation>(null);
+  const [refreshPrep, setRefreshPrep] = useState<StemPreparation>(null);
+  const [tailLimit, setTailLimit] = useState(25);
+  const newStylePrep = p.newStylePrepAvailable && runPrep === 'beats';
+  const newStyleRescan = p.newStylePrepAvailable && refreshPrep === 'beats';
+  const blendPrepAvailable = p.stemBlendPrepAvailable && !p.analysisOff;
+  const blendPrep = blendPrepAvailable && runPrep === 'blend-tails';
+  const blendRescan = blendPrepAvailable && refreshPrep === 'blend-tails';
   const toggleStep = (k: keyof TagSteps) => {
-    setNewStylePrep(false);
+    setRunPrep(null);
     setSteps(s => ({ ...s, [k]: !s[k] }));
+  };
+  const toggleRunPrep = (kind: NonNullable<StemPreparation>) => {
+    const next = runPrep === kind ? null : kind;
+    setRunPrep(next);
+    if (next) setSteps({ reconcile: false, enrich: false, tagMoods: false, analyze: false,
+      stems: false, stemWaveforms: false, vocal: false });
   };
 
   const [passes, setPasses] = useState<RescanOpts>({
     reseed: false, reEnrich: false, reAnalyze: false, upgrade: false,
   });
-  const [newStyleRescan, setNewStyleRescan] = useState(false);
   // Does a Re-analyse-acoustics pass also redo the slow Demucs pass? Unticking
   // keeps existing vocal ranges.
   const [reAnalyzeVocal, setReAnalyzeVocal] = useState(true);
@@ -84,7 +99,7 @@ export default function LibraryTaggingModal(p: Props) {
   // continuation with other re-* passes isn't well-defined.
   const [thenTag, setThenTag] = useState(false);
   const togglePass = (k: keyof RescanOpts) => {
-    setNewStyleRescan(false);
+    setRefreshPrep(null);
     setPasses(prev => ({ ...prev, [k]: !prev[k] }));
   };
 
@@ -94,11 +109,16 @@ export default function LibraryTaggingModal(p: Props) {
   const [confirmReset, setConfirmReset] = useState(false);
   const passAllSelected = !!(passes.reseed && passes.reEnrich && passes.reAnalyze && passes.upgrade);
   const anyPass = !!(passes.reseed || passes.reEnrich || passes.reAnalyze || passes.upgrade)
-    || (p.newStylePrepAvailable && newStyleRescan);
+    || newStyleRescan || blendRescan;
   const reseedOnly = !!passes.reseed && !passes.reEnrich && !passes.reAnalyze && !passes.upgrade;
   const clearPasses = () => {
     setPasses({ reseed: false, reEnrich: false, reAnalyze: false, upgrade: false });
     setUpgradeBlind(false);
+  };
+  const toggleRefreshPrep = (kind: NonNullable<StemPreparation>) => {
+    const next = refreshPrep === kind ? null : kind;
+    setRefreshPrep(next);
+    if (next) clearPasses();
   };
 
   useEffect(() => {
@@ -114,8 +134,8 @@ export default function LibraryTaggingModal(p: Props) {
     }
     // Every open starts un-armed so Reset can't be one-clicked from a stale tick.
     setResetAck(false);
-    setNewStylePrep(false);
-    setNewStyleRescan(false);
+    setRunPrep(null);
+    setRefreshPrep(null);
     // Only re-run when the modal transitions open (or the intent changes).
   }, [p.open, p.intent]);
 
@@ -131,7 +151,7 @@ export default function LibraryTaggingModal(p: Props) {
     vocal: effAnalyze && p.vocalWanted ? steps.vocal : false,
   };
   const anyStep = effSteps.reconcile || effSteps.enrich || effSteps.tagMoods || effSteps.analyze || effSteps.stems
-    || (p.newStylePrepAvailable && newStylePrep);
+    || newStylePrep || blendPrep;
   const onlyReconcile = effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze && !effSteps.stems && !effSteps.stemWaveforms;
   const stemsOnly = effSteps.stems && !effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze;
 
@@ -152,7 +172,12 @@ export default function LibraryTaggingModal(p: Props) {
 
   const startRun = () => {
     if (!anyStep || p.busy) return;
-    if (p.newStylePrepAvailable && newStylePrep) {
+    if (blendPrep) {
+      p.onStartStemBlendPrep('missing', tailLimit);
+      p.onOpenChange(false);
+      return;
+    }
+    if (newStylePrep) {
       p.onStartStemBeatsPrep('missing', p.batch);
       p.onOpenChange(false);
       return;
@@ -174,9 +199,14 @@ export default function LibraryTaggingModal(p: Props) {
   });
   const runRescan = () => {
     if (!anyPass || p.busy) return;
-    if (p.newStylePrepAvailable && newStyleRescan) {
+    if (blendRescan) {
+      p.onStartStemBlendPrep('refresh', tailLimit);
+      p.onOpenChange(false);
+      return;
+    }
+    if (newStyleRescan) {
       p.onStartStemBeatsPrep('refresh', p.batch);
-      setNewStyleRescan(false);
+      setRefreshPrep(null);
       p.onOpenChange(false);
       return;
     }
@@ -221,9 +251,11 @@ export default function LibraryTaggingModal(p: Props) {
         {tab === 'run' && (
           <>
             <p className="text-[12px] leading-[1.55] text-muted">
-              {stemsOnly
+              {blendPrep
+                ? 'Prepare missing Stem Blend tails as a separate batch. Choose a time when pick-time preparation can wait.'
+                : stemsOnly
                 ? 'Process the selected unprepared library tracks within the track limit and saved cache budget.'
-                : p.newStylePrepAvailable && newStylePrep
+                : newStylePrep
                   ? 'Prepare missing New Style transition data for eligible Dance Candidates. No stem extraction is performed in this library run.'
                 : 'Process new / untagged tracks. Untick a step to skip it this run — the badge shows what each one costs.'}
             </p>
@@ -254,18 +286,20 @@ export default function LibraryTaggingModal(p: Props) {
                     ? 'Tempo, key & intro, plus sounds-like fingerprints. The slow step; vocal separation is split out below.'
                     : 'Tempo, key & intro for every track — the slow step. Sounds-like fingerprints are off; enable them on the library page to include them.'} />
               {p.newStylePrepAvailable ? (
-                <Pass on={newStylePrep} onClick={() => {
-                  const next = !newStylePrep;
-                  setNewStylePrep(next);
-                  if (next) setSteps({ reconcile: false, enrich: false, tagMoods: false, analyze: false,
-                    stems: false, stemWaveforms: false, vocal: false });
-                }} name="Prepare New Style transition data" tag="slow · cue analysis"
+                <Pass on={newStylePrep} onClick={() => toggleRunPrep('beats')}
+                  name="Prepare New Style transition data" tag="slow · cue analysis"
                   hint="Prepare missing beat-grid and Stem Beats cue data for eligible Dance Candidates. This does not extract stems; pick-time handles extraction when a compatible pair is selected." />
               ) : p.legacyStemCacheAvailable ? (
                 <Pass on={effSteps.stems} onClick={() => toggleStep('stems')}
                   name="Prepare stem caches" tag="very slow · Demucs"
                   hint="Run the library Demucs stem pass on eligible tracks. Can run on its own; the shared stem-cache budget applies." />
               ) : null}
+              {p.stemBlendPrepAvailable && (
+                <Pass on={blendPrep} onClick={() => toggleRunPrep('blend-tails')} disabled={p.analysisOff}
+                  name="Prepare Stem Blend tails"
+                  hint={p.analysisOff ? 'Start the analyzer to prepare Stem Blend tails.'
+                    : 'Measure wider beat grids and ending cues for tracks that still need preparation.'} />
+              )}
               {p.vocalWanted && (
                 <div className="pl-6">
                   <Pass on={effAnalyze && steps.vocal} onClick={() => toggleStep('vocal')}
@@ -277,17 +311,17 @@ export default function LibraryTaggingModal(p: Props) {
               )}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashed border-separator-strong pt-3.5">
-              <div className="lib-batch">
-                <label htmlFor="modal-batch">{stemsOnly || (p.newStylePrepAvailable && newStylePrep) ? 'Track limit' : 'Limit'}</label>
+              {blendPrep ? <StemBlendLimit value={tailLimit} onChange={setTailLimit} /> : <div className="lib-batch">
+                <label htmlFor="modal-batch">{stemsOnly || newStylePrep ? 'Track limit' : 'Limit'}</label>
                 <select id="modal-batch" value={p.batch} onChange={e => p.setBatch(e.target.value as Batch)}>
                   <option value="100">next 100</option>
                   <option value="500">next 500</option>
                   <option value="5000">next 5,000</option>
                   <option value="10000">next 10,000</option>
-                  <option value="all">{stemsOnly || (p.newStylePrepAvailable && newStylePrep)
+                  <option value="all">{stemsOnly || newStylePrep
                     ? 'all eligible tracks' : `all${p.remaining != null ? ` ${num(p.remaining)}` : ''} remaining`}</option>
                 </select>
-              </div>
+              </div>}
               <div className="flex items-center gap-2.5">
                 <Btn onClick={() => p.onOpenChange(false)}>Cancel</Btn>
                 <Btn lg tone="accent" onClick={startRun} disabled={!anyStep || p.busy}>
@@ -313,7 +347,7 @@ export default function LibraryTaggingModal(p: Props) {
                 className="shrink-0 text-[11px] font-bold text-vermilion underline-offset-2 hover:underline disabled:opacity-40"
                 disabled={p.busy}
                 onClick={() => {
-                  setNewStyleRescan(false);
+                  setRefreshPrep(null);
                   setPasses(passAllSelected
                     ? { reseed: false, reEnrich: false, reAnalyze: false, upgrade: false }
                     : { reseed: true, reEnrich: true, reAnalyze: true, upgrade: true });
@@ -323,13 +357,16 @@ export default function LibraryTaggingModal(p: Props) {
               </button>
             </div>
             <div className="grid gap-2.5">
-              {p.newStylePrepAvailable && <Pass on={newStyleRescan} onClick={() => {
-                const next = !newStyleRescan;
-                setNewStyleRescan(next);
-                if (next) clearPasses();
-              }} name="Re-scan New Style transition preparation" tag="slow · cue analysis"
+              {p.newStylePrepAvailable && <Pass on={newStyleRescan} onClick={() => toggleRefreshPrep('beats')}
+                name="Re-scan New Style transition preparation" tag="slow · cue analysis"
                 hint="Refresh preparation for eligible tracks with existing results. Earlier runs and Legacy Sub/Beats data remain available." />}
-              {!newStyleRescan && <>
+              {p.stemBlendPrepAvailable && (
+                <Pass on={blendRescan} onClick={() => toggleRefreshPrep('blend-tails')} disabled={p.analysisOff}
+                  name="Re-scan Stem Blend tails"
+                  hint={p.analysisOff ? 'Start the analyzer to re-scan Stem Blend tails.'
+                    : 'Refresh tracks with a saved tail measurement, oldest first. Pick-time preparation waits during the scan.'} />
+              )}
+              {!newStyleRescan && !blendRescan && <>
               <Pass on={!!passes.reEnrich} onClick={() => togglePass('reEnrich')} name="Re-enrich metadata" tag="network"
                 hint="Re-fetch Last.fm tags + lyrics for tracks you've already enriched. External API calls — slow on a big library." />
               <Pass on={!!passes.reseed} onClick={() => togglePass('reseed')} name="Re-embed all tracks" tag="slow"
@@ -374,6 +411,7 @@ export default function LibraryTaggingModal(p: Props) {
               )}
               </>}
             </div>
+            {blendRescan && <StemBlendLimit value={tailLimit} onChange={setTailLimit} />}
             {newStyleRescan && <div className="lib-batch">
               <label htmlFor="modal-rescan-batch">Track limit</label>
               <select id="modal-rescan-batch" value={p.batch} onChange={e => p.setBatch(e.target.value as Batch)}>
@@ -460,6 +498,17 @@ export default function LibraryTaggingModal(p: Props) {
         onConfirm={() => { p.onReset(); setConfirmReset(false); setResetAck(false); p.onOpenChange(false); }}
       />
     </Modal>
+  );
+}
+
+function StemBlendLimit({ value, onChange }: { value: number; onChange: (limit: number) => void }) {
+  return (
+    <div className="lib-batch">
+      <label htmlFor="stem-blend-tail-limit">Track limit</label>
+      <select id="stem-blend-tail-limit" value={value} onChange={e => onChange(Number(e.target.value))}>
+        {[25, 100, 200].map(n => <option key={n} value={n}>up to {n} tracks</option>)}
+      </select>
+    </div>
   );
 }
 

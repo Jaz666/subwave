@@ -340,6 +340,12 @@ export function startAnalyzer(opts: { limit?: number; audio?: boolean; vocal?: b
   spawnChild('analyze', args, detail);
 }
 
+export function startStemBlendAdmission({ mode, limit }: { mode: 'missing' | 'refresh'; limit: number }) {
+  const args = ['src/music/analyze-library.ts', '--prepare-stem-blend-admission', '--limit', String(limit)];
+  if (mode === 'refresh') args.push('--re-analyze');
+  spawnChild('analyze', args, `Stem Blend tails, ${mode}, limit=${limit}`, { tailPreparation: true });
+}
+
 // Same managed process slot and process-group cancellation as ordinary analysis.
 export function startSubbeats(ids: string[], onEvent: (raw: unknown) => void, onClose: (stopped: boolean) => void) {
   if (tagger.running) throw new Error('Library analysis is already running');
@@ -366,6 +372,7 @@ function spawnChild(
   args: string[],
   detail: string,
   opts: {
+    tailPreparation?: boolean;
     automaticIdRotation?: RotatedIdEvidence;
     onExit?: OnExit;
     subbeats?: { onEvent: (raw: unknown) => void; onClose: (stopped: boolean) => void };
@@ -431,7 +438,7 @@ function spawnChild(
 
   // A never-counted library nulls every panel percentage for the whole run. Guarded
   // on hasCount() so it fires at most once per install, not on every run.
-  if (!opts.subbeats && !coverage.hasCount()) coverage.refresh().catch(() => {});
+  if (!opts.subbeats && !opts.tailPreparation && !coverage.hasCount()) coverage.refresh().catch(() => {});
 
   // Per-stream line buffering: a `data` chunk can end mid-line, so each stream keeps
   // its own remainder. [progress] and [event] sentinels are kept out of the raw log.
@@ -571,6 +578,11 @@ function spawnChild(
     // (#1570), so this is the one moment the total can refresh unasked.
     if (opts.subbeats) {
       queue.log('scheduler', `Legacy V1 stem prep finished (${signal ? `signal ${signal}` : `exit ${code}`})`);
+      return;
+    }
+    if (opts.tailPreparation) {
+      queue.log('scheduler', `Stem Blend tail preparation finished (${signal ? `signal ${signal}` : `exit ${code}`})`);
+      runEnd.exited(tagger.lastRun);
       return;
     }
     coverage.refresh().catch(() => {});

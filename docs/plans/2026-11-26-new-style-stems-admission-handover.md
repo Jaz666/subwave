@@ -34,11 +34,13 @@ Four-, six-, and eight-bar counts are derived from the saved markers before
 the fade cue or fallback endpoint. Use the before and after report for the
 same selected cohort.
 
-The next acceptance step is a representative audio cohort. Head preparation
-continues through the existing grid refresh. Wiring the wider tail evidence
-into automatically scheduled preparation or a Library UI control is a
-separate follow-up. Pair policies and live transitions continue to use the
-existing data readers.
+In the Library Tagging dialog, **Run → Prepare Stem Blend tails** processes
+missing and failed measurements. **Re-scan → Re-scan Stem Blend tails**
+refreshes completed measurements, oldest first. Both choices use the usual
+progress, log, and Stop controls. Select up to 25, 100, or 200 tracks. These
+actions use the existing Library maintenance lock, so choose a window where
+pick-time preparation can wait. Head preparation and live transitions keep
+their existing readers.
 
 ## Start here
 

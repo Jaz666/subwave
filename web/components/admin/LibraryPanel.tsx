@@ -114,8 +114,10 @@ function LibraryBody() {
         setLogOpen={tag.setLogOpen}
         onStart={tag.startTagger}
         newStylePrepAvailable={tag.showStemBeatsPreparation}
+        stemBlendPrepAvailable={tag.showStemBlendPreparation}
         legacyStemCacheAvailable={tag.showLegacyStemCache}
         onStartStemBeatsPrep={tag.startStemBeatsLibraryPrep}
+        onStartStemBlendPrep={tag.startStemBlendPreparation}
         onStop={tag.stopTagger}
         onRescan={tag.rescanTagger}
         onReconcile={tag.reconcile}

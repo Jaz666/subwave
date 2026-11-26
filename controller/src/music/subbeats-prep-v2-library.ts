@@ -196,8 +196,8 @@ export function pauseSubbeatsPrepV2(runId: string, paused: boolean): void {
   if (!paused) startSubbeatsPrepV2(runId);
 }
 
-export function subbeatsPrepV2RunActive(runId: string): boolean {
-  return active?.runId === runId;
+export function subbeatsPrepV2RunActive(runId?: string): boolean {
+  return active !== null && (runId === undefined || active.runId === runId);
 }
 
 export function subbeatsPrepV2WaitingForPickTime(runId: string): boolean {

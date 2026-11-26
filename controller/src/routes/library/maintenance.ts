@@ -18,10 +18,14 @@ import { tagInputFor, recordTagAnswer, tagPromptStamp } from '../../music/tag-li
 import { activeModelLabel } from '../../llm/provider.js';
 import { queue } from '../../broadcast/queue.js';
 import {
-  tagger, taggerView, startAnalyzer, startReconcile, taggerLogSince, taggerLogFiles, taggerLogFile,
+  tagger, taggerView, startAnalyzer, startReconcile, startStemBlendAdmission, taggerLogSince, taggerLogFiles, taggerLogFile,
 } from '../../broadcast/tagger.js';
-import { validateBodyAsync } from '../../middleware/validate.js';
+import { regularStemBlendsEnabled, regularStemWorkingMode } from '../../broadcast/regular-stem-mode.js';
+import { bulkPassRunning } from '../../music/tagger-lock.js';
+import { subbeatsPrepV2RunActive } from '../../music/subbeats-prep-v2-library.js';
+import { validateBody, validateBodyAsync } from '../../middleware/validate.js';
 import { manualTagSchema, originalYearSchema } from '../../schemas/library.js';
+import { stemBlendAdmissionRunSchema } from '../../schemas/stem-blend-admission.js';
 import type { z } from 'zod';
 import { parseIntSafe, encodeCursor, decodeCursor } from './params.js';
 
@@ -233,6 +237,17 @@ router.post('/library/analyze', requireAdmin, (req, res) => {
   const vocal = typeof req.body?.vocal === 'boolean' ? req.body.vocal : undefined;
   startAnalyzer({ limit: limit ?? undefined, audio: vocal === true ? undefined : true, vocal });
   res.json({ ok: true, tagger });
+});
+
+router.post('/library/stem-blend-admission', requireAdmin, validateBody(stemBlendAdmissionRunSchema), (req, res) => {
+  if (!regularStemWorkingMode() || !regularStemBlendsEnabled()) {
+    return res.status(409).json({ error: 'Enable New Style Stem Blends in Settings first.' });
+  }
+  if (tagger.running || bulkPassRunning() || subbeatsPrepV2RunActive()) {
+    return res.status(409).json({ error: 'Wait for the current Library or Stem Beats preparation run to finish.' });
+  }
+  startStemBlendAdmission(req.body);
+  res.json({ ok: true, tagger: taggerView() });
 });
 
 // Walk Navidrome and prune rows for tracks that no longer exist there. Usable

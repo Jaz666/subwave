@@ -17,6 +17,7 @@ import type {
   LibraryStatsLite,
   RescanOpts,
   TagSteps,
+  TaggerState,
 } from '../LibraryTaggingPanel';
 import type { SettingsResponse } from './types';
 
@@ -90,6 +91,8 @@ export function useTaggerControls() {
   const budgetMode: BudgetMode | null = settings?.budget?.mode ?? null;
   const showStemBeatsPreparation = settings?.values?.transitions?.stemsEnabled !== false
     && settings?.values?.transitions?.stemsStyle === 'new-style';
+  const showStemBlendPreparation = showStemBeatsPreparation
+    && settings?.values?.transitions?.newStyleStemBlends === true;
   const showLegacyStemCache = settings?.values?.transitions?.stemsEnabled !== false
     && settings?.values?.transitions?.stemsStyle !== 'new-style';
 
@@ -222,6 +225,17 @@ export function useTaggerControls() {
     onDone: () => { notify.ok('audio analysis started'); setLogOpen(true); void reloadTagger(); },
   });
 
+  const stemBlendAdmissionM = useAdminMutation<{ tagger: TaggerState }, { mode: 'missing' | 'refresh'; limit: number }>({
+    request: (body, fetcher) => adminJson(fetcher, '/library/stem-blend-admission', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }),
+    onDone: (data, _v, client) => {
+      client.setQueryData<TaggerState | null>(libraryKeys.tagger(), data.tagger);
+      setLogOpen(true);
+      void reloadTagger();
+    },
+  });
+
   // vocal:true forces the analyze pass into the vocal scope (#646).
   const vocalBackfillM = useAdminMutation<void, void>({
     request: (_v, fetcher) =>
@@ -324,12 +338,12 @@ export function useTaggerControls() {
 
   // One shared busy flag: the panel disables every control while any is in flight.
   const busy = [
-    startM, stopM, rescanM, stemBeatsLibraryPrepM, reconcileM, analyzeM, vocalBackfillM, resetM,
+    startM, stopM, rescanM, stemBeatsLibraryPrepM, stemBlendAdmissionM, reconcileM, analyzeM, vocalBackfillM, resetM,
     toggleAudioM, toggleVocalM, toggleQuietM, saveQuietMinutesM,
   ].some(m => m.isPending);
 
   return {
-    coverage, remaining, tagger, libStats, failures, showStemBeatsPreparation, showLegacyStemCache,
+    coverage, remaining, tagger, libStats, failures, showStemBeatsPreparation, showStemBlendPreparation, showLegacyStemCache,
     batch, setBatch, busy, logOpen, setLogOpen,
     audioEnabled, vocalEnabled, quietEnabled, quietMins, budgetMode,
     llmLabel, embedLabel,
@@ -338,6 +352,9 @@ export function useTaggerControls() {
     rescanTagger: (opts: RescanOpts) => { rescanM.mutate(opts); },
     startStemBeatsLibraryPrep: (mode: 'missing' | 'refresh', limit: Batch) => {
       stemBeatsLibraryPrepM.mutate({ mode, limit });
+    },
+    startStemBlendPreparation: (mode: 'missing' | 'refresh', limit: number) => {
+      stemBlendAdmissionM.mutate({ mode, limit });
     },
     reconcile: () => { reconcileM.mutate(); },
     resetLibrary: () => { resetM.mutate(); },

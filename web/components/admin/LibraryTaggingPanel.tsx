@@ -196,8 +196,10 @@ interface TaggingPanelProps {
   setLogOpen: (fn: (o: boolean) => boolean) => void;
   onStart: (steps?: TagSteps) => void;
   newStylePrepAvailable: boolean;
+  stemBlendPrepAvailable: boolean;
   legacyStemCacheAvailable: boolean;
   onStartStemBeatsPrep: (mode: 'missing' | 'refresh', limit: Batch) => void;
+  onStartStemBlendPrep: (mode: 'missing' | 'refresh', limit: number) => void;
   onStop: () => void;
   onRescan: (opts: RescanOpts) => void;
   // Walk Navidrome and prune library entries for tracks that no longer exist.
@@ -244,7 +246,7 @@ const PHASE_HINT: Record<TaggerProgress['phase'], string> = {
   propagate: 'Spreading tags from tagged tracks to their closest sonic neighbours.',
   learn: 'The DJ is re-checking tracks the automatic spread wasn’t confident about.',
   analyze: 'Measuring tempo and key, and fingerprinting how each track sounds.',
-  grids: 'Refreshing pick-time Stem Blend beat-grid coverage for tracks queued during playback.',
+  grids: 'Measuring Stem Blend beat-grid coverage at the ends of tracks.',
   done: 'Wrapping up.',
 };
 
@@ -1377,8 +1379,10 @@ export default function TaggingPanel(p: TaggingPanelProps) {
         embedLabel={p.embedLabel}
         onStart={p.onStart}
         newStylePrepAvailable={p.newStylePrepAvailable}
+        stemBlendPrepAvailable={p.stemBlendPrepAvailable}
         legacyStemCacheAvailable={p.legacyStemCacheAvailable}
         onStartStemBeatsPrep={p.onStartStemBeatsPrep}
+        onStartStemBlendPrep={p.onStartStemBlendPrep}
         onReconcile={p.onReconcile}
         onRescan={p.onRescan}
         onReset={p.onReset}
