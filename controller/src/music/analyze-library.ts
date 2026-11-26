@@ -53,6 +53,7 @@ import { acquireStandaloneLock, installPidfileCleanup } from './tagger-lock.js';
 import { walkFileInfo } from './tag-library/flags.js';
 import { backfillSubbeatsStemWaveforms } from './stem-waveform-peaks.js';
 import { reembedNewlyMarked } from './tag-library/embed.js';
+import { prepareStemBlendAdmission } from './stem-blend-admission.js';
 
 const logEvent = makeEventLogger('analyze');
 
@@ -145,9 +146,14 @@ async function buildFacetPlan(args: string[], limit: number | undefined): Promis
 async function main() {
   const args = process.argv.slice(2);
   const facetMode = args.includes('--facets');
+  const stemBlendAdmission = args.includes('--prepare-stem-blend-admission');
   const dryRun = args.includes('--dry-run');
-  if (dryRun && !facetMode) {
-    console.error('[analyze] --dry-run needs --facets');
+  if (stemBlendAdmission && (facetMode || args.includes('--walk') || args.some(arg =>
+    ['--audio', '--vocal', '--stems', '--stems-only', '--stem-waveforms', '--stem-waveforms-only'].includes(arg)))) {
+    throw new Error('--prepare-stem-blend-admission runs a separate tail preparation pass');
+  }
+  if (dryRun && !facetMode && !stemBlendAdmission) {
+    console.error('[analyze] --dry-run needs --facets or --prepare-stem-blend-admission');
     process.exit(1);
   }
 
@@ -183,6 +189,18 @@ async function main() {
   // touches vectors (#319).
   await db.open({ embeddingDim, adoptStoredDim: true });
 
+  if (stemBlendAdmission) {
+    const bound = stringFlag(args, '--limit');
+    const selectionLimit = bound === undefined ? 25 : Number(bound);
+    if (!Number.isInteger(selectionLimit) || selectionLimit < 1 || selectionLimit > 200) {
+      throw new Error('--prepare-stem-blend-admission accepts a limit of 1–200 tracks');
+    }
+    const result = await prepareStemBlendAdmission({ ids: explicitIds(args), limit: selectionLimit, rescan: reAnalyze, dryRun });
+    analyzer.shutdown();
+    console.log('[analyze] Stem Blend admission:', JSON.stringify(result));
+    process.exit('errors' in result && result.errors ? 1 : 0);
+  }
+
   const stemWaveformsOnly = args.includes('--stem-waveforms-only');
   const stemWaveforms = stemWaveformsOnly || args.includes('--stem-waveforms');
   if (stemWaveformsOnly) {
@@ -212,7 +230,7 @@ async function main() {
     // Audio first, then the MusicBrainz lookups: two independent passes.
     const audio = analysisPart(plan);
     const dirtyBefore = new Set(db.textVectorDirtyIds());
-    const stats = audio ? await runAnalysisPass({ plan: audio, subbeatsScopeIds: explicitIds(args) ?? undefined }) : null;
+    const stats = audio ? await runAnalysisPass({ plan: audio }) : null;
     analyzer.shutdown();
     if (stats) console.log('[analyze] stats:', JSON.stringify(stats));
     await reembedNewlyMarked(dirtyBefore, logEvent);
@@ -310,8 +328,7 @@ async function main() {
   }
 
   const dirtyBefore = new Set(db.textVectorDirtyIds());
-  const stats = await runAnalysisPass({ limit, reAnalyze, audioBackfill, vocalBackfill, stemBackfill, stemOnly,
-    subbeatsScopeIds: explicitIds(args) ?? undefined });
+  const stats = await runAnalysisPass({ limit, reAnalyze, audioBackfill, vocalBackfill, stemBackfill, stemOnly });
   if (stemWaveforms) await backfillSubbeatsStemWaveforms(limit);
   analyzer.shutdown();
   console.log('[analyze] stats:', JSON.stringify(stats));

@@ -2,8 +2,43 @@
 
 Updated: 26 November 2026. Scope: make as many tracks as practicable available
 to later pick-time decisions by improving their measured head/tail evidence.
-This is a focused continuation brief for a fresh chat. No implementation of
-the admission proposal below has been made in this handover session.
+
+## First implementation
+
+Branch `codex/stem-blend-admission-20261126` starts from draft PR #10 commit
+`d4698f344`. It adds an explicit library pass for Regular Stem Blend tail
+evidence. Run it from the controller directory after enabling New Style Stem
+Blends and building an analyzer image from this source.
+
+```sh
+npm run analyze -- --prepare-stem-blend-admission --limit 25 --dry-run
+npm run analyze -- --prepare-stem-blend-admission --limit 25
+```
+
+Use `--ids id1,id2` or `--ids-file path` for a fixed cohort. The pass defaults
+to 25 tracks and accepts a limit of 1–200. The default scope is missing or
+failed evidence for known-size files. It picks queued grid misses first among
+unattempted tracks. `--re-analyze` refreshes completed evidence. The CLI uses
+the existing acoustic maintenance lock, quiet-hours gate, progress reporting,
+and analyzer device defaults. Schedule the first listening-library cohort
+during a maintenance window because the bulk lock defers pick-time work.
+
+The pass reuses the 60–120 second tail sizing and measures the enlarged
+window from a verified complete recording. It stores absolute decoded
+coverage, audible bounds, a measured fade cue when present, the measured
+beats and bars, and their provenance in `stem_blend_tail_admission`. With a
+cold ending or no distinct fade, the measured music end is the fallback.
+`gridStatus` distinguishes a valid grid, a measured window without usable
+bars, and a model failure. The library read checks identity and the schema.
+Four-, six-, and eight-bar counts are derived from the saved markers before
+the fade cue or fallback endpoint. Use the before and after report for the
+same selected cohort.
+
+The next acceptance step is a representative audio cohort. Head preparation
+continues through the existing grid refresh. Wiring the wider tail evidence
+into automatically scheduled preparation or a Library UI control is a
+separate follow-up. Pair policies and live transitions continue to use the
+existing data readers.
 
 ## Start here
 

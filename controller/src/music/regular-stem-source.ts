@@ -14,7 +14,7 @@ import { findLibraryFile } from './subsonic.js';
 import { RegularStemWorkingCache } from '../broadcast/regular-stem-working-cache.js';
 import { requireRegularStemSpace } from '../broadcast/regular-stem-space.js';
 
-const cache = new RegularStemWorkingCache(path.join(config.stateDir, 'regular-stem-sources'));
+const workingCache = new RegularStemWorkingCache(path.join(config.stateDir, 'regular-stem-sources'));
 let membership: Promise<void> = Promise.resolve();
 // One writer at a time makes each disk-space check account for prior sources.
 let staging: Promise<unknown> = Promise.resolve();
@@ -24,7 +24,7 @@ type SourceFlight = { promise: Promise<Source>; controller: AbortController; wai
 const inFlight = new Map<string, SourceFlight>();
 
 export function retainRegularStemSources(current: string | null, queued: readonly string[]): void {
-  membership = cache.reconcile(current, queued, []);
+  membership = workingCache.reconcile(current, queued, []);
   void membership.catch(() => {}); // acquisition reports an unavailable cache
 }
 
@@ -41,10 +41,11 @@ async function fingerprint(file: string, bytes: number, signal: AbortSignal): Pr
 
 export async function acquireRegularStemSource(id: string, opts: {
   expectedBytes?: number; expectedSha256?: string; timeoutMs?: number; deadlineMs?: number;
-  log?: (message: string) => void; signal?: AbortSignal;
+  log?: (message: string) => void; signal?: AbortSignal; cache?: RegularStemWorkingCache;
 } = {}) {
   opts.signal?.throwIfAborted();
-  await membership;
+  if (!opts.cache) await membership;
+  const cache = opts.cache ?? workingCache;
   opts.signal?.throwIfAborted();
   const lease = await cache.acquire(id);
   if (!lease) throw new Error('recording is no longer in the regular working queue');

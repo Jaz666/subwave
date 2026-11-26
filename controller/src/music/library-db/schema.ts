@@ -659,6 +659,14 @@ export async function migrate(embeddingDim: number, reseed = false, adoptStoredD
     track_id TEXT PRIMARY KEY,
     queued_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+  runDdl(d, `CREATE TABLE IF NOT EXISTS stem_blend_tail_admission (
+    track_id TEXT PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    source_bytes INTEGER NOT NULL,
+    source_sha256 TEXT,
+    status TEXT NOT NULL,
+    evidence_json TEXT,
+    attempted_at INTEGER NOT NULL
+  )`);
   return effectiveDim;
 }
 

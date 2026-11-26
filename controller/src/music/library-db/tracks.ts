@@ -539,6 +539,7 @@ export function clearTrackAudio(id: string, fileSize?: number | null): void {
        WHERE id = ?`,
     ).run(id);
     d.prepare('DELETE FROM track_audio_vectors WHERE id = ?').run(id);
+    d.prepare('DELETE FROM stem_blend_tail_admission WHERE track_id = ?').run(id);
     // The analysis rows (and the unmeasurable answers they carry) described the
     // old file; the year row is not an audio measurement (a failed lookup's
     // attempt count lives only there).

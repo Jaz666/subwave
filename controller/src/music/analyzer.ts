@@ -1397,6 +1397,7 @@ export interface FacetAnswer {
   result: AnalysisResult;
   // vocal: the outro's vocal ranges (absolute ms) when the tail was measured.
   tailVocalRanges: Section[] | null;
+  tailAdmission?: unknown;
 }
 
 export interface FacetSourceInfo {
@@ -1449,6 +1450,7 @@ export interface FacetRequestOpts {
   // Regular stems may need more measured bars than the legacy outro window.
   // Only the beat grid is widened; ending/level/vocal measurements stay put.
   tailGridSeconds?: number;
+  tailAdmission?: boolean;
   headGridSeconds?: number;
   // Tail facet also carries the outro's vocal ranges (Demucs on the tail only).
   tailVocals?: boolean;
@@ -1488,12 +1490,14 @@ export function parseFacetAnswer(msg: WorkerMessage): FacetAnalysis {
     const status = FACET_STATUSES.includes(String(cell.status)) ? (cell.status as FacetAnswerStatus) : 'failed';
     const data = (cell.data && typeof cell.data === 'object' ? cell.data : {}) as WorkerMessage & {
       tail_vocal_ranges?: unknown;
+      tail_admission?: unknown;
     };
     facets[name as FacetName] = {
       status,
       reason: typeof cell.reason === 'string' ? cell.reason : null,
       result: toAnalysisResult(data),
       tailVocalRanges: parseVocalRanges(data.tail_vocal_ranges),
+      ...(data.tail_admission === undefined ? {} : { tailAdmission: data.tail_admission }),
     };
   }
   const src = (msg.source ?? {}) as Record<string, unknown>;
@@ -1615,6 +1619,7 @@ export async function analyzeFacets(
   if (opts.stembeats_window && !await stembeatsStemWindowsAvailable()) throw new Error('analyzer does not support Stem Beats windows version 1');
   if (opts.tailVocals) body.tail_vocals = true;
   if (opts.tailGridSeconds != null) body.tail_grid_seconds = opts.tailGridSeconds;
+  if (opts.tailAdmission) body.tail_admission = true;
   if (opts.headGridSeconds != null) body.head_grid_seconds = opts.headGridSeconds;
   if (opts.tailWindow && usesTailWindow(opts.facets)) {
     body.tail_window = { end_ms: opts.tailWindow.endMs, duration_ms: opts.tailWindow.durationMs };
@@ -1638,7 +1643,7 @@ export async function analyzeFacets(
       ...(opts.complete !== undefined ? { complete: opts.complete } : {}),
       // The whole-file facets read the stream URL unless the staged copy is
       // known to be complete; the worker decides, never the sidecar.
-      ...(readsStream(body) ? { stream_url: url } : {}),
+      ...(readsStream(body) && !opts.tailAdmission ? { stream_url: url } : {}),
       ...stems,
     }, timeoutMs, opts.localPathRequired, signal);
   } catch (err) {

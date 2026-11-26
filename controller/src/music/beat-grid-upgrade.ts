@@ -3,7 +3,6 @@
 // their per-window provenance are replaced.
 import * as analyzer from './analyzer.js';
 import * as db from './library-db.js';
-import * as settings from '../settings.js';
 import type { BeatGridProvenance } from '../schemas/beat-grid.js';
 import { BoundedKeyMap } from '../util/bounded-key-map.js';
 import { acquireRegularStemSource } from './regular-stem-source.js';
@@ -56,7 +55,6 @@ export function ensureCurrent(id: string, log: (message: string) => void): Promi
         facets: ['head', 'tail'],
         localPathRequired: true,
         complete: true,
-        beat_grid_device: settings.get().transitions.pickTimeDevice,
         tailWindow: analyzer.tailWindowFor(before),
       }, source.path);
       completed = true;

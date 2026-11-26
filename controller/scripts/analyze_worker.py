@@ -1406,6 +1406,26 @@ def decode_tail(path, librosa, duration_s, complete=None):
     return y_src, sr, offset
 
 
+def tail_wind_down(y, sr, offset, duration_s, librosa):
+    """Measure the start of a fade, or classify a cold ending."""
+    import numpy as np
+
+    hop = 512
+    rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=hop)[0]
+    if rms.size == 0:
+        return None
+    loud = float(np.percentile(rms, 95))
+    if loud <= 0:
+        return None
+    times = librosa.frames_to_time(np.arange(rms.size), sr=sr, hop_length=hop)
+    last_loud = next((i for i in range(rms.size - 1, -1, -1) if rms[i] >= 0.6 * loud), None)
+    wind_start_s = offset if last_loud is None else offset + float(times[last_loud])
+    tail_frames = max(1, int(1.5 * sr / hop))
+    end_level = float(np.mean(rms[-tail_frames:]))
+    ending = "fade" if end_level < 0.15 * loud and duration_s - wind_start_s >= 3.0 else "cold"
+    return wind_start_s, ending
+
+
 def facet_tail(y_src, sr, offset, duration_s, librosa, require_grid=True):
     """Facet `tail`: features of the crossfade seam from an already-decoded
     window that is PROVEN to run to the end of the file (decode_tail, or later
@@ -1443,33 +1463,10 @@ def facet_tail(y_src, sr, offset, duration_s, librosa, require_grid=True):
             "tail_start_ms": int(round(offset * 1000.0 + tail_start_ms)),
         }
 
-    hop = 512
-    rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=hop)[0]
-    if rms.size == 0:
+    wind_down = tail_wind_down(y, sr, offset, duration_s, librosa)
+    if wind_down is None:
         return None
-    loud = float(np.percentile(rms, 95))
-    if loud <= 0:
-        return None
-    times = librosa.frames_to_time(np.arange(rms.size), sr=sr, hop_length=hop)
-
-    # Wind-down start: the LAST time the tail sits at full level (≥60% of its
-    # own loud reference) — everything after it is the ending. A tail that
-    # holds level to the end winds down at the very end (cold).
-    thr_hi = 0.6 * loud
-    last_loud = None
-    for i in range(rms.size - 1, -1, -1):
-        if rms[i] >= thr_hi:
-            last_loud = i
-            break
-    wind_start_s = offset if last_loud is None else offset + float(times[last_loud])
-    wind_span_s = max(0.0, duration_s - wind_start_s)
-
-    # Ending type: a fade lands near-silent (final ~1.5s well below the tail's
-    # loud level) after a real decline (≥3s wind-down); everything else — a hit,
-    # a ring-out, a hard stop — reads as cold for transition purposes.
-    tail_frames = max(1, int(1.5 * sr / hop))
-    end_level = float(np.mean(rms[-tail_frames:]))
-    ending = "fade" if (end_level < 0.15 * loud and wind_span_s >= 3.0) else "cold"
+    wind_start_s, ending = wind_down
 
     # Tail loudness — comparable to the track's loudness_lufs, so consumers can
     # judge how hot the material under the next intro will actually be.
@@ -4492,10 +4489,8 @@ def parse_stems_windows(raw):
     return [w for w in STEM_WINDOWS if w in raw]
 
 
-def regular_tail_grid(librosa, source, seconds, placement=None):
-    """Measure a wider grid on the complete recording without moving its fade.
-    Decode MP3s from the beginning so random-access seeking cannot shift bars.
-    """
+def decode_regular_tail(librosa, source, seconds, placement):
+    """Count decoded samples from source zero so seeking cannot shift bars."""
     import numpy as np
 
     if source.complete is not True or not source.duration_s:
@@ -4521,10 +4516,57 @@ def regular_tail_grid(librosa, source, seconds, placement=None):
     if audio is None or np.ndim(audio) != 1 or sr != ANALYZE_SR \
             or abs(len(audio) - round((end-start) * sr)) > 2:
         raise FacetRequestError("extended tail grid decode is incomplete")
+    return audio, sr, start
+
+
+def regular_tail_grid(librosa, source, seconds, placement=None):
+    """Measure a wider grid on the complete recording without moving its fade."""
+    audio, sr, start = decode_regular_tail(librosa, source, seconds, placement)
     beats, bars, provenance = measure_bar_grid(audio, sr, librosa, [], offset_s=start)
     if not provenance or not beats or not bars:
         raise FacetRequestError("extended tail beat grid is unavailable")
     return {"beats": beats, "bars": bars, "gridProvenance": provenance}
+
+
+def regular_tail_admission(librosa, source, seconds, placement):
+    audio, sr, start = decode_regular_tail(librosa, source, seconds, placement)
+    fingerprint = source_fingerprint(source.src_path, source.complete)
+    if not fingerprint:
+        raise FacetRequestError("tail preparation source fingerprint unavailable")
+    start_ms = math.ceil(start * 1000)
+    end_ms = math.floor((start + len(audio) / sr) * 1000)
+    lead, _, audible_end = silence_edges_ms(audio, sr)
+    music_start_ms = None if lead is None else max(start_ms, math.ceil(start * 1000 + lead))
+    music_end_ms = None if audible_end is None else min(end_ms, math.floor(start * 1000 + audible_end))
+    cue_ms = None
+    if music_start_ms is not None and music_end_ms > music_start_ms:
+        wind_down = tail_wind_down(audio, sr, start, start + len(audio) / sr, librosa)
+        if wind_down and wind_down[1] == "fade":
+            candidate = round(wind_down[0] * 1000)
+            if music_start_ms < candidate < music_end_ms:
+                cue_ms = candidate
+    else:
+        music_start_ms = music_end_ms = None
+
+    beats, bars, provenance = [], [], None
+    grid_status = "no-grid"
+    if music_end_ms is not None:
+        try:
+            beats, bars, provenance = measure_bar_grid(audio, sr, librosa, [], offset_s=start)
+            if provenance is None:
+                raise RuntimeError("shared grid provenance is missing")
+            provenance["source"] = fingerprint
+            grid_status = "measured" if beats and bars else "no-grid"
+        except Exception as error:  # preserve independently measured cue and coverage
+            log(f"tail preparation grid failed: {error}")
+            beats, bars, provenance = [], [], None
+            grid_status = "failed"
+    return {
+        "version": 1, "source": fingerprint, "requestedSeconds": seconds,
+        "windowStartMs": start_ms, "windowEndMs": end_ms, "musicStartMs": music_start_ms,
+        "musicEndMs": music_end_ms, "cueMs": cue_ms, "gridStatus": grid_status,
+        "beats": beats, "bars": bars, "gridProvenance": provenance,
+    }
 
 
 def regular_head_grid(librosa, source, seconds):
@@ -4953,9 +4995,12 @@ def analyze_facet_request(librosa, req):
     failures fail the request; window failures stay inside their facets."""
     facets = parse_facets(req.get("facets"))
     grid_seconds = req.get("tail_grid_seconds")
+    admission = req.get("tail_admission") is True
     if grid_seconds is not None and (type(grid_seconds) is not int or not 40 <= grid_seconds <= 120
                                      or facets != ["tail"] or req.get("tail_vocals") is True):
         raise FacetRequestError("extended tail grid requires 40-120 seconds on a tail-only request")
+    if admission and grid_seconds is None:
+        raise FacetRequestError("tail preparation requires an extended tail window")
     head_grid_seconds = req.get("head_grid_seconds")
     if head_grid_seconds is not None and (type(head_grid_seconds) is not int or not 40 <= head_grid_seconds <= 120
                                          or facets != ["head"]):
@@ -4985,6 +5030,13 @@ def analyze_facet_request(librosa, req):
         raise FacetRequestError("choose one bounded stem window contract")
     try:
         source.open(librosa)
+        if admission:
+            try:
+                evidence = regular_tail_admission(librosa, source, grid_seconds, parse_tail_window(req.get("tail_window")))
+                tail = _ok({"tail_admission": evidence})
+            except Exception as error:
+                tail = _failed(error)
+            return {"facets": {"tail": tail}, "source": source.describe()}
         if stembeats_window is not None:
             evidence = extract_stembeats_stem_window(librosa, source, stembeats_window, req["stems_dir"])
             return {"facets": {"stems": {"status": "ok", "data": {"stembeats_window": evidence}}},

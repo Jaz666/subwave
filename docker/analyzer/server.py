@@ -885,6 +885,7 @@ class AnalyzeRequest(BaseModel):
     regular_stem_window: dict[str, Any] | None = None
     stembeats_window: dict[str, Any] | None = None
     tail_grid_seconds: int | None = None
+    tail_admission: bool = False
     head_grid_seconds: int | None = None
 
 
@@ -933,6 +934,8 @@ async def analyze(req: AnalyzeRequest):
         payload["facets"] = facets
         if req.tail_grid_seconds is not None:
             payload["tail_grid_seconds"] = req.tail_grid_seconds
+        if req.tail_admission:
+            payload["tail_admission"] = True
         if req.head_grid_seconds is not None:
             payload["head_grid_seconds"] = req.head_grid_seconds
         if req.regular_stem_window is not None:

@@ -3,7 +3,6 @@
  */
 import * as analyzer from './analyzer.js';
 import * as db from './library-db.js';
-import * as settings from '../settings.js';
 import type { TrackRecord } from './library-db.js';
 import type { BeatGridProvenance } from '../schemas/beat-grid.js';
 import { BoundedKeyMap } from '../util/bounded-key-map.js';
@@ -92,8 +91,7 @@ export function ensureRegularTailGrid(id: string, log: (message: string) => void
       const options = () => {
         const timeoutMs = Math.floor(Math.min(300_000, (deadlineMs ?? Date.now()+300_000)-Date.now()));
         if (timeoutMs <= 0) throw new Error('regular grid preparation deadline passed');
-        return { localPathRequired: true, complete: true, timeoutMs,
-          beat_grid_device: settings.get().transitions.pickTimeDevice };
+        return { localPathRequired: true, complete: true, timeoutMs };
       };
       if (headGridNeedsRepair(row)) {
         try {

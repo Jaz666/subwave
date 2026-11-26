@@ -1151,7 +1151,6 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
       (vocalTailPending > 0 ? ` · ${vocalTailPending.toLocaleString('en-GB')} vocal tails pending` : '') +
       (failed > 0 ? ` · ${failed.toLocaleString('en-GB')} failed` : ''),
   );
-  reportSubbeatsReady();
   return { available: true, backend, analyzed, failed, scope: ids.length, audioEmbedded, vocalAnalyzed,
     vocalTailAnalyzed, vocalTailPending };
 }
