@@ -71,7 +71,7 @@ class _FakeLibrosa:
         return np.asarray(frames, dtype=np.float64) * 0.5
 
 
-def _analyze(beat):
+def _analyze(beat, grid_failure=False, embedding=False):
     y = np.ones(4096, dtype=np.float32)
     logs = []
     originals = {
@@ -84,6 +84,9 @@ def _analyze(beat):
         "estimate_sections": aw.estimate_sections,
         "estimate_pace": aw.estimate_pace,
         "measure_loudness": aw.measure_loudness,
+        "measure_bar_grid": aw.measure_bar_grid,
+        "get_embedder": aw.get_embedder,
+        "embed_windows": aw.embed_windows,
         "log": aw.log,
     }
     try:
@@ -100,10 +103,25 @@ def _analyze(beat):
         aw.estimate_sections = lambda *_args, **_kwargs: [{"startMs": 0, "label": "intro"}]
         aw.estimate_pace = lambda *_args, **_kwargs: [{"atMs": 0, "value": 0.4}]
         aw.measure_loudness = lambda *_args, **_kwargs: (-9.5, -0.1)
+        if grid_failure:
+            def fail_grid(*_args, **_kwargs):
+                raise RuntimeError("Beat This downbeats are not a subset of beats")
+
+            aw.measure_bar_grid = fail_grid
+        else:
+            grid = (
+                ([0, 500, 1000, 1500, 2000], [0, 2000], None)
+                if isinstance(beat, _SuccessfulBeat)
+                else ([], [], None)
+            )
+            aw.measure_bar_grid = lambda *_args, **_kwargs: grid
+        if embedding:
+            aw.get_embedder = lambda force=False: object()
+            aw.embed_windows = lambda *_args, **_kwargs: [0.1, 0.2]
         aw.log = logs.append
 
         result = aw.analyze(
-            _FakeLibrosa(beat), path="clipped-live-recording.wav", embed=False,
+            _FakeLibrosa(beat), path="clipped-live-recording.wav", embed=embedding,
             vocal=False, complete=False,
         )
         return result, logs
@@ -139,6 +157,17 @@ def t_main_beat_success_keeps_numeric_bpm_and_grid():
     assert "grid_provenance" not in result, result
     assert result["confidence"] == 0.8, result
     assert any("shared beat grid failed" in line for line in logs), logs
+
+
+def t_shared_grid_failure_keeps_flat_acoustics_and_clap():
+    result, logs = _analyze(_SuccessfulBeat(), grid_failure=True, embedding=True)
+
+    assert result["bpm"] == 123.5, result
+    assert result["key"] == "8A", result
+    assert result["audio_embedding"] == [0.1, 0.2], result
+    assert "beats" not in result and "bars" not in result, result
+    assert "grid_provenance" not in result, result
+    assert any("Beat This downbeats are not a subset of beats" in line for line in logs), logs
 
 
 def t_baseline_failure_removes_recovered_wav_but_not_caller_input():
@@ -187,6 +216,7 @@ def t_baseline_failure_removes_recovered_wav_but_not_caller_input():
 print("main beat tracking")
 test("a beat tracker exception keeps the rest of analysis", t_main_beat_failure_keeps_independent_analysis)
 test("a successful beat tracker keeps numeric BPM and grids", t_main_beat_success_keeps_numeric_bpm_and_grid)
+test("a shared-grid failure keeps flat acoustics and CLAP", t_shared_grid_failure_keeps_flat_acoustics_and_clap)
 test("baseline errors clean recovered WAVs but preserve caller inputs", t_baseline_failure_removes_recovered_wav_but_not_caller_input)
 
 if failures:

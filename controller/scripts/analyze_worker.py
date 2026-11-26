@@ -3272,7 +3272,7 @@ def demucs_tail(detector, load, librosa, duration_s, outro, stems_dir=None, stem
         return False
 
 
-def facet_head(y, sr, librosa):
+def facet_head(y, sr, librosa, require_grid=True):
     """Facet `head`: musical features of the leading window (mono downmix of
     the first ANALYZE_SECONDS). Pure — samples in, result fields out:
       bpm, key, intro_ms, confidence (always present, may be None)
@@ -3299,8 +3299,9 @@ def facet_head(y, sr, librosa):
         beats_ms, bars_ms, provenance = measure_bar_grid(y, sr, librosa, beat_frames)
     except Exception as e:  # noqa: BLE001 — a failed grid invalidates this facet
         log(f"shared beat grid failed: {e}")
-        raise
-    if provenance is None:
+        if require_grid:
+            raise
+    if require_grid and provenance is None:
         raise RuntimeError("required Beat This grid provenance is missing for head window")
 
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
@@ -4227,7 +4228,9 @@ def analyze(
     if y is None or len(y) == 0:
         raise RuntimeError("decoded empty audio")
 
-    result = facet_head(y, sr, librosa)
+    # The flat analysis request contains unrelated acoustics and CLAP results;
+    # keep those when the optional shared grid cannot be measured.
+    result = facet_head(y, sr, librosa, require_grid=False)
     bind_grid_source(result, outro, fingerprint)
     # When vocal activity was measured, the start of the first vocal range is a
     # truer intro than the energy heuristic (an instrumental intro is exactly
